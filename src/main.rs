@@ -4,9 +4,11 @@ use gicsdom::optics_path_sh48::OpticsPathSH48;
 fn main() {
     let mut sh48 = OpticsPathSH48::new();
     sh48.cfg();
-    sh48.goxp();
-    println!("WFE RMS: {}nm", sh48.wfe_rms * 1e9);
-
+    for k in 0..10 {
+        sh48.time_stamp = (k as f32)*1e-2;
+        sh48.goxp();
+        println!("WFE RMS: {}nm", sh48.wfe_rms * 1e9);
+    }
     let mut gsh48 = OpticsPathGSH48::new();
     gsh48.cfg();
     let t_xyz: [f64; 3] = [1e-6, 0.0, 0.0];

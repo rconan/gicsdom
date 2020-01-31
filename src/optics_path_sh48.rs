@@ -1,6 +1,7 @@
 use super::{atmosphere, gmt_m1, gmt_m2, modes, shackHartmann, source, vector, zernikeS};
 
 use std::{f32, mem};
+use std::ffi::CString;
 
 pub struct OpticsPathSH48 {
     m1_modes: modes,
@@ -11,6 +12,9 @@ pub struct OpticsPathSH48 {
     wfs: shackHartmann,
     atm: atmosphere,
     pub wfe_rms: f32,
+    pupil_size: f64,
+    pupil_sampling: i32,
+    pub time_stamp: f32,
 }
 impl OpticsPathSH48 {
     pub fn new() -> OpticsPathSH48 {
@@ -23,17 +27,20 @@ impl OpticsPathSH48 {
             wfs: unsafe { mem::zeroed() },
             atm: unsafe { mem::zeroed() },
             wfe_rms: 0.0,
+            pupil_size: 0.0,
+            pupil_sampling: 0,
+            time_stamp: 0.0,
         }
     }
     pub fn cfg(&mut self) {
         unsafe {
-            let pupil_size = 25.5;
-            let pupil_sampling = 48 * 16 + 1;
+            self.pupil_size = 25.5;
+            self.pupil_sampling = 48 * 16 + 1;
 
             let m1_n_mode = 27;
-            let mut mode_type = String::from("bending modes");
+            let mode_type = CString::new("bending modes").unwrap();
             self.m1_modes
-                .setup(mode_type.as_mut_ptr() as *mut i8, 7, m1_n_mode);
+                .setup(mode_type.into_raw() as *mut i8, 7, m1_n_mode);
             self.m1.setup1(&mut self.m1_modes);
 
             let mut a = vec![0.0];
@@ -56,12 +63,12 @@ impl OpticsPathSH48 {
                 azimuth.as_mut_ptr(),
                 f32::INFINITY,
                 zenith.len() as i32,
-                pupil_size,
-                pupil_sampling,
+                self.pupil_size,
+                self.pupil_sampling,
                 origin,
             );
 
-            let d = pupil_size / 48.0;
+            let d = self.pupil_size / 48.0;
             self.wfs.setup(48, 16, d as f32, 2, 24, 3, 3);
 
             self.goxp();
@@ -84,6 +91,7 @@ impl OpticsPathSH48 {
     }
     pub fn goxp(&mut self) {
         unsafe {
+            let d = (self.pupil_size / ((self.pupil_sampling - 1) as f64)) as f32;
             self.gs.wavefront.reset();
             self.gs.reset_rays();
             self.m2.blocking(&mut self.gs.rays);
@@ -92,6 +100,14 @@ impl OpticsPathSH48 {
             self.m2.trace(&mut self.gs.rays);
             self.gs.rays.to_sphere1(-5.830, 2.197173);
             self.gs.opd2phase();
+            self.atm.rayTracing1(
+                &mut self.gs,
+                d,
+                self.pupil_sampling,
+                d,
+                self.pupil_sampling,
+                self.time_stamp,
+            );
             self.gs.wavefront.rms(&mut self.wfe_rms);
         }
     }
