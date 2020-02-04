@@ -1,7 +1,7 @@
 use super::{atmosphere, gmt_m1, gmt_m2, modes, shackHartmann, source, vector, zernikeS};
 
-use std::{f32, mem};
 use std::ffi::CString;
+use std::{f32, mem};
 
 pub struct OpticsPathSH48 {
     m1_modes: modes,
@@ -11,7 +11,7 @@ pub struct OpticsPathSH48 {
     gs: source,
     wfs: shackHartmann,
     atm: atmosphere,
-    pub wfe_rms: f32,
+    wfe_rms: f32,
     pupil_size: f64,
     pupil_sampling: i32,
     pub time_stamp: f32,
@@ -71,11 +71,12 @@ impl OpticsPathSH48 {
             let d = self.pupil_size / 48.0;
             self.wfs.setup(48, 16, d as f32, 2, 24, 3, 3);
 
-            self.goxp();
+            self.go_xp();
             self.gs.fwhm = 3.16;
             self.wfs.calibrate(&mut self.gs, 0.0);
             self.gs.fwhm = 0.0;
 
+            let atm_file = CString::new("/home/rconan/DATA/gmtAtmosphereL030_2.bin").unwrap();
             self.atm.gmt_setup6(
                 15e-2,
                 25.0,
@@ -83,15 +84,14 @@ impl OpticsPathSH48 {
                 351,
                 20.0 * f32::consts::PI / 180.0 / 60.0,
                 15.0,
-                String::from("/home/rconan/DATA/gmtAtmosphereL030_2.bin").as_mut_ptr() as *mut i8,
+                atm_file.into_raw() as *mut i8,
                 4,
                 2019,
             );
         }
     }
-    pub fn goxp(&mut self) {
+    pub fn go_xp(&mut self) {
         unsafe {
-            let d = (self.pupil_size / ((self.pupil_sampling - 1) as f64)) as f32;
             self.gs.wavefront.reset();
             self.gs.reset_rays();
             self.m2.blocking(&mut self.gs.rays);
@@ -100,6 +100,12 @@ impl OpticsPathSH48 {
             self.m2.trace(&mut self.gs.rays);
             self.gs.rays.to_sphere1(-5.830, 2.197173);
             self.gs.opd2phase();
+        }
+    }
+    pub fn go_atm_xp(&mut self) {
+        self.go_xp();
+        unsafe {
+            let d = (self.pupil_size / ((self.pupil_sampling - 1) as f64)) as f32;
             self.atm.rayTracing1(
                 &mut self.gs,
                 d,
@@ -108,12 +114,19 @@ impl OpticsPathSH48 {
                 self.pupil_sampling,
                 self.time_stamp,
             );
-            self.gs.wavefront.rms(&mut self.wfe_rms);
         }
     }
-    pub fn gofp(&mut self) {
-        self.goxp();
+    pub fn go_fp(&mut self) {
+        self.go_xp();
         unsafe { self.wfs.propagate(&mut self.gs) }
+    }
+    pub fn go_atm_fp(&mut self) {
+        self.go_atm_xp();
+        unsafe { self.wfs.propagate(&mut self.gs) }
+    }
+    pub fn wfe_rms(&mut self) -> f32 {
+        unsafe { self.gs.wavefront.rms(&mut self.wfe_rms) };
+        self.wfe_rms
     }
 }
 impl Drop for OpticsPathSH48 {
