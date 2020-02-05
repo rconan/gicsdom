@@ -10,7 +10,7 @@ edition = "2018"
 rand = "0.7"
 nalgebra = "0.18.0"
 ndarray = "0.13"
-ndarray-linalg = { version = "0.12", features = ["openblas"] }
+ndarray-linalg = { version = "0.12", features = ["netlib"] }
 
 [build-dependencies]
 bindgen = "0.52.0"
