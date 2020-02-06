@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 rand = "0.7"
-nalgebra = "0.18.0"
-ndarray = "0.13"
+ndarray = { version = "0.13", features = ["blas"] }
+blas-src = { version = "0.4", default-features = false, features = ["netlib"] }
 ndarray-linalg = { version = "0.12", features = ["netlib"] }
 
 [build-dependencies]

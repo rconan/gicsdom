@@ -1,24 +1,23 @@
-extern crate nalgebra as na;
 extern crate ndarray;
 extern crate ndarray_linalg;
 
 use std::ffi::CString;
+use std::time::Instant;
 use std::{f32, mem};
-use std::time::{Duration, Instant};
 //use gicsdom::optics_path_gsh48::OpticsPathGSH48;
 //use gicsdom::optics_path_sh48::OpticsPathSH48;
 use gicsdom::{
     dev2host, geometricShackHartmann, gmt_m1, gmt_m2, modes, pssn, source, vector, zernikeS,
 };
 //use ndarray::prelude::*;
-use ndarray::{stack,Axis, Array, Array2};
+use ndarray::{s, stack, Array, Array2, Axis};
 use ndarray_linalg::*;
 //use rand::distributions::{Normal, Uniform};
 //use rand::thread_rng;
 
 fn main() {
     unsafe {
-//        let rng = thread_rng();
+        //        let rng = thread_rng();
 
         let n_side_lenslet = 48;
         let n_px_lenslet = 16;
@@ -28,14 +27,14 @@ fn main() {
 
         // M1 initialization
         println!("Initializing M1!");
-        let m1_n_mode = 27;
+        let m1_n_mode: usize = 27;
         let mode_type = CString::new("bending modes").unwrap();
-        let mut m1_modes: zernikeS = mem::zeroed();
+        let mut m1_modes: modes = mem::zeroed();
         let mut m1: gmt_m1 = mem::zeroed();
-        let mut a: Vec<f64> = vec![0.0];
-        m1_modes.setup1(0, a.as_mut_ptr(), 7);
-        //    .setup(mode_type.into_raw() as *mut i8, 7, m1_n_mode);
-        m1.setup2(&mut m1_modes);
+        //        let mut a: Vec<f64> = vec![0.0];
+        m1_modes //.setup1(0, a.as_mut_ptr(), 7);
+            .setup(mode_type.into_raw() as *mut i8, 7, m1_n_mode as i32);
+        m1.setup1(&mut m1_modes);
 
         // M2 initialization
         println!("Initializing M2!");
@@ -72,14 +71,14 @@ fn main() {
             origin,
         );
 
-        // WFS initialization
+        // GWFS initialization
         println!("Initializing wavefront sensor!");
         let d: f32 = pupil_size as f32 / n_side_lenslet as f32;
         println!("d={}", d);
-        let mut wfs: geometricShackHartmann = mem::zeroed();
-        wfs.setup(n_side_lenslet, d, n_gs);
+        let mut gwfs: geometricShackHartmann = mem::zeroed();
+        gwfs.setup(n_side_lenslet, d, n_gs);
         println!("Calibration wavefront sensor!");
-        // WFS calibration
+        // GWFS calibration
         gs.wavefront.reset();
         gs.reset_rays();
         m2.blocking(&mut gs.rays);
@@ -88,197 +87,250 @@ fn main() {
         m2.trace(&mut gs.rays);
         gs.rays.to_sphere1(-5.830, 2.197173);
         gs.opd2phase();
-        wfs.calibrate(&mut gs, 0.0);
-        wfs.reset();
+        gwfs.calibrate(&mut gs, 0.0);
+        gwfs.reset();
 
-        let mut t_xyz = vector {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        };
-        let mut r_xyz = vector {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        };
+        // ----------------------------------------------------------------------------
+        // GMT CALIBRATION
+        print!("Calibration the GMT");
+        let now = Instant::now();
+        let n_rbm: usize = 84;
         let mut c_c_p: Vec<f32> = Vec::new();
         let mut c_c_m: Vec<f32> = Vec::new();
-
         let n_c: usize = (n_side_lenslet.pow(2) as usize) * 2 * n_gs as usize;
         m1.reset();
         m2.reset();
-        for mid in 1..3 {
-            for sid in 1..8 {
-                print!("{}", sid);
-                for tr in 1..3 {
-                    for a in 0..3 {
-                        m1.reset();
-                        m2.reset();
-                        let mut t_xyz = vector {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        };
-                        let mut r_xyz = vector {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        };
-                        if tr == 1 {
-                            if a == 0 {
-                                t_xyz.x = 1e-6;
+        if n_rbm > 0 {
+            for mid in 1..3 {
+                for sid in 1..8 {
+                    print!("{}", sid);
+                    for tr in 1..3 {
+                        for a in 0..3 {
+                            m1.reset();
+                            m2.reset();
+                            let mut t_xyz = vector {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            };
+                            let mut r_xyz = vector {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            };
+                            if tr == 1 {
+                                if a == 0 {
+                                    t_xyz.x = 1e-6;
+                                }
+                                if a == 1 {
+                                    t_xyz.y = 1e-6;
+                                }
+                                if a == 2 {
+                                    t_xyz.z = 1e-6;
+                                }
                             }
-                            if a == 1 {
-                                t_xyz.y = 1e-6;
+                            if tr == 2 {
+                                if a == 0 {
+                                    r_xyz.x = 1e-6;
+                                }
+                                if a == 1 {
+                                    r_xyz.y = 1e-6;
+                                }
+                                if a == 2 {
+                                    r_xyz.z = 1e-6;
+                                }
                             }
-                            if a == 2 {
-                                t_xyz.z = 1e-6;
+                            if mid == 1 {
+                                m1.update(t_xyz, r_xyz, sid);
                             }
+                            if mid == 2 {
+                                m2.update(t_xyz, r_xyz, sid);
+                            }
+                            gs.wavefront.reset();
+                            gs.reset_rays();
+                            m2.blocking(&mut gs.rays);
+                            m1.trace(&mut gs.rays);
+                            // gs.rays.gmt_truss_onaxis();
+                            m2.trace(&mut gs.rays);
+                            gs.rays.to_sphere1(-5.830, 2.197173);
+                            gs.opd2phase();
+                            gwfs.propagate(&mut gs);
+                            gwfs.process();
+                            let mut c: Vec<f32> = vec![0.0; n_c];
+                            dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+                            gwfs.reset();
+                            //let sum1: f32 = c.iter().sum();
+                            //println!("Centroids sum: {:.16}", sum1);
+                            c_c_p.append(&mut c);
                         }
-                        if tr == 2 {
-                            if a == 0 {
-                                r_xyz.x = 1e-6;
-                            }
-                            if a == 1 {
-                                r_xyz.y = 1e-6;
-                            }
-                            if a == 2 {
-                                r_xyz.z = 1e-6;
-                            }
-                        }
-                        if mid == 1 {
-                            m1.update(t_xyz, r_xyz, sid);
-                        }
-                        if mid == 2 {
-                            m2.update(t_xyz, r_xyz, sid);
-                        }
-                        gs.wavefront.reset();
-                        gs.reset_rays();
-                        m2.blocking(&mut gs.rays);
-                        m1.trace(&mut gs.rays);
-                        // gs.rays.gmt_truss_onaxis();
-                        m2.trace(&mut gs.rays);
-                        gs.rays.to_sphere1(-5.830, 2.197173);
-                        gs.opd2phase();
-                        wfs.propagate(&mut gs);
-                        wfs.process();
-                        let mut c: Vec<f32> = vec![0.0; n_c];
-                        dev2host(c.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
-                        wfs.reset();
-                        //let sum1: f32 = c.iter().sum();
-                        //println!("Centroids sum: {:.16}", sum1);
-                        c_c_p.append(&mut c);
                     }
                 }
             }
         }
         println!("");
+
+        if m1_n_mode > 0 {
+            let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
+            m1.reset();
+            m2.reset();
+            for sid in 0..7 {
+                for k_a in 0..m1_n_mode {
+                    let k = k_a + sid * m1_n_mode;
+                    a[k] = 1e-6;
+                    m1_modes.update(a.as_mut_ptr());
+                    gs.wavefront.reset();
+                    gs.reset_rays();
+                    m2.blocking(&mut gs.rays);
+                    m1.trace(&mut gs.rays);
+                    // gs.rays.gmt_truss_onaxis();
+                    m2.trace(&mut gs.rays);
+                    gs.rays.to_sphere1(-5.830, 2.197173);
+                    gs.opd2phase();
+                    gwfs.propagate(&mut gs);
+                    gwfs.process();
+                    let mut c: Vec<f32> = vec![0.0; n_c];
+                    dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+                    gwfs.reset();
+                    a[k] = 0.0;
+                    m1_modes.update(a.as_mut_ptr());
+                    &c_c_p.append(&mut c);
+                }
+            }
+        }
+
         let _d_p = Array2::from_shape_vec((c_c_p.len() / n_c, n_c), c_c_p)
             .unwrap()
             .t()
             .to_owned()
             * 1e6;
 
-        for mid in 1..3 {
-            for sid in 1..8 {
-                print!("{}", sid);
-                for tr in 1..3 {
-                    for a in 0..3 {
-                        m1.reset();
-                        m2.reset();
-                        let mut t_xyz = vector {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        };
-                        let mut r_xyz = vector {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        };
-                        if tr == 1 {
-                            if a == 0 {
-                                t_xyz.x = -1e-6;
+        if n_rbm > 0 {
+            for mid in 1..3 {
+                for sid in 1..8 {
+                    print!("{}", sid);
+                    for tr in 1..3 {
+                        for a in 0..3 {
+                            m1.reset();
+                            m2.reset();
+                            let mut t_xyz = vector {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            };
+                            let mut r_xyz = vector {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            };
+                            if tr == 1 {
+                                if a == 0 {
+                                    t_xyz.x = -1e-6;
+                                }
+                                if a == 1 {
+                                    t_xyz.y = -1e-6;
+                                }
+                                if a == 2 {
+                                    t_xyz.z = -1e-6;
+                                }
                             }
-                            if a == 1 {
-                                t_xyz.y = -1e-6;
+                            if tr == 2 {
+                                if a == 0 {
+                                    r_xyz.x = -1e-6;
+                                }
+                                if a == 1 {
+                                    r_xyz.y = -1e-6;
+                                }
+                                if a == 2 {
+                                    r_xyz.z = -1e-6;
+                                }
                             }
-                            if a == 2 {
-                                t_xyz.z = -1e-6;
+                            if mid == 1 {
+                                m1.update(t_xyz, r_xyz, sid);
                             }
+                            if mid == 2 {
+                                m2.update(t_xyz, r_xyz, sid);
+                            }
+                            gs.wavefront.reset();
+                            gs.reset_rays();
+                            m2.blocking(&mut gs.rays);
+                            m1.trace(&mut gs.rays);
+                            // gs.rays.gmt_truss_onaxis();
+                            m2.trace(&mut gs.rays);
+                            gs.rays.to_sphere1(-5.830, 2.197173);
+                            gs.opd2phase();
+                            gwfs.propagate(&mut gs);
+                            gwfs.process();
+                            let mut c: Vec<f32> = vec![0.0; n_c];
+                            dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+                            gwfs.reset();
+                            //let sum2: f32 = c.iter().sum();
+                            //println!("Centroids sum: {:.16}", sum2);
+                            //println!("Diff. centroids sum: {:.14}", sum2 - sum1);
+                            c_c_m.append(&mut c);
                         }
-                        if tr == 2 {
-                            if a == 0 {
-                                r_xyz.x = -1e-6;
-                            }
-                            if a == 1 {
-                                r_xyz.y = -1e-6;
-                            }
-                            if a == 2 {
-                                r_xyz.z = -1e-6;
-                            }
-                        }
-                        if mid == 1 {
-                            m1.update(t_xyz, r_xyz, sid);
-                        }
-                        if mid == 2 {
-                            m2.update(t_xyz, r_xyz, sid);
-                        }
-                        gs.wavefront.reset();
-                        gs.reset_rays();
-                        m2.blocking(&mut gs.rays);
-                        m1.trace(&mut gs.rays);
-                        // gs.rays.gmt_truss_onaxis();
-                        m2.trace(&mut gs.rays);
-                        gs.rays.to_sphere1(-5.830, 2.197173);
-                        gs.opd2phase();
-                        wfs.propagate(&mut gs);
-                        wfs.process();
-                        let mut c: Vec<f32> = vec![0.0; n_c];
-                        dev2host(c.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
-                        wfs.reset();
-                        //let sum2: f32 = c.iter().sum();
-                        //println!("Centroids sum: {:.16}", sum2);
-                        //println!("Diff. centroids sum: {:.14}", sum2 - sum1);
-                        c_c_m.append(&mut c);
                     }
                 }
             }
+            println!("");
         }
-        println!("");
+
+        if m1_n_mode > 0 {
+            let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
+            m1.reset();
+            m2.reset();
+            for sid in 0..7 {
+                for k_a in 0..m1_n_mode {
+                    let k = k_a + sid * m1_n_mode;
+                    a[k] = -1e-6;
+                    m1_modes.update(a.as_mut_ptr());
+                    gs.wavefront.reset();
+                    gs.reset_rays();
+                    m2.blocking(&mut gs.rays);
+                    m1.trace(&mut gs.rays);
+                    // gs.rays.gmt_truss_onaxis();
+                    m2.trace(&mut gs.rays);
+                    gs.rays.to_sphere1(-5.830, 2.197173);
+                    gs.opd2phase();
+                    gwfs.propagate(&mut gs);
+                    gwfs.process();
+                    let mut c: Vec<f32> = vec![0.0; n_c];
+                    dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+                    gwfs.reset();
+                    a[k] = 0.0;
+                    m1_modes.update(a.as_mut_ptr());
+                    &c_c_m.append(&mut c);
+                }
+            }
+        }
+
         let _d_m = Array::from_shape_vec((c_c_m.len() / n_c, n_c), c_c_m)
             .unwrap()
             .t()
             .to_owned()
             * 1e6;
-
         let _d = (_d_p - _d_m) * 0.5;
-        //println!("D shape: {:?}",_d.shape());
+
+        println!(" in {}s", now.elapsed().as_secs());
+
         print!("SVD decomposition");
         let now = Instant::now();
+        let n_sv = n_rbm + m1_n_mode * 7;
         let (u, sig, v_t) = _d.svd(true, true).unwrap();
-        println!("in {}s", now.elapsed().as_secs());
-        //println!("U shape: {:?}",u.unwrap().shape());
-        //println!("V.T shape: {:?}",v_t.unwrap().shape());
-        //println!("S shape: {:?}",sig.shape());
-        println!("Singular values:\n{}", sig);
-        //let _u = u.unwrap();
-        //let _v_t = v_t.unwrap();
-        //let _m = _u.dot(&sig.dot(&_v_t));
-
+        println!(" in {}s", now.elapsed().as_secs());
+        //        println!("Singular values:\n{}", sig);
         let mut i_sig = sig.mapv(|x| 1.0 / x);
         for k in 0..14 {
-            i_sig[83 - k] = 0.0;
+            i_sig[n_sv-k-1] = 0.0;
         }
-        //println!("Singular values:\n{}", i_sig);
-        let s = Array2::from_diag(&i_sig);
-        let z: Array2<f32> = Array2::zeros((84, n_c - 84));
-        let ss = stack(Axis(1), &[s.view(), z.view()]).unwrap();
+
+        let l_sv = Array2::from_diag(&i_sig);
+        let z: Array2<f32> = Array2::zeros((n_sv, n_c - n_sv));
+        let ss = stack(Axis(1), &[l_sv.view(), z.view()]).unwrap();
         println!("SS shape: {:?}", ss.shape());
-        print!("Computing the pseudo-inverse ");
+        print!("Computing the pseudo-inverse");
         let now = Instant::now();
         let __m = v_t.unwrap().t().dot(&ss.dot(&u.unwrap().t()));
-        println!("in {}s", now.elapsed().as_secs());
+        println!(" in {}s", now.elapsed().as_secs());
 
         // Initial conditions
         let mut t_xyz = vector {
@@ -291,12 +343,19 @@ fn main() {
             y: 0.0,
             z: 0.0,
         };
+        let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
         m1.reset();
         m2.reset();
         t_xyz.y = 1e-6;
         m1.update(t_xyz, r_xyz, 1);
         r_xyz.x = 1e-6;
         m2.update(t_xyz, r_xyz, 2);
+        if m1_n_mode > 0 {
+            a[0] = 1e-6;
+            a[5] = 1e-6;
+            a[11] = 1e-6;
+            m1_modes.update(a.as_mut_ptr());
+        }
         gs.wavefront.reset();
         gs.reset_rays();
         m2.blocking(&mut gs.rays);
@@ -305,17 +364,27 @@ fn main() {
         m2.trace(&mut gs.rays);
         gs.rays.to_sphere1(-5.830, 2.197173);
         gs.opd2phase();
-        wfs.propagate(&mut gs);
-        wfs.process();
+        gwfs.propagate(&mut gs);
+        gwfs.process();
         let mut c: Vec<f32> = vec![0.0; n_c];
-        dev2host(c.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
-        wfs.reset();
+        dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+        gwfs.reset();
 
-        let _s = Array::from_shape_vec((n_c, 1), c).unwrap();
-        let _c_e = __m.dot(&_s);
-        let _c_e2 = _c_e.into_shape((14, 6)).unwrap();
-        println!("{:.2}", _c_e2 * 1e6);
-
+        let slopes = Array::from_shape_vec((n_c, 1), c).unwrap();
+        let _c_e = __m.dot(&slopes);
+        //let _c_e2 = _c_e.into_shape((14, 6)).unwrap();
+        let rbm = _c_e.slice(s![..84, ..]);
+        println!(
+            "RBM:\n{:.2}",
+            rbm.to_owned().into_shape((14, 6)).unwrap() * 1e6
+        );
+        if m1_n_mode > 0 {
+            let bm = _c_e.slice(s![84.., ..]);
+            println!(
+                "BM:\n{:.2}",
+                bm.to_owned().into_shape((7, m1_n_mode)).unwrap() * 1e6
+            );
+        }
         // ------------------------------------------------------------------------------------------------------
         let closed_loop = true;
         if closed_loop {
@@ -345,8 +414,21 @@ fn main() {
             let mut src_wfe_rms = 0f32;
             let mut src_pssn: pssn = mem::zeroed();
 
+            let mut t = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+            let mut r = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+            let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
+            
             m1.reset();
             m2.reset();
+            m1_modes.update(a.as_mut_ptr());
             src.wavefront.reset();
             src.reset_rays();
             m2.blocking(&mut src.rays);
@@ -367,24 +449,18 @@ fn main() {
             );
 
             //println!("{:.2}", com[(0,0)] * 1e6);
-            let mut t = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            };
-            let mut r = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            };
             let mut id = 0;
 
             // GMT initial conditions
-            let mut com = Array2::<f32>::zeros((14, 6));
-            com[(0, 0)] = 1e-5;
-            com[(8, 4)] = 1e-6;
-            com[(2, 3)] = -1e-6;
-            com[(11, 1)] = -1e-5;
+            let mut rbm = Array2::<f32>::zeros((14, 6));
+            rbm[(0, 0)] = 1e-5;
+            rbm[(8, 4)] = 1e-6;
+            rbm[(2, 3)] = -1e-6;
+            rbm[(11, 1)] = -1e-5;
+            let mut bm = Array2::<f32>::zeros((7, m1_n_mode));
+            bm[[0,0]] = 1e-5;
+            bm[[1,0]] = 1e-5;
+            bm[[2,1]] = 1e-5;
 
             for k_step in 0..30 {
                 println!("Step #{}", k_step);
@@ -392,22 +468,28 @@ fn main() {
                 for sid in 1..8 {
                     //print!("{}", sid);
                     id = sid - 1;
-                    t.x = com[[id, 0]] as f64;
-                    t.y = com[[id, 1]] as f64;
-                    t.z = com[[id, 2]] as f64;
-                    r.x = com[[id, 3]] as f64;
-                    r.y = com[[id, 4]] as f64;
-                    r.z = com[[id, 5]] as f64;
+                    t.x = rbm[[id, 0]] as f64;
+                    t.y = rbm[[id, 1]] as f64;
+                    t.z = rbm[[id, 2]] as f64;
+                    r.x = rbm[[id, 3]] as f64;
+                    r.y = rbm[[id, 4]] as f64;
+                    r.z = rbm[[id, 5]] as f64;
                     m1.update(t, r, sid as i32);
+                    if m1_n_mode > 0 {
+                        for k_bm in 0..m1_n_mode {
+                            a[id * m1_n_mode + k_bm] = bm[[id, k_bm]] as f64;
+                        }
+                    }
                     id += 7;
-                    t.x = com[[id, 0]] as f64;
-                    t.y = com[[id, 1]] as f64;
-                    t.z = com[[id, 2]] as f64;
-                    r.x = com[[id, 3]] as f64;
-                    r.y = com[[id, 4]] as f64;
-                    r.z = com[[id, 5]] as f64;
-                    m2.update(t, r, sid as i32)
+                    t.x = rbm[[id, 0]] as f64;
+                    t.y = rbm[[id, 1]] as f64;
+                    t.z = rbm[[id, 2]] as f64;
+                    r.x = rbm[[id, 3]] as f64;
+                    r.y = rbm[[id, 4]] as f64;
+                    r.z = rbm[[id, 5]] as f64;
+                    m2.update(t, r, sid as i32);
                 }
+                m1_modes.update(a.as_mut_ptr());
                 gs.wavefront.reset();
 
                 src.wavefront.reset();
@@ -422,7 +504,7 @@ fn main() {
                 src_pssn.N_O = 0;
                 src_pssn.otf(&mut src);
                 println!(
-                    "WFE RMS: {:.3} nm; PSSn: {}",
+                    "WFE RMS: {:.3} nm; PSSn: {:.5}",
                     src_wfe_rms * 1e9,
                     src_pssn.eval()
                 );
@@ -434,20 +516,20 @@ fn main() {
                 m2.trace(&mut gs.rays);
                 gs.rays.to_sphere1(-5.830, 2.197173);
                 gs.opd2phase();
-                wfs.propagate(&mut gs);
-                wfs.process();
+                gwfs.propagate(&mut gs);
+                gwfs.process();
                 let mut c: Vec<f32> = vec![0.0; n_c];
-                dev2host(c.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
-                wfs.reset();
+                dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
+                gwfs.reset();
+
                 let _s = Array::from_shape_vec((n_c, 1), c).unwrap();
                 let _c_e = __m.dot(&_s);
-                let _c_e2 = _c_e.into_shape((14,6)).unwrap();
-
-                //println!("{:.2}", c_e2 * 1e6);
-                let q = gain * _c_e2;
-//                let q_ = ArrayView2::from(&q);
-//                com += &q.to_owned().view() ;
-                com -= &q.view();
+                let q = gain * _c_e.slice(s![..84, ..]).to_owned().into_shape((14, 6)).unwrap();
+                rbm -= &q.view();
+                if m1_n_mode > 0 {
+                    let q = gain * _c_e.slice(s![84.., ..]).to_owned().into_shape((7, m1_n_mode)).unwrap();
+                    bm -= &q.view();
+                }
             }
         }
 
@@ -456,6 +538,6 @@ fn main() {
         m2_modes.cleanup();
         m2.cleanup();
         gs.cleanup();
-        wfs.cleanup();
+        gwfs.cleanup();
     }
 }
