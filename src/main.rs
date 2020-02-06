@@ -1,5 +1,5 @@
-extern crate ndarray;
-extern crate ndarray_linalg;
+//extern crate ndarray;
+//extern crate ndarray_linalg;
 
 use std::ffi::CString;
 use std::time::Instant;
@@ -7,13 +7,15 @@ use std::{f32, mem};
 //use gicsdom::optics_path_gsh48::OpticsPathGSH48;
 //use gicsdom::optics_path_sh48::OpticsPathSH48;
 use gicsdom::{
-    dev2host, geometricShackHartmann, gmt_m1, gmt_m2, modes, pssn, source, vector, zernikeS,
+    atmosphere, dev2host, geometricShackHartmann, gmt_m1, gmt_m2, modes, pssn, shackHartmann,
+    source, vector, zernikeS,
 };
 //use ndarray::prelude::*;
 use ndarray::{s, stack, Array, Array2, Axis};
-use ndarray_linalg::*;
+use ndarray_linalg::svddc::{SVDDCInplace,UVTFlag};
 //use rand::distributions::{Normal, Uniform};
 //use rand::thread_rng;
+use indicatif::{ProgressIterator,ProgressBar,ProgressStyle};
 
 fn main() {
     unsafe {
@@ -73,6 +75,7 @@ fn main() {
 
         // GWFS initialization
         println!("Initializing wavefront sensor!");
+        let wfs_exposure_time = 30.0;
         let d: f32 = pupil_size as f32 / n_side_lenslet as f32;
         println!("d={}", d);
         let mut gwfs: geometricShackHartmann = mem::zeroed();
@@ -90,9 +93,36 @@ fn main() {
         gwfs.calibrate(&mut gs, 0.0);
         gwfs.reset();
 
+        // Atmosphere initialization
+        println!("Initializing atmosphere!");
+        let r_not = 15e-2;
+        //let r0_time_series[15];
+        let l_not = 30f32;
+        let screen_size = 26f32;
+        let screen_sampling = 346;
+        let field_size = 20.0 * f32::consts::PI / 180.0 / 60.0;
+        let duration = 15f32;
+        let n_duration = 4;
+        let pathtoscreens = CString::new("/home/rconan/DATA/gmtAtmosphereL030_1.bin").unwrap();
+        //char pathtoscreens[] = "/home/ubuntu/DATA/gmtAtmosphereL030_1579812935.bin";
+        let atm_time = 0.0;
+        let atm_sampling = 1e-2;
+        let atm_sample = (wfs_exposure_time/atm_sampling) as u64;
+        let mut atm: atmosphere = mem::zeroed();
+        atm.gmt_setup3(
+            r_not,
+            l_not,
+            screen_size,
+            screen_sampling,
+            field_size,
+            duration,
+            pathtoscreens.into_raw(),
+            n_duration,
+        );
+
         // ----------------------------------------------------------------------------
         // GMT CALIBRATION
-        print!("Calibration the GMT");
+        println!("Calibrating the GMT ...");
         let now = Instant::now();
         let n_rbm: usize = 84;
         let mut c_c_p: Vec<f32> = Vec::new();
@@ -100,10 +130,14 @@ fn main() {
         let n_c: usize = (n_side_lenslet.pow(2) as usize) * 2 * n_gs as usize;
         m1.reset();
         m2.reset();
+        let pb = ProgressBar::new(7);
+        pb.set_style(ProgressStyle::default_bar().template("{msg}"));
+        println!("Rigid body motion ...");
         if n_rbm > 0 {
             for mid in 1..3 {
-                for sid in 1..8 {
-                    print!("{}", sid);
+                let m_ = String::from("M")+&mid.to_string();
+                pb.set_message(&m_);
+                for sid in (1..8).progress() {
                     for tr in 1..3 {
                         for a in 0..3 {
                             m1.reset();
@@ -167,14 +201,18 @@ fn main() {
                 }
             }
         }
-        println!("");
 
         if m1_n_mode > 0 {
+            println!("Bending modes ...");
             let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
             m1.reset();
             m2.reset();
+            let pb = ProgressBar::new(m1_n_mode as u64);
+            pb.set_style(ProgressStyle::default_bar().template("{msg}"));
             for sid in 0..7 {
-                for k_a in 0..m1_n_mode {
+                let s_ = String::from("S")+&(sid+1).to_string();
+                pb.set_message(&s_);
+                for k_a in (0..m1_n_mode).progress() {
                     let k = k_a + sid * m1_n_mode;
                     a[k] = 1e-6;
                     m1_modes.update(a.as_mut_ptr());
@@ -204,10 +242,14 @@ fn main() {
             .to_owned()
             * 1e6;
 
+        println!("Rigid body motion ...");
+        let pb = ProgressBar::new(7);
+        pb.set_style(ProgressStyle::default_bar().template("{msg}"));
         if n_rbm > 0 {
             for mid in 1..3 {
-                for sid in 1..8 {
-                    print!("{}", sid);
+                let m_ = String::from("M")+&mid.to_string();
+                pb.set_message(&m_);
+                for sid in (1..8).progress() {
                     for tr in 1..3 {
                         for a in 0..3 {
                             m1.reset();
@@ -271,15 +313,19 @@ fn main() {
                     }
                 }
             }
-            println!("");
         }
 
         if m1_n_mode > 0 {
+            println!("Bending modes ...");
             let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
             m1.reset();
             m2.reset();
+            let pb = ProgressBar::new(m1_n_mode as u64);
+            pb.set_style(ProgressStyle::default_bar().template("{msg}"));
             for sid in 0..7 {
-                for k_a in 0..m1_n_mode {
+                let s_ = String::from("S")+&(sid+1).to_string();
+                pb.set_message(&s_);
+                for k_a in (0..m1_n_mode).progress() {
                     let k = k_a + sid * m1_n_mode;
                     a[k] = -1e-6;
                     m1_modes.update(a.as_mut_ptr());
@@ -303,25 +349,30 @@ fn main() {
             }
         }
 
-        let _d_m = Array::from_shape_vec((c_c_m.len() / n_c, n_c), c_c_m)
+        let _d_m = Array2::from_shape_vec((c_c_m.len() / n_c, n_c), c_c_m)
             .unwrap()
             .t()
             .to_owned()
             * 1e6;
-        let _d = (_d_p - _d_m) * 0.5;
-
+        let mut _d = (_d_p - _d_m) * 0.5;
         println!(" in {}s", now.elapsed().as_secs());
+
+        println!("{:?}", _d);
+        println!("shape={:?}, strides={:?}", _d.shape(), _d.strides());
 
         print!("SVD decomposition");
         let now = Instant::now();
         let n_sv = n_rbm + m1_n_mode * 7;
-        let (u, sig, v_t) = _d.svd(true, true).unwrap();
-        println!(" in {}s", now.elapsed().as_secs());
+        let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
+        println!(" in {}ms", now.elapsed().as_millis());
         //        println!("Singular values:\n{}", sig);
         let mut i_sig = sig.mapv(|x| 1.0 / x);
         for k in 0..14 {
-            i_sig[n_sv-k-1] = 0.0;
+            i_sig[n_sv - k - 1] = 0.0;
         }
+
+        let _u = u.unwrap();
+        let _vt = v_t.unwrap();
 
         let l_sv = Array2::from_diag(&i_sig);
         let z: Array2<f32> = Array2::zeros((n_sv, n_c - n_sv));
@@ -329,8 +380,8 @@ fn main() {
         println!("SS shape: {:?}", ss.shape());
         print!("Computing the pseudo-inverse");
         let now = Instant::now();
-        let __m = v_t.unwrap().t().dot(&ss.dot(&u.unwrap().t()));
-        println!(" in {}s", now.elapsed().as_secs());
+        let __m = _vt.t().dot(&l_sv.dot(&_u.t()));
+        println!(" in {}ms", now.elapsed().as_millis());
 
         // Initial conditions
         let mut t_xyz = vector {
@@ -425,7 +476,7 @@ fn main() {
                 z: 0.0,
             };
             let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
-            
+
             m1.reset();
             m2.reset();
             m1_modes.update(a.as_mut_ptr());
@@ -448,6 +499,25 @@ fn main() {
                 src_pssn.eval()
             );
 
+            // WFS initialization
+            println!("Initializing wavefront sensor!");
+            let mut wfs: shackHartmann = mem::zeroed();
+            let d: f32 = pupil_size as f32 / n_side_lenslet as f32;
+            wfs.setup(n_side_lenslet, n_px_lenslet, d, 2, 24, 3, 3);
+            gs.wavefront.reset();
+            println!("Calibration wavefront sensor!");
+            // WFS calibration
+            gs.reset_rays();
+            m2.blocking(&mut gs.rays);
+            m1.trace(&mut gs.rays);
+            //gs.rays.gmt_truss_onaxis();
+            m2.trace(&mut gs.rays);
+            gs.rays.to_sphere1(-5.830, 2.197173);
+            gs.opd2phase();
+            gs.fwhm = 3.16;
+            wfs.calibrate(&mut gs, 0.0);
+            wfs.camera.reset();
+
             //println!("{:.2}", com[(0,0)] * 1e6);
             let mut id = 0;
 
@@ -458,9 +528,12 @@ fn main() {
             rbm[(2, 3)] = -1e-6;
             rbm[(11, 1)] = -1e-5;
             let mut bm = Array2::<f32>::zeros((7, m1_n_mode));
-            bm[[0,0]] = 1e-5;
-            bm[[1,0]] = 1e-5;
-            bm[[2,1]] = 1e-5;
+            bm[[0, 0]] = 1e-5;
+            bm[[1, 0]] = 1e-5;
+            bm[[2, 1]] = 1e-5;
+
+            let mut slopes = Array2::<f32>::zeros((n_c,1));
+            let mut _c_e: Array2<f32>;
 
             for k_step in 0..30 {
                 println!("Step #{}", k_step);
@@ -516,18 +589,26 @@ fn main() {
                 m2.trace(&mut gs.rays);
                 gs.rays.to_sphere1(-5.830, 2.197173);
                 gs.opd2phase();
-                gwfs.propagate(&mut gs);
-                gwfs.process();
-                let mut c: Vec<f32> = vec![0.0; n_c];
-                dev2host(c.as_mut_ptr(), gwfs.data_proc.d__c, n_c as i32);
-                gwfs.reset();
+                wfs.propagate(&mut gs);
+                wfs.process();
+                dev2host(slopes.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
+                wfs.camera.reset();
 
-                let _s = Array::from_shape_vec((n_c, 1), c).unwrap();
-                let _c_e = __m.dot(&_s);
-                let q = gain * _c_e.slice(s![..84, ..]).to_owned().into_shape((14, 6)).unwrap();
+                _c_e = __m.dot(&slopes);
+                let q = gain
+                    * _c_e
+                        .slice(s![..84, ..])
+                        .to_owned()
+                        .into_shape((14, 6))
+                        .unwrap();
                 rbm -= &q.view();
                 if m1_n_mode > 0 {
-                    let q = gain * _c_e.slice(s![84.., ..]).to_owned().into_shape((7, m1_n_mode)).unwrap();
+                    let q = gain
+                        * _c_e
+                            .slice(s![84.., ..])
+                            .to_owned()
+                            .into_shape((7, m1_n_mode))
+                            .unwrap();
                     bm -= &q.view();
                 }
             }
@@ -539,5 +620,6 @@ fn main() {
         m2.cleanup();
         gs.cleanup();
         gwfs.cleanup();
+        atm.cleanup();
     }
 }
