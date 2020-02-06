@@ -12,10 +12,10 @@ use gicsdom::{
 };
 //use ndarray::prelude::*;
 use ndarray::{s, stack, Array, Array2, Axis};
-use ndarray_linalg::svddc::{SVDDCInplace,UVTFlag};
+use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 //use rand::distributions::{Normal, Uniform};
 //use rand::thread_rng;
-use indicatif::{ProgressIterator,ProgressBar,ProgressStyle};
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
 fn main() {
     unsafe {
@@ -75,7 +75,7 @@ fn main() {
 
         // GWFS initialization
         println!("Initializing wavefront sensor!");
-        let wfs_exposure_time = 30.0;
+        let wfs_exposure_time = 30f32;
         let d: f32 = pupil_size as f32 / n_side_lenslet as f32;
         println!("d={}", d);
         let mut gwfs: geometricShackHartmann = mem::zeroed();
@@ -105,9 +105,9 @@ fn main() {
         let n_duration = 4;
         let pathtoscreens = CString::new("/home/rconan/DATA/gmtAtmosphereL030_1.bin").unwrap();
         //char pathtoscreens[] = "/home/ubuntu/DATA/gmtAtmosphereL030_1579812935.bin";
-        let atm_time = 0.0;
+        let mut atm_time = 0.0;
         let atm_sampling = 1e-2;
-        let atm_sample = (wfs_exposure_time/atm_sampling) as u64;
+        let atm_sample = (wfs_exposure_time / atm_sampling) as u64;
         let mut atm: atmosphere = mem::zeroed();
         atm.gmt_setup3(
             r_not,
@@ -135,7 +135,7 @@ fn main() {
         println!("Rigid body motion ...");
         if n_rbm > 0 {
             for mid in 1..3 {
-                let m_ = String::from("M")+&mid.to_string();
+                let m_ = String::from("M") + &mid.to_string();
                 pb.set_message(&m_);
                 for sid in (1..8).progress() {
                     for tr in 1..3 {
@@ -210,7 +210,7 @@ fn main() {
             let pb = ProgressBar::new(m1_n_mode as u64);
             pb.set_style(ProgressStyle::default_bar().template("{msg}"));
             for sid in 0..7 {
-                let s_ = String::from("S")+&(sid+1).to_string();
+                let s_ = String::from("S") + &(sid + 1).to_string();
                 pb.set_message(&s_);
                 for k_a in (0..m1_n_mode).progress() {
                     let k = k_a + sid * m1_n_mode;
@@ -247,7 +247,7 @@ fn main() {
         pb.set_style(ProgressStyle::default_bar().template("{msg}"));
         if n_rbm > 0 {
             for mid in 1..3 {
-                let m_ = String::from("M")+&mid.to_string();
+                let m_ = String::from("M") + &mid.to_string();
                 pb.set_message(&m_);
                 for sid in (1..8).progress() {
                     for tr in 1..3 {
@@ -323,7 +323,7 @@ fn main() {
             let pb = ProgressBar::new(m1_n_mode as u64);
             pb.set_style(ProgressStyle::default_bar().template("{msg}"));
             for sid in 0..7 {
-                let s_ = String::from("S")+&(sid+1).to_string();
+                let s_ = String::from("S") + &(sid + 1).to_string();
                 pb.set_message(&s_);
                 for k_a in (0..m1_n_mode).progress() {
                     let k = k_a + sid * m1_n_mode;
@@ -520,6 +520,7 @@ fn main() {
 
             //println!("{:.2}", com[(0,0)] * 1e6);
             let mut id = 0;
+            let px = (pupil_size/(pupil_sampling as f64 - 1.0)) as f32;
 
             // GMT initial conditions
             let mut rbm = Array2::<f32>::zeros((14, 6));
@@ -532,11 +533,14 @@ fn main() {
             bm[[1, 0]] = 1e-5;
             bm[[2, 1]] = 1e-5;
 
-            let mut slopes = Array2::<f32>::zeros((n_c,1));
+            let mut slopes = Array2::<f32>::zeros((n_c, 1));
             let mut _c_e: Array2<f32>;
 
-            for k_step in 0..30 {
-                println!("Step #{}", k_step);
+            let pb = ProgressBar::new(m1_n_mode as u64);
+            pb.set_style(ProgressStyle::default_bar().template("{msg}"));
+            for k_step in 0..2 {
+                let msg = String::from("Step #") + &k_step.to_string();
+                pb.println(msg);
 
                 for sid in 1..8 {
                     //print!("{}", sid);
@@ -576,11 +580,13 @@ fn main() {
                 src.wavefront.rms(&mut src_wfe_rms);
                 src_pssn.N_O = 0;
                 src_pssn.otf(&mut src);
-                println!(
-                    "WFE RMS: {:.3} nm; PSSn: {:.5}",
-                    src_wfe_rms * 1e9,
-                    src_pssn.eval()
-                );
+                //println!(
+                //   "WFE RMS: {:.3} nm; PSSn: {:.5}",
+                //    src_wfe_rms * 1e9,
+                //    src_pssn.eval()
+                //);
+                let msg = String::from("WFE RMS: ") + &(src_wfe_rms * 1e9).to_string() + "nm; PSSn: " + &src_pssn.eval().to_string();
+                pb.println(msg);
 
                 gs.reset_rays();
                 m2.blocking(&mut gs.rays);
@@ -588,8 +594,13 @@ fn main() {
                 // gs.rays.gmt_truss_onaxis();
                 m2.trace(&mut gs.rays);
                 gs.rays.to_sphere1(-5.830, 2.197173);
-                gs.opd2phase();
-                wfs.propagate(&mut gs);
+                for _k_atm in (0..atm_sample).progress() {
+                    gs.wavefront.reset();
+                    gs.opd2phase();
+                    atm.rayTracing1(&mut gs,px,pupil_sampling,px,pupil_sampling,atm_time);
+                    wfs.propagate(&mut gs);
+                    atm_time += atm_sampling;
+                }
                 wfs.process();
                 dev2host(slopes.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
                 wfs.camera.reset();
