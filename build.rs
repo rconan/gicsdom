@@ -6,6 +6,7 @@ extern crate bindgen;
 fn main() {
     let bindings = bindgen::Builder::default()
         .header("wrapper.hpp")
+        .clang_arg("-I/usr/local/cuda-10.1/include")
         .clang_arg("-v")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .whitelist_type("source")
@@ -32,6 +33,7 @@ fn main() {
     println!("cargo:rustc-link-lib=cusparse");
     println!("cargo:rustc-link-lib=curand");
     println!("cargo:include=CEO/include");
+    println!("cargo:include=/usr/local/cuda/include");
     println!("cargo:lib=CEO/lib");
     println!("cargo:rerun-if-changed=wrapper.hpp");
 }
