@@ -70,9 +70,11 @@ impl Gmt {
         self
     }
     pub fn reset(&mut self) -> &mut Self {
+        let mut a: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
         unsafe {
             self._c_m1.reset();
             self._c_m2.reset();
+            self._c_m1_modes.update(a.as_mut_ptr());
         }
         self
     }
@@ -275,11 +277,54 @@ impl Propagation for Gmt {
         self
     }
 }
-
 impl Source {
     pub fn through<T: Propagation>(&mut self, system: &mut T) -> &mut Self {
         system.propagate(self);
         self
+    }
+}
+pub struct PSSn {
+    _c_: pssn,
+    r_not: f64,
+    l_not: f64,
+    zenith: f64,
+}
+impl PSSn {
+    pub fn new(r_not: f64, l_not: f64, zenith: f64) -> PSSn {
+        PSSn {
+            _c_: unsafe{ mem::zeroed() },
+            r_not,
+            l_not,
+            zenith,
+        }
+    }
+    pub fn build(&mut self, src: &mut Source) -> &mut Self {
+        unsafe {
+            self._c_.setup(&mut src._c_, self.r_not as f32, self.l_not as  f32);
+        }
+        self
+    }
+    pub fn reset(&mut self, src: &mut Source) -> f32 {
+        let pssn_val: f32;
+        unsafe {
+            self._c_.otf(&mut src._c_);
+            pssn_val = self._c_.eval();
+            self._c_.N_O = 0;
+        }
+        pssn_val
+    }
+    pub fn peek(&mut self, src: &mut Source) -> f32 {
+        let pssn_val: f32;
+        unsafe {
+            self._c_.otf(&mut src._c_);
+            pssn_val = self._c_.eval();
+        }
+        pssn_val
+    }
+    pub fn sum(&mut self, src: &mut Source) {
+        unsafe {
+            self._c_.otf(&mut src._c_);
+        }
     }
 }
 pub struct Geometric_ShackHartmann {

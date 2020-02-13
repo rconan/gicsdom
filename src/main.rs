@@ -15,7 +15,7 @@ use ndarray::{s, stack, Array, Array2, Axis};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 //use rand::distributions::{Normal, Uniform};
 //use rand::thread_rng;
-use gicsdom::ceo::{self,Propagation};//::{Gmt, Source,Geometric_shack_hartmann,Diffractive_shack_hartmann};
+use gicsdom::ceo;//::{Gmt, Source,Geometric_shack_hartmann,Diffractive_shack_hartmann};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
 fn main() {
@@ -57,6 +57,12 @@ fn main() {
 
         gs.through(&mut gmt).through(&mut gwfs);
         gwfs.process();
+
+        // Science initialization
+        let mut src = ceo::Source::new(1,pupil_size,pupil_sampling);
+        src.build("V",vec![0.0],vec![0.0],vec![0.0]);
+        println!("WFE RMS: {:?}",src.through(&mut gmt).wfe_rms_10e(-9));
+
 
 //        println!("WFE RMS: {:?}",gs.wfe_rms_10e(-6).iter()<f32>.sum());
 
@@ -269,6 +275,140 @@ fn main() {
                 "BM:\n{:.2}",
                 bm.to_owned().into_shape((7, m1_n_mode as usize)).unwrap() * 1e6
             );
+        }
+
+        // ------------------------------------------------------------------------------------------------------
+        let closed_loop = true;
+        if closed_loop {
+            //        let normal: Normal = Normal::new(0,1e-7);
+            //        let mut com = MatrixMN::<f64, U6, U14>::from_distribution(&normal,&mut rng);
+            //let mut com: Array2<f32> = Array2::zeros((6,14));
+            let gain = 0.5f32;
+
+            let mut src_wfe_rms = 0f32;
+            let mut t_xyz = vec![0.0;3];
+            let mut r_xyz = vec![0.0;3];
+            let mut a: Vec<f64> = vec![0.0; 7 * m1_n_mode as usize];
+
+            src_wfe_rms = src.through(gmt.reset()).wfe_rms_10e(-9)[0];
+
+            let mut src_pssn = ceo::PSSn::new(15e-2, 25.0, 0.0);
+            src_pssn.build(&mut src);
+            println!(
+                "WFE RMS: {:.3} nm; PSSn: {}",
+                src_wfe_rms ,
+                src_pssn.reset(&mut src));
+
+            //println!("{:.2}", com[(0,0)] * 1e6);
+            let mut id = 0;
+            let px = (pupil_size / (pupil_sampling as f64 - 1.0)) as f32;
+
+            /*
+            // GMT initial conditions
+            let mut rbm = Array2::<f32>::zeros((14, 6));
+            rbm[(0, 0)] = 1e-5;
+            rbm[(8, 4)] = 1e-6;
+            rbm[(2, 3)] = -1e-6;
+            rbm[(11, 1)] = -1e-5;
+            let mut bm = Array2::<f32>::zeros((7, m1_n_mode));
+            bm[[0, 0]] = 1e-5;
+            bm[[1, 0]] = 1e-5;
+            bm[[2, 1]] = 1e-5;
+
+            let mut slopes = Array2::<f32>::zeros((n_c, 1));
+            let mut _c_e: Array2<f32>;
+
+            let pb = ProgressBar::new(m1_n_mode as u64);
+            pb.set_style(ProgressStyle::default_bar().template("{msg}"));
+            for k_step in 0..2 {
+                let msg = String::from("Step #") + &k_step.to_string();
+                pb.println(msg);
+
+                for sid in 1..8 {
+                    //print!("{}", sid);••••••••••••
+                    id = sid - 1;
+                    t_xyz[0] = rbm[[id, 0]] as f64;
+                    t_xyz[1] = rbm[[id, 1]] as f64;
+                    t_xyz[2] = rbm[[id, 2]] as f64;
+                    r_xyz[0] = rbm[[id, 3]] as f64;
+                    r_xyz[1] = rbm[[id, 4]] as f64;
+                    r_xyz[2] = rbm[[id, 5]] as f64;
+                    gmt.set_m1_segment_state(sid as i32, &t_xyz, &r_xyz;
+                    if m1_n_mode > 0 {
+                        for k_bm in 0..m1_n_mode {
+                            a[id * m1_n_mode + k_bm] = bm[[id, k_bm]] as f64;
+                        }
+                    }
+                    id += 7;
+                    t.x = rbm[[id, 0]] as f64;
+                    t.y = rbm[[id, 1]] as f64;
+                    t.z = rbm[[id, 2]] as f64;
+                    r.x = rbm[[id, 3]] as f64;
+                    r.y = rbm[[id, 4]] as f64;
+                    r.z = rbm[[id, 5]] as f64;
+                    m2.update(t, r, sid as i32);
+                }
+                m1_modes.update(a.as_mut_ptr());
+                gs.wavefront.reset();
+
+                src.wavefront.reset();
+                src.reset_rays();
+                m2.blocking(&mut src.rays);
+                m1.trace(&mut src.rays);
+                //src.rays.gmt_truss_onaxis();
+                m2.trace(&mut src.rays);
+                src.rays.to_sphere1(-5.830, 2.197173);
+                src.opd2phase();
+                src.wavefront.rms(&mut src_wfe_rms);
+                src_pssn.N_O = 0;
+                src_pssn.otf(&mut src);
+                //println!(
+                //   "WFE RMS: {:.3} nm; PSSn: {:.5}",
+                //    src_wfe_rms * 1e9,
+                //    src_pssn.eval()
+                //);
+                let msg = String::from("WFE RMS: ")
+                    + &(src_wfe_rms * 1e9).to_string()
+                    + "nm; PSSn: "
+                    + &src_pssn.eval().to_string();
+                pb.println(msg);
+
+                gs.reset_rays();
+                m2.blocking(&mut gs.rays);
+                m1.trace(&mut gs.rays);
+                // gs.rays.gmt_truss_onaxis();
+                m2.trace(&mut gs.rays);
+                gs.rays.to_sphere1(-5.830, 2.197173);
+                for _k_atm in (0..atm_sample).progress() {
+                    gs.wavefront.reset();
+                    gs.opd2phase();
+                    atm.rayTracing1(&mut gs, px, pupil_sampling, px, pupil_sampling, atm_time);
+                    wfs.propagate(&mut gs);
+                    atm_time += atm_sampling;
+                }
+                wfs.process();
+                dev2host(slopes.as_mut_ptr(), wfs.data_proc.d__c, n_c as i32);
+                wfs.camera.reset();
+
+                _c_e = __m.dot(&slopes);
+                let q = gain
+                    * _c_e
+                        .slice(s![..84, ..])
+                        .to_owned()
+                        .into_shape((14, 6))
+                        .unwrap();
+                rbm -= &q.view();
+                if m1_n_mode > 0 {
+                    let q = gain
+                        * _c_e
+                            .slice(s![84.., ..])
+                            .to_owned()
+                            .into_shape((7, m1_n_mode))
+                            .unwrap();
+                    bm -= &q.view();
+                }
+            }
+             */
         }
 
     } else {
