@@ -1,15 +1,21 @@
 use super::bindings::*;
 
+use ndarray::Array2;
 use std::ffi::CString;
 use std::{f32, mem};
 
+#[derive(Clone,Debug)]
+pub struct GmtState {
+    pub rbm: Array2<f32>,
+    pub bm: Array2<f32>,
+}
 pub struct Gmt {
     _c_m1_modes: modes,
     _c_m2_modes: zernikeS,
     _c_m1: gmt_m1,
     _c_m2: gmt_m2,
-    m1_n_mode: u64,
-    m2_n_mode: u64,
+    pub m1_n_mode: u64,
+    pub m2_n_mode: u64,
     a: Vec<f64>,
 }
 impl Gmt {
@@ -113,6 +119,39 @@ impl Gmt {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
+    pub fn update(&mut self, gstate: &GmtState) {
+        let mut t_xyz = vec![0.0; 3];
+        let mut r_xyz = vec![0.0; 3];
+        let mut a: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
+        let mut id = 0;
+
+        for sid in 1..8 {
+            //print!("{}", sid);••••••••••••
+            id = sid - 1;
+            t_xyz[0] = gstate.rbm[[id, 0]] as f64;
+            t_xyz[1] = gstate.rbm[[id, 1]] as f64;
+            t_xyz[2] = gstate.rbm[[id, 2]] as f64;
+            r_xyz[0] = gstate.rbm[[id, 3]] as f64;
+            r_xyz[1] = gstate.rbm[[id, 4]] as f64;
+            r_xyz[2] = gstate.rbm[[id, 5]] as f64;
+            self.set_m1_segment_state(sid as i32, &t_xyz, &r_xyz);
+            if self.m1_n_mode > 0 {
+                for k_bm in 0..self.m1_n_mode {
+                    let idx = id * self.m1_n_mode as usize + k_bm as usize;
+                    a[idx as usize] = gstate.bm[[id, k_bm as usize]] as f64;
+                }
+            }
+            id += 7;
+            t_xyz[0] = gstate.rbm[[id, 0]] as f64;
+            t_xyz[1] = gstate.rbm[[id, 1]] as f64;
+            t_xyz[2] = gstate.rbm[[id, 2]] as f64;
+            r_xyz[0] = gstate.rbm[[id, 3]] as f64;
+            r_xyz[1] = gstate.rbm[[id, 4]] as f64;
+            r_xyz[2] = gstate.rbm[[id, 5]] as f64;
+            self.set_m2_segment_state(sid as i32, &t_xyz, &r_xyz);
+        }
+        self.set_m1_modes(&mut a);
+    }
 }
 impl Drop for Gmt {
     fn drop(&mut self) {
@@ -175,6 +214,17 @@ impl Source {
             );
         }
         this
+    }
+    pub fn empty() -> Source {
+        Source {
+            _c_: unsafe { mem::zeroed() },
+            size: 0,
+            pupil_size: 0.0,
+            pupil_sampling: 0,
+            _wfe_rms: vec![],
+            is_ray_trace: false,
+            is_opd_to_phase: false,
+        }
     }
     pub fn new(size: i32, pupil_size: f64, pupil_sampling: i32) -> Source {
         Source {
@@ -292,7 +342,7 @@ pub struct PSSn {
 impl PSSn {
     pub fn new(r_not: f64, l_not: f64, zenith: f64) -> PSSn {
         PSSn {
-            _c_: unsafe{ mem::zeroed() },
+            _c_: unsafe { mem::zeroed() },
             r_not,
             l_not,
             zenith,
@@ -300,7 +350,8 @@ impl PSSn {
     }
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.setup(&mut src._c_, self.r_not as f32, self.l_not as  f32);
+            self._c_
+                .setup(&mut src._c_, self.r_not as f32, self.l_not as f32);
         }
         self
     }
@@ -329,10 +380,10 @@ impl PSSn {
 }
 pub struct Geometric_ShackHartmann {
     _c_: geometricShackHartmann,
-    n_side_lenslet: i32,
-    n_px_lenslet: i32,
-    d: f64,
-    n_sensor: i32,
+    pub n_side_lenslet: i32,
+    pub n_px_lenslet: i32,
+    pub d: f64,
+    pub n_sensor: i32,
     pub n_centroids: i32,
     pub centroids: Vec<f32>,
 }
@@ -550,3 +601,4 @@ impl Propagation for Diffractive_ShackHartmann {
         self
     }
 }
+pub type GeometricShackHartmann = Geometric_ShackHartmann;
