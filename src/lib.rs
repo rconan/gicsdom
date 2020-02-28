@@ -45,7 +45,6 @@ impl OpticalPathToSH48 {
         );
         self.gs.through(&mut self.gmt);
         self.sensor.calibrate(&mut self.gs, 0.0).unwrap();
-        self.propagate_src();
         self
     }
     pub fn propagate_src(&mut self) {
