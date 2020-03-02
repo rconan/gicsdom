@@ -4,13 +4,14 @@ extern crate crossbeam_channel;
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use gicsdom::ceo;
 use gicsdom::ceo::GmtState;
-use gicsdom::{Observation, OpticalPathToSH48, SkyCoordinates, Rotation};
+use gicsdom::{Observation, OpticalPathToSH48, Rotation, SkyCoordinates};
 use hifitime::Epoch;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use ndarray::{s, Array, Array2};
-use std::{f32,f64};
+use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::thread;
-use std::time::Duration; //, Instant};
+use std::time::{Duration, Instant};
+use std::{f32, f64};
 
 struct Dyad<T> {
     send: Sender<T>,
@@ -59,21 +60,23 @@ fn main() {
     println!("LST: {}", obs.local_sidereal_time_deg());
     println!("AltAz: {:?}", target.altaz_deg(&obs));
 
-    println!("Date: {}",obs.datetime);
-    println!("Date: {}",obs.add_seconds(30.0).datetime);
+    println!("Date: {}", obs.datetime);
+    println!("Date: {}", obs.add_seconds(30.0).datetime);
     println!("AltAz: {:?}", target.altaz_deg(&obs));
 
     let rot_x = Rotation::new(f64::consts::FRAC_PI_4, 2);
-    println!("R: {:?}",rot_x.mat);
-    let v = vec![1f64;3];
-    println!("Rotated vector: {:?}",rot_x.apply(v));
+    println!("R: {:?}", rot_x.mat);
+    let v = vec![1f64; 3];
+    println!("Rotated vector: {:?}", rot_x.apply(v));
+
+    let z = 6. * f32::consts::PI / 180. / 60.;
+    let a = 2. * f32::consts::PI / 3.;
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
     thread::spawn(move || {
-        let mut sh48 = OpticalPathToSH48::new();
-        sh48.build();
-
+        let mut sh48 = OpticalPathToSH48::new(3);
+        sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]);
 
         loop {
             let gstate = match from_plant.recv() {
@@ -154,11 +157,11 @@ fn main() {
     gstate0.bm[[1, 0]] = 1e-5;
     gstate0.bm[[2, 1]] = 1e-5;
 
+    let n_rbm = 84 as usize;
     let m1_n_mode = 27;
     let n_side_lenslet = 48i32;
     let n_sensor = 3;
-    let n_c: usize =
-        (n_side_lenslet.pow(2) as usize) * 2 * n_sensor as usize;
+    let n_c: usize = (n_side_lenslet.pow(2) as usize) * 2 * n_sensor as usize;
     let gain = 0.5_f32;
     let mut _c_e: Array2<f32>;
     let mut rbm = Array2::<f32>::zeros((14, 6));
@@ -175,16 +178,36 @@ fn main() {
 
     // ---------------------------------------------------
     // SYSTEM CALIBRATION
-    let sh48_from_calibrate = bounded(0);
-    let sp = sh48_from_calibrate.0;
-    thread::spawn(move || {
-        let mut sh48 = OpticalPathToSH48::new();
-        let __m = sh48.build().calibrate(None);
-        sp.send(__m).unwrap();
-    });
-    let rp = sh48_from_calibrate.1;
+    //let sh48_from_calibrate = bounded(0);
+    //let sp = sh48_from_calibrate.0;
+    //thread::spawn(move || {
+    let mut sh48 = OpticalPathToSH48::new(3);
+    let mut _d = sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]).calibrate(None);
+    println!("SVD decomposition");
+    let now = Instant::now();
+    let n_sv = n_rbm + m1_n_mode as usize * 7;
+    let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
+    println!(" in {}ms", now.elapsed().as_millis());
+    //println!("Singular values:\n{}", sig);
+    let mut i_sig = sig.mapv(|x| 1.0 / x);
+    for k in 0..14 {
+        i_sig[n_sv - k - 1] = 0.0;
+    }
+
+    let _u = u.unwrap();
+    let _vt = v_t.unwrap();
+
+    let l_sv = Array2::from_diag(&i_sig);
+    println!("Computing the pseudo-inverse");
+    let now = Instant::now();
+    let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
+    println!(" in {}ms", now.elapsed().as_millis());
+
+    //    sp.send(__m).unwrap();
+    //});
+    //let rp = sh48_from_calibrate.1;
     //println!("{:?}", rp.recv());
-    let __m = rp.recv().unwrap();
+    //let __m = rp.recv().unwrap();
     // ---------------------------------------------------
 
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
@@ -200,18 +223,18 @@ fn main() {
         _c_e = __m.dot(&slopes);
         let q = gain
             * _c_e
-            .slice(s![..84, ..])
-            .to_owned()
-            .into_shape((14, 6))
-            .unwrap();
+                .slice(s![..84, ..])
+                .to_owned()
+                .into_shape((14, 6))
+                .unwrap();
         rbm -= &q.view();
         if m1_n_mode > 0 {
             let q = gain
                 * _c_e
-                .slice(s![84.., ..])
-                .to_owned()
-                .into_shape((7, m1_n_mode as usize))
-                .unwrap();
+                    .slice(s![84.., ..])
+                    .to_owned()
+                    .into_shape((7, m1_n_mode as usize))
+                    .unwrap();
             bm -= &q.view();
         }
 

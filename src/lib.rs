@@ -169,30 +169,27 @@ pub struct OpticalPathToSH48 {
     pub sensor: ceo::GeometricShackHartmann,
 }
 impl OpticalPathToSH48 {
-    pub fn new() -> OpticalPathToSH48 {
+    pub fn new(n_sensor: i32) -> OpticalPathToSH48 {
         let n_side_lenslet = 48;
         let n_px_lenslet = 16;
         //let n_px = n_side_lenslet*16 + 1;
         let pupil_size = 25.5;
-        let n_gs = 3;
         let m1_n_mode = 27;
         let d = pupil_size / n_side_lenslet as f64;
         OpticalPathToSH48 {
             gmt: ceo::Gmt::new(m1_n_mode, None),
             gs: ceo::Source::empty(),
-            sensor: ceo::Geometric_ShackHartmann::new(n_gs, n_side_lenslet, n_px_lenslet, d),
+            sensor: ceo::Geometric_ShackHartmann::new(n_sensor, n_side_lenslet, n_px_lenslet, d),
         }
     }
-    pub fn build(&mut self) -> &mut Self {
-        let z = 6. * f32::consts::PI / 180. / 60.;
-        let a = 2. * f32::consts::PI / 3.;
+    pub fn build(&mut self, zen: Vec<f32>, azi: Vec<f32>) -> &mut Self {
         self.gmt.build();
         self.sensor.build();
         self.gs = self.sensor.new_guide_stars();
         self.gs.build(
             "V",
-            vec![z, z, z],
-            vec![0.0 * a, a, 2.0 * a],
+            zen,
+            azi,
             vec![0.0, 0.0, 0.0],
         );
         self.gs.through(&mut self.gmt);
@@ -346,33 +343,13 @@ impl OpticalPathToSH48 {
             .t()
             .to_owned()
             * 1e6;
-        let mut _d = (_d_p - _d_m) * 0.5;
+        (_d_p - _d_m) * 0.5
         //pb.println(&format!(" in {}s", now.elapsed().as_secs()));
 
         //println!("{:?}", _d);
         //println!("shape={:?}, strides={:?}", _d.shape(), _d.strides());
         //        println!("d sum: {}",_d.into.sum());
 
-        //pb.println("SVD decomposition");
-        let now = Instant::now();
-        let n_sv = n_rbm + self.gmt.m1_n_mode as usize * 7;
-        let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
-        //pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
-        //println!("Singular values:\n{}", sig);
-        let mut i_sig = sig.mapv(|x| 1.0 / x);
-        for k in 0..14 {
-            i_sig[n_sv - k - 1] = 0.0;
-        }
-
-        let _u = u.unwrap();
-        let _vt = v_t.unwrap();
-
-        let l_sv = Array2::from_diag(&i_sig);
-        //pb.println("Computing the pseudo-inverse");
-        let now = Instant::now();
-        let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
-        //pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
-        __m
     }
 }
 impl Drop for OpticalPathToSH48 {
