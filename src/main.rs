@@ -83,8 +83,8 @@ fn main() {
             sh48.gmt.update(&gstate);
             sh48.propagate_src();
             sh48.sensor.process();
-            let q = sh48.sensor.centroids.clone();
-            to_plant.send(q).unwrap();
+            let q = &sh48.sensor.centroids;
+            to_plant.send(q.to_vec()).unwrap();
         }
 
         drop(sh48);
@@ -92,7 +92,7 @@ fn main() {
     });
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (to_plant, from_plant) = chat_plant_science.dual_channel();
     thread::spawn(move || {
         let pupil_size = 25.5;
@@ -196,7 +196,7 @@ fn main() {
             Ok(state) => state,
             Err(_) => break,
         };
-        let slopes = Array::from_shape_vec((n_c, 1), centroids.clone()).unwrap();
+        let slopes = Array::from_shape_vec((n_c, 1), centroids).unwrap();
         _c_e = __m.dot(&slopes);
         let q = gain
             * _c_e
@@ -215,16 +215,8 @@ fn main() {
             bm -= &q.view();
         }
 
-        let mut new_gstate = GmtState {
-            rbm: Array2::<f32>::zeros((14, 6)),
-            bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
-        };
-
-        new_gstate.rbm = rbm.clone();
-        new_gstate.bm = bm.clone();
-
-        gstate.rbm = gstate0.rbm.clone() + new_gstate.rbm;
-        gstate.bm = gstate0.bm.clone() + new_gstate.bm;
+        gstate.rbm = gstate0.rbm.clone() + &rbm;
+        gstate.bm = gstate0.bm.clone() + &bm;
     }
 
     drop(to_science);
