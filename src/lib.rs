@@ -190,7 +190,7 @@ impl OpticalPathToSH48 {
             "V",
             zen,
             azi,
-            vec![0.0, 0.0, 0.0],
+            vec![0.0;self.sensor.n_sensor as usize],
         );
         self.gs.through(&mut self.gmt);
         self.sensor.calibrate(&mut self.gs, 0.0).unwrap();
@@ -200,7 +200,6 @@ impl OpticalPathToSH48 {
         self.gs.through(&mut self.gmt).through(&mut self.sensor);
     }
     pub fn calibrate(&mut self, progress: Option<ProgressBar>) -> Array2<f32> {
-        let now = Instant::now();
         let n_rbm: usize = 84;
         let mut c_c_p: Vec<f32> = Vec::new();
         let mut c_c_m: Vec<f32> = Vec::new();

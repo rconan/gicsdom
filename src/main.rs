@@ -7,7 +7,7 @@ use gicsdom::ceo::GmtState;
 use gicsdom::{Observation, OpticalPathToSH48, Rotation, SkyCoordinates};
 use hifitime::Epoch;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use ndarray::{s, Array, Array2};
+use ndarray::{s, Array, Array2,Axis,stack};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -173,14 +173,25 @@ fn main() {
     //let sh48_from_calibrate = bounded(0);
     //let sp = sh48_from_calibrate.0;
     //thread::spawn(move || {
-    let mut sh48 = OpticalPathToSH48::new(3);
-    let mut _d = sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]).calibrate(None);
-    println!("SVD decomposition");
+    //let mut sh48 = OpticalPathToSH48::new(3);
+    //let mut _d = sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]).calibrate(None);
+    print!("SH48 calibration");
+    let now = Instant::now();
+    let mut sh48_0 = OpticalPathToSH48::new(1);
+    let _d_0 = sh48_0.build(vec![z], vec![0.0 * a]).calibrate(None);
+    let mut sh48_1 = OpticalPathToSH48::new(1);
+    let _d_1 = sh48_1.build(vec![z], vec![ a]).calibrate(None);
+    let mut sh48_2 = OpticalPathToSH48::new(1);
+    let _d_2 = sh48_2.build(vec![z], vec![2.0 * a]).calibrate(None);
+    let mut _d = stack( Axis(0) , &[_d_0.view(),_d_1.view(),_d_2.view()]).unwrap();
+    println!(" in {}ms", now.elapsed().as_millis());
+
+    print!("SVD decomposition");
     let now = Instant::now();
     let n_sv = n_rbm + m1_n_mode as usize * 7;
     let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
     println!(" in {}ms", now.elapsed().as_millis());
-    //println!("Singular values:\n{}", sig);
+//    println!("Singular values:\n{}", sig);
     let mut i_sig = sig.mapv(|x| 1.0 / x);
     for k in 0..14 {
         i_sig[n_sv - k - 1] = 0.0;
@@ -190,7 +201,7 @@ fn main() {
     let _vt = v_t.unwrap();
 
     let l_sv = Array2::from_diag(&i_sig);
-    println!("Computing the pseudo-inverse");
+    print!("Computing the pseudo-inverse");
     let now = Instant::now();
     let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
     println!(" in {}ms", now.elapsed().as_millis());
