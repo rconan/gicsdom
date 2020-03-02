@@ -13,6 +13,7 @@ blas-src = { version = "0.4", default-features = false, features = ["netlib"] }
 ndarray-linalg = { version = "0.12", features = ["netlib"] }
 indicatif = { version= "0.14" }
 crossbeam-channel = {version="0.4"}
+hifitime = "1"
 
 [build-dependencies]
 bindgen = "0.52.0"
