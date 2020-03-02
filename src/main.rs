@@ -74,7 +74,7 @@ fn main() {
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
-    thread::spawn(move || {
+    let h_48 = thread::spawn(move || {
         let mut sh48 = OpticalPathToSH48::new(3);
         sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]);
 
@@ -89,15 +89,12 @@ fn main() {
             let q = &sh48.sensor.centroids;
             to_plant.send(q.to_vec()).unwrap();
         }
-
-        drop(sh48);
-        to_plant.send(vec![]).unwrap();
     });
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (to_plant, from_plant) = chat_plant_science.dual_channel();
-    thread::spawn(move || {
+    let h_science = thread::spawn(move || {
         let pupil_size = 25.5;
         let pupil_sampling = 512;
         let m1_n_mode = 27;
@@ -133,11 +130,6 @@ fn main() {
 
             println!("WFE RMS: {:.3} nm; PSSn: {}", src_wfe_rms, onaxis_pssn);
         }
-
-        drop(gmt);
-        drop(src);
-
-        to_plant.send("Bye from SCIENCE!").unwrap();
     });
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -245,7 +237,6 @@ fn main() {
     drop(to_science);
     drop(to_sh48);
 
-    from_sh48.recv().unwrap();
-    let from_science = chat_plant_science.client.recv; // science_plan_chat.1;
-    println!("{:?}", from_science.recv());
+    h_48.join().unwrap();
+    h_science.join().unwrap();
 }
