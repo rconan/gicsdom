@@ -42,7 +42,7 @@ impl<S, C> Session<S, C> {
 }
 
 fn main() {
-    let chat_plant_sh48: Session<GmtState, GmtState> = Session::new(bounded(0), bounded(0));
+    let chat_plant_sh48: Session<GmtState, Vec<f32>> = Session::new(bounded(0), bounded(0));
     let chat_plant_science: Session<GmtState, &str> = Session::new(bounded(0), unbounded());
 
     let observation = Epoch::from_gregorian_utc_str("1998-08-10T23:10:00").unwrap();
@@ -74,75 +74,21 @@ fn main() {
         let mut sh48 = OpticalPathToSH48::new();
         sh48.build();
 
-        // ---------------------------------------------------
-        // SYSTEM CALIBRATION
-        let sh48_from_calibrate = bounded(0);
-        let sp = sh48_from_calibrate.0;
-        thread::spawn(move || {
-            let mut sh48 = OpticalPathToSH48::new();
-            let __m = sh48.build().calibrate(None);
-            sp.send(__m).unwrap();
-        });
-        // ---------------------------------------------------
-
-        let rp = sh48_from_calibrate.1;
-        //println!("{:?}", rp.recv());
-        let __m = rp.recv().unwrap();
-
-        //println!("{:?}", r.recv());
-
-        let n_c: usize =
-            (sh48.sensor.n_side_lenslet.pow(2) as usize) * 2 * sh48.sensor.n_sensor as usize;
-        let gain = 0.5_f32;
-        let mut _c_e: Array2<f32>;
-        let mut rbm = Array2::<f32>::zeros((14, 6));
-        let mut bm = Array2::<f32>::zeros((7, sh48.gmt.m1_n_mode as usize));
 
         loop {
             let gstate = match from_plant.recv() {
                 Ok(state) => state,
                 Err(_) => break,
             };
-
             sh48.gmt.update(&gstate);
-
             sh48.propagate_src();
             sh48.sensor.process();
-            let slopes = Array::from_shape_vec((n_c, 1), sh48.sensor.centroids.clone()).unwrap();
-
-            _c_e = __m.dot(&slopes);
-            let q = gain
-                * _c_e
-                    .slice(s![..84, ..])
-                    .to_owned()
-                    .into_shape((14, 6))
-                    .unwrap();
-            rbm -= &q.view();
-            if sh48.gmt.m1_n_mode > 0 {
-                let q = gain
-                    * _c_e
-                        .slice(s![84.., ..])
-                        .to_owned()
-                        .into_shape((7, sh48.gmt.m1_n_mode as usize))
-                        .unwrap();
-                bm -= &q.view();
-            }
-
-            let mut gstate = GmtState {
-                rbm: Array2::<f32>::zeros((14, 6)),
-                bm: Array2::<f32>::zeros((7, sh48.gmt.m1_n_mode as usize)),
-            };
-            gstate.rbm = rbm.clone();
-            gstate.bm = bm.clone();
-            to_plant.send(gstate).unwrap();
+            let q = sh48.sensor.centroids.clone();
+            to_plant.send(q).unwrap();
         }
 
-        let gstate = GmtState {
-            rbm: Array2::<f32>::zeros((14, 6)),
-            bm: Array2::<f32>::zeros((7, sh48.gmt.m1_n_mode as usize)),
-        };
         drop(sh48);
-        to_plant.send(gstate).unwrap();
+        to_plant.send(vec![]).unwrap();
     });
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -208,6 +154,16 @@ fn main() {
     gstate0.bm[[1, 0]] = 1e-5;
     gstate0.bm[[2, 1]] = 1e-5;
 
+    let m1_n_mode = 27;
+    let n_side_lenslet = 48i32;
+    let n_sensor = 3;
+    let n_c: usize =
+        (n_side_lenslet.pow(2) as usize) * 2 * n_sensor as usize;
+    let gain = 0.5_f32;
+    let mut _c_e: Array2<f32>;
+    let mut rbm = Array2::<f32>::zeros((14, 6));
+    let mut bm = Array2::<f32>::zeros((7, m1_n_mode as usize));
+
     let to_science = chat_plant_science.server.send; // plant_to_science.0;
     let to_sh48 = chat_plant_sh48.server.send; // plant_to_sh48.0;
     let mut gstate = GmtState {
@@ -217,15 +173,56 @@ fn main() {
     gstate.rbm = gstate0.rbm.clone();
     gstate.bm = gstate0.bm.clone();
 
+    // ---------------------------------------------------
+    // SYSTEM CALIBRATION
+    let sh48_from_calibrate = bounded(0);
+    let sp = sh48_from_calibrate.0;
+    thread::spawn(move || {
+        let mut sh48 = OpticalPathToSH48::new();
+        let __m = sh48.build().calibrate(None);
+        sp.send(__m).unwrap();
+    });
+    let rp = sh48_from_calibrate.1;
+    //println!("{:?}", rp.recv());
+    let __m = rp.recv().unwrap();
+    // ---------------------------------------------------
+
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
     for _ in 0..20 {
         to_science.send(gstate.clone()).unwrap();
         to_sh48.send(gstate.clone()).unwrap();
 
-        let new_gstate = match from_sh48.recv() {
+        let centroids = match from_sh48.recv() {
             Ok(state) => state,
             Err(_) => break,
         };
+        let slopes = Array::from_shape_vec((n_c, 1), centroids.clone()).unwrap();
+        _c_e = __m.dot(&slopes);
+        let q = gain
+            * _c_e
+            .slice(s![..84, ..])
+            .to_owned()
+            .into_shape((14, 6))
+            .unwrap();
+        rbm -= &q.view();
+        if m1_n_mode > 0 {
+            let q = gain
+                * _c_e
+                .slice(s![84.., ..])
+                .to_owned()
+                .into_shape((7, m1_n_mode as usize))
+                .unwrap();
+            bm -= &q.view();
+        }
+
+        let mut new_gstate = GmtState {
+            rbm: Array2::<f32>::zeros((14, 6)),
+            bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
+        };
+
+        new_gstate.rbm = rbm.clone();
+        new_gstate.bm = bm.clone();
+
         gstate.rbm = gstate0.rbm.clone() + new_gstate.rbm;
         gstate.bm = gstate0.bm.clone() + new_gstate.bm;
     }

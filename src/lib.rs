@@ -217,10 +217,10 @@ impl OpticalPathToSH48 {
         pb.set_style(ProgressStyle::default_bar().template("{bar:40.cyan/blue} {msg}"));
         if n_rbm > 0 {
             for mid in 1..3 {
-                pb.set_message(&format!("M{} RBM", mid));
-                pb.reset();
+                //pb.set_message(&format!("M{} RBM", mid));
+                //pb.reset();
                 for sid in 1..8 {
-                    pb.inc(1);
+                    //pb.inc(1);
                     for tr in 1..3 {
                         for a in 0..3 {
                             self.gmt.reset();
@@ -250,15 +250,15 @@ impl OpticalPathToSH48 {
         //let pb_bm = ProgressBar::new(self.gmt.m1_n_mode as u64);
         //pb_bm.set_style(ProgressStyle::default_bar().template("{bar:40.cyan/blue} {msg}"));
         if self.gmt.m1_n_mode > 0 {
-            pb.set_length(self.gmt.m1_n_mode as u64);
+            //pb.set_length(self.gmt.m1_n_mode as u64);
             //println!("Bending modes ...");
             let mut a: Vec<f64> = vec![0.0; 7 * self.gmt.m1_n_mode as usize];
             self.gmt.reset();
             for sid in 0..7 {
-                pb.set_message(&format!("S{} BM", sid + 1));
-                pb.reset();
+                //pb.set_message(&format!("S{} BM", sid + 1));
+                //pb.reset();
                 for k_a in 0..self.gmt.m1_n_mode {
-                    pb.inc(1);
+                    //pb.inc(1);
                     let k = k_a + sid * self.gmt.m1_n_mode;
                     a[k as usize] = 1e-6;
                     self.gmt.set_m1_modes(&mut a);
@@ -278,13 +278,13 @@ impl OpticalPathToSH48 {
             * 1e6;
 
         //        println!("Rigid body motion ...");
-        pb.set_length(7);
+        //pb.set_length(7);
         if n_rbm > 0 {
             for mid in 1..3 {
-                pb.set_message(&format!("M{} RBM", mid));
-                pb.reset();
+                //pb.set_message(&format!("M{} RBM", mid));
+                //pb.reset();
                 for sid in 1..8 {
-                    pb.inc(1);
+                    //pb.inc(1);
                     for tr in 1..3 {
                         for a in 0..3 {
                             self.gmt.reset();
@@ -315,15 +315,15 @@ impl OpticalPathToSH48 {
         }
 
         if self.gmt.m1_n_mode > 0 {
-            pb.set_length(self.gmt.m1_n_mode as u64);
+            //pb.set_length(self.gmt.m1_n_mode as u64);
             //println!("Bending modes ...");
             let mut a: Vec<f64> = vec![0.0; 7 * self.gmt.m1_n_mode as usize];
             self.gmt.reset();
             for sid in 0..7 {
-                pb.set_message(&format!("S{} BM", sid + 1));
-                pb.reset();
+                //pb.set_message(&format!("S{} BM", sid + 1));
+                //pb.reset();
                 for k_a in 0..self.gmt.m1_n_mode {
-                    pb.inc(1);
+                    //pb.inc(1);
                     let k = k_a + sid * self.gmt.m1_n_mode;
                     a[k as usize] = -1e-6;
                     self.gmt.set_m1_modes(&mut a);
@@ -335,7 +335,7 @@ impl OpticalPathToSH48 {
                 }
             }
         }
-        pb.finish();
+        //pb.finish();
 
         //println!("WFS centroids #     : {}", self.sensor.n_centroids);
         //println!("WFS centroids length: {}", self.sensor.centroids.len());
@@ -347,17 +347,17 @@ impl OpticalPathToSH48 {
             .to_owned()
             * 1e6;
         let mut _d = (_d_p - _d_m) * 0.5;
-        pb.println(&format!(" in {}s", now.elapsed().as_secs()));
+        //pb.println(&format!(" in {}s", now.elapsed().as_secs()));
 
         //println!("{:?}", _d);
         //println!("shape={:?}, strides={:?}", _d.shape(), _d.strides());
         //        println!("d sum: {}",_d.into.sum());
 
-        pb.println("SVD decomposition");
+        //pb.println("SVD decomposition");
         let now = Instant::now();
         let n_sv = n_rbm + self.gmt.m1_n_mode as usize * 7;
         let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
-        pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
+        //pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
         //println!("Singular values:\n{}", sig);
         let mut i_sig = sig.mapv(|x| 1.0 / x);
         for k in 0..14 {
@@ -368,10 +368,10 @@ impl OpticalPathToSH48 {
         let _vt = v_t.unwrap();
 
         let l_sv = Array2::from_diag(&i_sig);
-        pb.println("Computing the pseudo-inverse");
+        //pb.println("Computing the pseudo-inverse");
         let now = Instant::now();
         let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
-        pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
+        //pb.println(&format!(" in {}ms", now.elapsed().as_millis()));
         __m
     }
 }
