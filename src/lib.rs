@@ -108,8 +108,8 @@ impl Observation {
         (h as f64) + ((min as f64) + (sec as f64) / 60.0) / 60.0
     }
     pub fn add_seconds(&mut self, value: f64) -> &mut Self {
-        let tai_sec = self.epoch.as_tai_seconds() + value;
-        self.epoch = Epoch::from_tai_seconds(tai_sec);
+        //let tai_sec = self.epoch.as_tai_seconds() + value;
+        self.epoch.mut_add_secs(value);// = Epoch::from_tai_seconds(tai_sec);
         self.datetime = self.epoch.as_gregorian_utc_str();
         self
     }
@@ -153,13 +153,22 @@ impl SkyCoordinates {
         let aap = self.alt_az_parallactic(obs);
         (aap.0.rad2deg(), aap.1.rad2deg())
     }
-    pub fn local(&self, obs: &Observation) -> Vec<f64> {
+    pub fn alt_az_parallactic_deg(&self, obs: &Observation) -> (f64, f64, f64) {
+        let aap = self.alt_az_parallactic(obs);
+        (aap.0.rad2deg(), aap.1.rad2deg(), aap.2.rad2deg())
+    }
+    pub fn local(&self, reference: &SkyCoordinates, obs: &Observation) -> Vec<f64> {
         let altaz = self.altaz(obs);
         let sc_alt = altaz.0.sin_cos();
         let sc_az = altaz.1.sin_cos();
         let xyz = vec![sc_az.1 * sc_alt.1, sc_az.0 * sc_alt.1, sc_alt.0];
-        Rotation::new(f64::consts::FRAC_PI_2 - altaz.0, 1)
-            .apply(Rotation::new(altaz.1, 2).apply(xyz))
+        let ref_altaz = reference.altaz(obs);
+        Rotation::new(f64::consts::FRAC_PI_2 - ref_altaz.0, 1)
+            .apply(Rotation::new(ref_altaz.1, 2).apply(xyz))
+    }
+    pub fn local_polar(&self, reference: &SkyCoordinates, obs: &Observation) -> (f32,f32) {
+        let v = pol2cart(self.local(reference, obs));
+        (v[0] as f32,v[1] as f32)
     }
 }
 
