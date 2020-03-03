@@ -7,7 +7,7 @@ use gicsdom::ceo::GmtState;
 use gicsdom::{Observation, OpticalPathToSH48, Rotation, SkyCoordinates};
 use hifitime::Epoch;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use ndarray::{s, Array, Array2,Axis,stack};
+use ndarray::{s, stack, Array, Array2, Axis};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -75,25 +75,45 @@ fn main() {
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
     let h_48 = thread::spawn(move || {
-        let mut sh48 = OpticalPathToSH48::new(3);
-        sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]);
+        let mut sh48_0 = OpticalPathToSH48::new(1);
+        sh48_0.build(vec![z], vec![0.0 * a]);
+        let mut sh48_1 = OpticalPathToSH48::new(1);
+        sh48_1.build(vec![z], vec![1.0 * a]);
+        let mut sh48_2 = OpticalPathToSH48::new(1);
+        sh48_2.build(vec![z], vec![2.0 * a]);
 
         loop {
             let gstate = match from_plant.recv() {
                 Ok(state) => state,
                 Err(_) => break,
             };
-            sh48.gmt.update(&gstate);
-            sh48.propagate_src();
-            sh48.sensor.process();
-            let q = &sh48.sensor.centroids;
-            to_plant.send(q.to_vec()).unwrap();
+
+            sh48_0.gmt.update(&gstate);
+            sh48_0.propagate_src();
+            sh48_0.sensor.process();
+
+            sh48_1.gmt.update(&gstate);
+            sh48_1.propagate_src();
+            sh48_1.sensor.process();
+
+            sh48_2.gmt.update(&gstate);
+            sh48_2.propagate_src();
+            sh48_2.sensor.process();
+
+            let mut q: Vec<f32> = Vec::with_capacity(
+                (sh48_0.sensor.n_centroids + sh48_1.sensor.n_centroids + sh48_2.sensor.n_centroids)
+                    as usize,
+            );
+            q.append(&mut sh48_0.sensor.centroids.clone());
+            q.append(&mut sh48_1.sensor.centroids.clone());
+            q.append(&mut sh48_2.sensor.centroids.clone());
+            to_plant.send(q).unwrap();
         }
     });
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    let (to_plant, from_plant) = chat_plant_science.dual_channel();
+    let (_to_plant, from_plant) = chat_plant_science.dual_channel();
     let h_science = thread::spawn(move || {
         let pupil_size = 25.5;
         let pupil_sampling = 512;
@@ -180,10 +200,10 @@ fn main() {
     let mut sh48_0 = OpticalPathToSH48::new(1);
     let _d_0 = sh48_0.build(vec![z], vec![0.0 * a]).calibrate(None);
     let mut sh48_1 = OpticalPathToSH48::new(1);
-    let _d_1 = sh48_1.build(vec![z], vec![ a]).calibrate(None);
+    let _d_1 = sh48_1.build(vec![z], vec![a]).calibrate(None);
     let mut sh48_2 = OpticalPathToSH48::new(1);
     let _d_2 = sh48_2.build(vec![z], vec![2.0 * a]).calibrate(None);
-    let mut _d = stack( Axis(0) , &[_d_0.view(),_d_1.view(),_d_2.view()]).unwrap();
+    let mut _d = stack(Axis(0), &[_d_0.view(), _d_1.view(), _d_2.view()]).unwrap();
     println!(" in {}ms", now.elapsed().as_millis());
 
     print!("SVD decomposition");
@@ -191,7 +211,7 @@ fn main() {
     let n_sv = n_rbm + m1_n_mode as usize * 7;
     let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
     println!(" in {}ms", now.elapsed().as_millis());
-//    println!("Singular values:\n{}", sig);
+    //    println!("Singular values:\n{}", sig);
     let mut i_sig = sig.mapv(|x| 1.0 / x);
     for k in 0..14 {
         i_sig[n_sv - k - 1] = 0.0;
@@ -213,8 +233,14 @@ fn main() {
     //let __m = rp.recv().unwrap();
     // ---------------------------------------------------
 
+    let mut obs = Observation::new("1998-08-10T23:10:00", -29.049, -70.682);
+    let sampling = 30.0;
+
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
-    for _ in 0..20 {
+    for k in 0..20 {
+        obs.add_seconds(k as f64 * sampling);
+        println!("{}", obs.datetime);
+
         to_science.send(gstate.clone()).unwrap();
         to_sh48.send(gstate.clone()).unwrap();
 
