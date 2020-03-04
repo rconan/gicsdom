@@ -270,6 +270,11 @@ impl Source {
         }
         self
     }
+    pub fn rotate_rays(&mut self, angle: f64) {
+        unsafe {
+            self._c_.rays.rot_angle = angle;
+        }
+    }
     pub fn wfe_rms(&mut self) {
         if self.is_ray_trace {
             if !self.is_opd_to_phase {
