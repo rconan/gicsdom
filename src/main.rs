@@ -6,9 +6,8 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use csv::Reader;
 use gicsdom::ceo;
 use gicsdom::ceo::GmtState;
-use gicsdom::{Observation, OpticalPathToSH48, Rotation, SkyCoordinates};
-use hifitime::Epoch;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use gicsdom::{Observation, OpticalPathToSH48, SkyCoordinates};
+//use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use ndarray::{s, stack, Array, Array2, Axis};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use serde::Deserialize;
@@ -40,9 +39,9 @@ impl<S, C> Session<S, C> {
     fn dual_channel(&self) -> (Sender<C>, Receiver<S>) {
         (self.client.send.clone(), self.server.recv.clone())
     }
-    fn main_channel(&self) -> (Sender<S>, Receiver<C>) {
+    /*fn main_channel(&self) -> (Sender<S>, Receiver<C>) {
         (self.server.send.clone(), self.client.recv.clone())
-    }
+    }*/
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,53 +107,24 @@ fn main() {
         (field.ra3, field.dec3),
         (field.ra4, field.dec4),
     ];
+    let probe_ids = (field.p2 as i32, field.p3 as i32, field.p4 as i32);
+    let probe_sh48_gs_mag = (field.v2,field.v3,field.v4);
 
     let sampling = 30.0;
 
     let term = Term::buffered_stdout();
-
-    /*
-        let chat_plant_sh48: Session<GmtState, Vec<f32>> = Session::new(bounded(0), bounded(0));
-        let chat_plant_science: Session<GmtState, &str> = Session::new(bounded(0), unbounded());
-
-        let observation = Epoch::from_gregorian_utc_str("1998-08-10T23:10:00").unwrap();
-        let jde: f64 = observation.as_jde_tt_days();
-        let jday: f64 = jde - 2451545.0;
-        println!("JULIAN DAY: {}", jday);
-        let (_y, _m, _d, h, min, sec) = observation.as_gregorian_utc();
-        let long = -1.9166667;
-        let ut: f64 = (h as f64) + ((min as f64) + (sec as f64) / 60.0) / 60.0;
-        let lst = 100.46 + 0.985647 * jday + long + 15.0 * ut;
-        println!("LST: {}", lst);
-        let mut obs = Observation::new("1998-08-10T23:10:00", 52.5, -1.9166667);
-        let target = SkyCoordinates::new(16.695 * 15.0, 36.466667);
-        println!("LST: {}", obs.local_sidereal_time_deg());
-        println!("AltAz: {:?}", target.altaz_deg(&obs));
-
-        println!("Date: {}", obs.datetime);
-        println!("Date: {}", obs.add_seconds(30.0).datetime);
-        println!("AltAz: {:?}", target.altaz_deg(&obs));
-
-        let rot_x = Rotation::new(f64::consts::FRAC_PI_4, 2);
-        //println!("R: {:?}", rot_x.mat);
-        let v = vec![1f64; 3];
-        println!("Rotated vector: {:?}", rot_x.apply(v));
-
-    //    let z = 6. * f32::consts::PI / 180. / 60.;
-    //    let a = 2. * f32::consts::PI / 3.;
-         */
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let sh48_term = term.clone();
     let sh48_datetime = datetime.clone();
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
     let h_48 = thread::spawn(move || {
-        let mut sh48_0 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[0], 0);
-        sh48_0.build();
-        let mut sh48_1 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[1], 1);
-        sh48_1.build();
-        let mut sh48_2 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[2], 2);
-        sh48_2.build();
+        let mut sh48_0 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
+        sh48_0.build(probe_sh48_gs_mag.0);
+        let mut sh48_1 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
+        sh48_1.build(probe_sh48_gs_mag.1);
+        let mut sh48_2 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
+        sh48_2.build(probe_sh48_gs_mag.2);
 
         loop {
             let gstate = match from_plant.recv() {
@@ -162,18 +132,18 @@ fn main() {
                 Err(_) => break,
             };
 
-            let (z0, a0,p0) = sh48_0.update(sampling, &gstate).local();
+            let (z0, a0, p0) = sh48_0.update(sampling, &gstate).local();
             sh48_0.sensor.process();
 
-            let (z1, a1,p1) = sh48_1.update(sampling, &gstate).local();
+            let (z1, a1, p1) = sh48_1.update(sampling, &gstate).local();
             sh48_1.sensor.process();
 
-            let (z2, a2,p2) = sh48_2.update(sampling, &gstate).local();
+            let (z2, a2, p2) = sh48_2.update(sampling, &gstate).local();
             sh48_2.sensor.process();
 
             sh48_term
                 .write_line(&format!(
-                    "SH48 #{}  {:+>6.2} {:+>6.2} {:+>8.6}\nSH48 #{}  {:+>6.2} {:+>6.2} {:+>8.6}\nSH48 #{}  {:+>6.2} {:+>6.2} {:+>8.6}",
+                    "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}",
                     sh48_0.probe_id, z0, a0,p0,
                         sh48_1.probe_id, z1, a1,p1,
                         sh48_2.probe_id, z2, a2,p2
@@ -284,11 +254,11 @@ fn main() {
     print!("SH48 calibration");
     let now = Instant::now();
     let mut sh48_0 = OpticalPathToSH48::new(&datetime, telescope, probes[0], 0);
-    let _d_0 = sh48_0.build().calibrate(None);
+    let _d_0 = sh48_0.build(probe_sh48_gs_mag.0).calibrate(None);
     let mut sh48_1 = OpticalPathToSH48::new(&datetime, telescope, probes[1], 1);
-    let _d_1 = sh48_1.build().calibrate(None);
+    let _d_1 = sh48_1.build(probe_sh48_gs_mag.1).calibrate(None);
     let mut sh48_2 = OpticalPathToSH48::new(&datetime, telescope, probes[2], 2);
-    let _d_2 = sh48_2.build().calibrate(None);
+    let _d_2 = sh48_2.build(probe_sh48_gs_mag.2).calibrate(None);
     let mut _d = stack(Axis(0), &[_d_0.view(), _d_1.view(), _d_2.view()]).unwrap();
     println!(" in {}ms", now.elapsed().as_millis());
 
@@ -324,12 +294,8 @@ fn main() {
 
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
     term.move_cursor_down(3).unwrap();
-    term.write_line(&format!(
-        "------------------\n",
-    ))
-        .unwrap();
-    for k in 0..30 {
-
+    term.write_line(&format!("------------------\n",)).unwrap();
+    for _k in 0..30 {
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
         term.write_line(&format!(
             "{} {:+>6.2} {:+>6.2} {:+>6.2}",
@@ -368,14 +334,12 @@ fn main() {
         gstate.bm = gstate0.bm.clone() + &bm;
 
         obs.add_seconds(sampling);
-        thread::sleep(Duration::from_secs(2));
+        //thread::sleep(Duration::from_secs(2));
         term.move_cursor_up(5).unwrap();
     }
 
     term.move_cursor_down(5).unwrap();
-    term.write_line(&format!(
-        "------------------\n",
-    )).unwrap();
+    term.write_line(&format!("------------------\n",)).unwrap();
     term.flush().unwrap();
 
     drop(to_science);

@@ -216,7 +216,7 @@ impl OpticalPathToSH48 {
             alt_az_pa: (0.,0.,0.),
         }
     }
-    pub fn build(&mut self) -> &mut Self {
+    pub fn build(&mut self, mag: f64) -> &mut Self {
         self.gmt.build();
         self.sensor.build();
         self.gs = self.sensor.new_guide_stars();
@@ -226,10 +226,10 @@ impl OpticalPathToSH48 {
         let zen: Vec<f32> = vec![z];//6.0*f32::consts::PI/180./60.];
         let azi: Vec<f32> = vec![a];//2. * (self.probe_id as f32) * f32::consts::PI / 3.];
         self.gs
-            .build("V", zen, azi, vec![0.0; self.sensor.n_sensor as usize]);
+            .build("V", zen, azi, vec![mag as f32]);
 
-        self.alt_az_pa = self.probe.alt_az_parallactic_deg(&self.obs);
-        self.gs.rotate_rays(self.alt_az_pa.2*DEG2RAD);
+        self.alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
+        self.gs.rotate_rays(self.alt_az_pa.2);
 
         self.gs.through(&mut self.gmt);
         self.sensor.calibrate(&mut self.gs, 0.9).unwrap();
@@ -241,15 +241,17 @@ impl OpticalPathToSH48 {
     pub fn update(&mut self, inc_secs: f64, gstate: &ceo::GmtState) -> &mut Self {
         self.obs.add_seconds(inc_secs);
         self.gmt.update(gstate);
+
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
         self.gs.rotate_rays(alt_az_pa.2);
+
         self.gs.through(&mut self.gmt).through(&mut self.sensor);
         self
     }
     pub fn local(&mut self) -> (f64,f64,f64) {
         let (z,a) = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
-        let alt_az_pa = self.probe.alt_az_parallactic_deg(&self.obs);
-        (z,a,self.alt_az_pa.2-alt_az_pa.2)
+        let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
+        (z,a,(self.alt_az_pa.2-alt_az_pa.2)/DEG2RAD)
     }
     pub fn calibrate(&mut self, progress: Option<ProgressBar>) -> Array2<f32> {
         let n_rbm: usize = 84;
