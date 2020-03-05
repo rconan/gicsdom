@@ -6,11 +6,14 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use csv::Reader;
 use gicsdom::ceo;
 use gicsdom::ceo::GmtState;
-use gicsdom::{Observation, OpticalPathToSH48, SkyCoordinates};
+use gicsdom::{Observation, OpticalPathToDSH48, OpticalPathToSH48, SkyCoordinates};
 //use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use ndarray::{s, stack, Array, Array2, Axis};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
+use ndarray_npy::{NpzReader, NpzWriter};
 use serde::Deserialize;
+use std::fs::File;
+use std::io::ErrorKind;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{f32, f64};
@@ -108,23 +111,42 @@ fn main() {
         (field.ra4, field.dec4),
     ];
     let probe_ids = (field.p2 as i32, field.p3 as i32, field.p4 as i32);
-    let probe_sh48_gs_mag = (field.v2,field.v3,field.v4);
+    let probe_sh48_gs_mag = (field.v2, field.v3, field.v4);
 
     let sampling = 30.0;
 
     let term = Term::buffered_stdout();
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    let sh48_term = term.clone();
     let sh48_datetime = datetime.clone();
+
+    let mut sh48 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
+    sh48.build(8, Some(24), None, probe_sh48_gs_mag.0);
+    sh48.build_atmosphere(
+        0.15,
+        30.0,
+        26.0,
+        301,
+        20.0 * f32::consts::PI / 180. / 60.,
+        1.0,
+        "/home/rconan/DATA/gmtAtmosphereL030.bin",
+        1,
+    );
+
+    let sh48_term = term.clone();
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
     let h_48 = thread::spawn(move || {
-        let mut sh48_0 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
-        sh48_0.build(probe_sh48_gs_mag.0);
-        let mut sh48_1 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
-        sh48_1.build(probe_sh48_gs_mag.1);
-        let mut sh48_2 = OpticalPathToSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
-        sh48_2.build(probe_sh48_gs_mag.2);
+        let mut sh48_0 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
+        sh48_0.build(8, Some(24), None, probe_sh48_gs_mag.0);
+        let mut sh48_1 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
+        sh48_1.build(8, Some(24), None, probe_sh48_gs_mag.1);
+        let mut sh48_2 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
+        sh48_2.build(8, Some(24), None, probe_sh48_gs_mag.2);
+
+        let exposure_time = 30.0;
+        let readout_noise_rms = 0.5;
+        let n_background_photon = 0.0;
+        let noise_factor = 1.4142;
 
         loop {
             let gstate = match from_plant.recv() {
@@ -132,21 +154,45 @@ fn main() {
                 Err(_) => break,
             };
 
-            let (z0, a0, p0) = sh48_0.update(sampling, &gstate).local();
-            sh48_0.sensor.process();
+            let (z0, a0, da0, p0) = sh48_0.update(sampling, &gstate).local();
+            sh48_0
+                .sensor
+                .readout(
+                    exposure_time,
+                    readout_noise_rms,
+                    n_background_photon,
+                    noise_factor,
+                )
+                .process();
 
-            let (z1, a1, p1) = sh48_1.update(sampling, &gstate).local();
-            sh48_1.sensor.process();
+            let (z1, a1, da1, p1) = sh48_1.update(sampling, &gstate).local();
+            sh48_1
+                .sensor
+                .readout(
+                    exposure_time,
+                    readout_noise_rms,
+                    n_background_photon,
+                    noise_factor,
+                )
+                .process();
 
-            let (z2, a2, p2) = sh48_2.update(sampling, &gstate).local();
-            sh48_2.sensor.process();
+            let (z2, a2, da2, p2) = sh48_2.update(sampling, &gstate).local();
+            sh48_2
+                .sensor
+                .readout(
+                    exposure_time,
+                    readout_noise_rms,
+                    n_background_photon,
+                    noise_factor,
+                )
+                .process();
 
             sh48_term
                 .write_line(&format!(
-                    "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2}",
-                    sh48_0.probe_id, z0, a0,p0,
-                        sh48_1.probe_id, z1, a1,p1,
-                        sh48_2.probe_id, z2, a2,p2
+                    "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}",
+                    sh48_0.probe_id, z0, a0,da0,p0,
+                        sh48_1.probe_id, z1, a1,da1,p1,
+                        sh48_2.probe_id, z2, a2,da2,p2
                 ))
                 .unwrap();
 
@@ -251,6 +297,21 @@ fn main() {
     //thread::spawn(move || {
     //let mut sh48 = OpticalPathToSH48::new(3);
     //let mut _d = sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]).calibrate(None);
+
+    let f = File::open("recon.npz").unwrap_or_else(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            File::create("recon.npz").unwrap_or_else(|error| {
+                panic!("Problem creating the file: {:?}", error);
+            })
+        } else {
+            panic!("Problem opening the file: {:?}", error);
+        }
+    });
+
+    let mut npz = NpzReader::new(f).unwrap();
+    let __m: Array2<f32> = npz.by_name("m").unwrap();
+
+    /*
     print!("SH48 calibration");
     let now = Instant::now();
     let mut sh48_0 = OpticalPathToSH48::new(&datetime, telescope, probes[0], 0);
@@ -282,6 +343,9 @@ fn main() {
     let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
     println!(" in {}ms", now.elapsed().as_millis());
 
+    let mut npz = NpzWriter::new(File::create("recon.npz").unwrap());
+    npz.add_array("m", &__m).unwrap();
+     */
     //    sp.send(__m).unwrap();
     //});
     //let rp = sh48_from_calibrate.1;
@@ -294,14 +358,17 @@ fn main() {
 
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
     term.move_cursor_down(3).unwrap();
-    term.write_line(&format!("------------------\n",)).unwrap();
-    for _k in 0..30 {
+    term.write_line(&format!("{:=>60}", "",)).unwrap();
+    let n = (15. * 60. / sampling).ceil() as u64;
+    let now = Instant::now();
+    for _k in 0..n {
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
         term.write_line(&format!(
-            "{} {:+>6.2} {:+>6.2} {:+>6.2}",
+            "  {} {:+>6.2} {:+>6.2} {:+>6.2}",
             obs.datetime, alt, az, pa
         ))
         .unwrap();
+        term.write_line(&format!("{:->60}", "")).unwrap();
         term.flush().unwrap();
 
         to_science.send(gstate.clone()).unwrap();
@@ -335,11 +402,16 @@ fn main() {
 
         obs.add_seconds(sampling);
         //thread::sleep(Duration::from_secs(2));
-        term.move_cursor_up(5).unwrap();
+        term.move_cursor_up(6).unwrap();
     }
 
-    term.move_cursor_down(5).unwrap();
-    term.write_line(&format!("------------------\n",)).unwrap();
+    term.move_cursor_down(6).unwrap();
+    term.write_line(&format!("{:->60}", "")).unwrap();
+    let et = now.elapsed().as_secs();
+    let sim_rate = n / et;
+    term.write_line(&format!(" Done in {}s ({:.2}steps/s)", et, sim_rate))
+        .unwrap();
+    term.write_line(&format!("{:=>60}", "",)).unwrap();
     term.flush().unwrap();
 
     drop(to_science);

@@ -411,3 +411,108 @@ impl Drop for OpticalPathToSH48 {
         drop(&mut self.sensor);
     }
 }
+
+pub struct OpticalPathToDSH48 {
+    pub obs: Observation,
+    pub telescope: SkyCoordinates,
+    pub probe: SkyCoordinates,
+    pub gmt: ceo::Gmt,
+    pub gs: ceo::Source,
+    pub sensor: ceo::ShackHartmann,
+    pub atm: ceo::Atmosphere,
+    pub probe_id: i32,
+    tel_alt_az_pa: (f64,f64,f64),
+    za: (f64,f64)
+}
+impl OpticalPathToDSH48 {
+    pub fn new(
+        datetime: &str,
+        telescope_radec_deg: (f64, f64),
+        probe_radec_deg: (f64, f64),
+        probe_id: i32,
+    ) -> OpticalPathToDSH48 {
+        let n_side_lenslet = 48;
+        let n_px_lenslet = 16;
+        //let n_px = n_side_lenslet*16 + 1;
+        let pupil_size = 25.5;
+        let m1_n_mode = 27;
+        let d = pupil_size / n_side_lenslet as f64;
+        OpticalPathToDSH48 {
+            obs: Observation::new(datetime, GMT_LAT, GMT_LONG),
+            telescope: SkyCoordinates::new(telescope_radec_deg.0, telescope_radec_deg.1),
+            probe: SkyCoordinates::new(probe_radec_deg.0, probe_radec_deg.1),
+            gmt: ceo::Gmt::new(m1_n_mode, None),
+            gs: ceo::Source::empty(),
+            sensor: ceo::ShackHartmann::new(1, n_side_lenslet, n_px_lenslet, d),
+            atm: ceo::Atmosphere::new(),
+            probe_id,
+            tel_alt_az_pa: (0.,0.,0.),
+            za: (0.,0.)
+        }
+    }
+    pub fn build(&mut self, n_px_framelet: i32, n_px_imagelet: Option<i32>, osf: Option<i32>, mag: f64) -> &mut Self {
+        self.gmt.build();
+        self.sensor.build(n_px_framelet,n_px_imagelet,osf);
+        self.gs = self.sensor.new_guide_stars();
+        let q = self.probe.local(&self.telescope,&self.obs);
+        let z = q[0].hypot(q[1]) as f32;
+        let a = q[1].atan2(q[0]) as f32;
+        let zen: Vec<f32> = vec![z];//6.0*f32::consts::PI/180./60.];
+        let azi: Vec<f32> = vec![a];//2. * (self.probe_id as f32) * f32::consts::PI / 3.];
+        self.gs
+            .build("V", zen, azi, vec![mag as f32]);
+
+        self.tel_alt_az_pa = self.telescope.alt_az_parallactic(&self.obs);
+        self.za = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
+        self.gs.rotate_rays(self.tel_alt_az_pa.2);
+        self.gs.set_fwhm(3.16);
+
+        self.gs.through(&mut self.gmt);
+        self.sensor.calibrate(&mut self.gs, 0.9).unwrap();
+        self
+    }
+    pub fn build_atmosphere(&mut self,        r_not: f32,
+                            l_not: f32,
+                            width: f32,
+                            n_px: i32,
+                            field_size: f32,
+                            duration: f32,
+                            fullpath_to_phasescreens: &str,
+                            n_duration: i32,
+    ){
+        self.atm.build(                r_not,
+                                   l_not,
+                                   width,
+                                   n_px,
+                                   field_size,
+                                   duration,
+                                   fullpath_to_phasescreens,
+                                   n_duration,
+);
+    }
+    pub fn propagate_src(&mut self) {
+        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+    }
+    pub fn update(&mut self, inc_secs: f64, gstate: &ceo::GmtState) -> &mut Self {
+        self.obs.add_seconds(inc_secs);
+        self.gmt.update(gstate);
+
+        let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
+        self.gs.rotate_rays(alt_az_pa.2);
+
+        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+        self
+    }
+    pub fn local(&mut self) -> (f64,f64,f64,f64) {
+        let (z,a) = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
+        let alt_az_pa = self.telescope.alt_az_parallactic(&self.obs);
+        (z,a,self.za.1-a,(self.tel_alt_az_pa.2-alt_az_pa.2)/DEG2RAD)
+    }
+}
+impl Drop for OpticalPathToDSH48 {
+    fn drop(&mut self) {
+        drop(&mut self.gmt);
+        drop(&mut self.gs);
+        drop(&mut self.sensor);
+    }
+}

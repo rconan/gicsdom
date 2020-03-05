@@ -4,7 +4,7 @@ use ndarray::Array2;
 use std::ffi::CString;
 use std::{f32, mem};
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct GmtState {
     pub rbm: Array2<f32>,
     pub bm: Array2<f32>,
@@ -270,6 +270,11 @@ impl Source {
         }
         self
     }
+    pub fn set_fwhm(&mut self, value: f64) {
+        unsafe {
+            self._c_.fwhm = value as f32;
+        }
+    }
     pub fn rotate_rays(&mut self, angle: f64) {
         unsafe {
             self._c_.rays.rot_angle = angle;
@@ -315,6 +320,7 @@ impl Drop for Source {
 }
 pub trait Propagation {
     fn propagate(&mut self, src: &mut Source) -> &mut Self;
+    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self;
 }
 impl Propagation for Gmt {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
@@ -330,6 +336,9 @@ impl Propagation for Gmt {
         src.is_ray_trace = true;
         src.is_opd_to_phase = false;
         self
+    }
+    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+        self.propagate(src)
     }
 }
 impl Source {
@@ -398,6 +407,8 @@ pub struct Diffractive_ShackHartmann {
     n_px_lenslet: i32,
     d: f64,
     n_sensor: i32,
+    pub n_centroids: i32,
+    pub centroids: Vec<f32>,
 }
 impl Geometric_ShackHartmann {
     pub fn new(
@@ -500,6 +511,9 @@ impl Propagation for Geometric_ShackHartmann {
         }
         self
     }
+    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+        self.propagate(src)
+    }
 }
 impl Diffractive_ShackHartmann {
     pub fn new(
@@ -514,6 +528,8 @@ impl Diffractive_ShackHartmann {
             n_px_lenslet,
             d,
             n_sensor,
+            n_centroids: 0,
+            centroids: Vec::new(),
         }
     }
     pub fn build(
@@ -542,16 +558,18 @@ impl Diffractive_ShackHartmann {
                 self.n_sensor,
             );
         }
+        self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
+        self.centroids = vec![0.0; self.n_centroids as usize]; //Vec::with_capacity(self.n_centroids as usize);
         self
     }
-    pub fn guide_star_args(&self) -> (i32, f64, i32) {
-        (
+    pub fn new_guide_stars(&self) -> Source {
+        Source::new(
             self.n_sensor,
             self.d * self.n_side_lenslet as f64,
             self.n_px_lenslet * self.n_side_lenslet + 1,
         )
     }
-    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
+    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> Result<&mut Self, String> {
         if src.is_ray_trace {
             if !src.is_opd_to_phase {
                 unsafe {
@@ -564,13 +582,38 @@ impl Diffractive_ShackHartmann {
                 self._c_.camera.reset();
             }
         } else {
-            println!("Ray tracing through the GMT must be performed first!")
+            return Err("Ray tracing through the GMT must be performed first!".to_string());
+        }
+        Ok(self)
+    }
+    pub fn process(&mut self) -> &mut Self {
+        self.centroids = vec![0.0; self.n_centroids as usize];
+        //let mut c = vec![0.0;self.n_centroids as usize];
+        unsafe {
+            self._c_.process();
+            dev2host(
+                self.centroids.as_mut_ptr(),
+                self._c_.data_proc.d__c,
+                self.n_centroids as i32,
+            );
+            self._c_.camera.reset();
         }
         self
     }
-    pub fn process(&mut self) -> &mut Self {
+    pub fn readout(
+        &mut self,
+        exposure_time: f32,
+        readout_noise_rms: f32,
+        n_background_photon: f32,
+        noise_factor: f32,
+    ) -> &mut Self {
         unsafe {
-            self._c_.process();
+            self._c_.camera.readout1(
+                exposure_time,
+                readout_noise_rms,
+                n_background_photon,
+                noise_factor,
+            )
         }
         self
     }
@@ -605,5 +648,69 @@ impl Propagation for Diffractive_ShackHartmann {
         }
         self
     }
+    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+        self.propagate(src)
+    }
 }
 pub type GeometricShackHartmann = Geometric_ShackHartmann;
+pub type ShackHartmann = Diffractive_ShackHartmann;
+
+pub struct Atmosphere {
+    _c_: atmosphere,
+}
+impl Atmosphere {
+    pub fn new() -> Atmosphere {
+        Atmosphere {
+            _c_: unsafe { mem::zeroed() },
+        }
+    }
+    pub fn build(
+        &mut self,
+        r_not: f32,
+        l_not: f32,
+        width: f32,
+        n_px: i32,
+        field_size: f32,
+        duration: f32,
+        fullpath_to_phasescreens: &str,
+        n_duration: i32,
+    ) -> &mut Self {
+        let ps_path = CString::new(fullpath_to_phasescreens).unwrap();
+        unsafe {
+            self._c_.gmt_setup3(
+                r_not,
+                l_not,
+                width,
+                n_px,
+                field_size,
+                duration,
+                ps_path.into_raw(),
+                n_duration,
+            );
+        }
+        self
+    }
+}
+impl Propagation for Atmosphere {
+    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+        if src.is_ray_trace {
+            if !src.is_opd_to_phase {
+                unsafe {
+                    src._c_.wavefront.reset();
+                    src._c_.opd2phase();
+                }
+            }
+            unsafe {
+                let n_xy = src.pupil_sampling;
+                let d_xy = (src.pupil_size/(n_xy-1) as f64) as f32;
+                self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
+            }
+        } else {
+            println!("Ray tracing through the GMT must be performed first!")
+        }
+        self
+    }
+    fn propagate(&mut self, src: &mut Source) -> &mut Self {
+        self.time_propagate(0.0, src)
+    }
+}
