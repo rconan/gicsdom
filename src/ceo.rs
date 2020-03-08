@@ -1,5 +1,9 @@
 use super::bindings::*;
 
+use serde::Deserialize;
+use std::error::Error;
+use std::fs::File;
+use std::io::BufReader;
 use ndarray::Array2;
 use std::ffi::CString;
 use std::{f32, mem};
@@ -169,8 +173,8 @@ pub struct Source {
     pupil_size: f64,
     pupil_sampling: i32,
     pub _wfe_rms: Vec<f32>,
-    is_ray_trace: bool,
-    is_opd_to_phase: bool,
+    pub is_ray_trace: bool,
+    pub is_opd_to_phase: bool,
 }
 impl Source {
     pub fn test(
@@ -613,7 +617,7 @@ impl Diffractive_ShackHartmann {
                 readout_noise_rms,
                 n_background_photon,
                 noise_factor,
-            )
+            );
         }
         self
     }
@@ -655,40 +659,61 @@ impl Propagation for Diffractive_ShackHartmann {
 pub type GeometricShackHartmann = Geometric_ShackHartmann;
 pub type ShackHartmann = Diffractive_ShackHartmann;
 
+#[derive(Deserialize, Debug)]
+struct GmtAtmosphere {
+    r0: f32,
+    L0: f32,
+    L: f32,
+    NXY_PUPIL: i32,
+    fov: f32,
+    duration: f32,
+    N_DURATION: i32,
+    filename: String,
+    SEED: i32,
+}
+
 pub struct Atmosphere {
     _c_: atmosphere,
+    pub secs: f64,
+    built: bool,
 }
 impl Atmosphere {
     pub fn new() -> Atmosphere {
         Atmosphere {
             _c_: unsafe { mem::zeroed() },
+            secs: 0.0,
+            built: true,
         }
     }
     pub fn build(
         &mut self,
         r_not: f32,
         l_not: f32,
-        width: f32,
-        n_px: i32,
-        field_size: f32,
-        duration: f32,
-        fullpath_to_phasescreens: &str,
-        n_duration: i32,
     ) -> &mut Self {
-        let ps_path = CString::new(fullpath_to_phasescreens).unwrap();
         unsafe {
-            self._c_.gmt_setup3(
-                r_not,
-                l_not,
-                width,
-                n_px,
-                field_size,
-                duration,
-                ps_path.into_raw(),
-                n_duration,
-            );
+            self._c_.gmt_setup4(r_not,l_not,2020);
         }
         self
+    }
+    pub fn load_from_json(&mut self,json_file: &str) -> Result<(&mut Self),Box<dyn Error>> {
+        let file = File::open(json_file)?;
+        let reader = BufReader::new(file);
+        let gmt_atm_args: GmtAtmosphere = serde_json::from_reader(reader)?;
+        let ps_path = CString::new(gmt_atm_args.filename).unwrap();
+        unsafe {
+            self._c_.gmt_setup3(
+                gmt_atm_args.r0,
+                gmt_atm_args.L0,
+                gmt_atm_args.L,
+                gmt_atm_args.NXY_PUPIL,
+                gmt_atm_args.fov,
+                gmt_atm_args.duration,
+                ps_path.into_raw(),
+                gmt_atm_args.N_DURATION,
+            );
+        }
+        self.built = false;
+        Ok((self))
     }
 }
 impl Propagation for Atmosphere {
@@ -703,7 +728,12 @@ impl Propagation for Atmosphere {
             unsafe {
                 let n_xy = src.pupil_sampling;
                 let d_xy = (src.pupil_size/(n_xy-1) as f64) as f32;
-                self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
+                println!("d_xy={};n_xy={}",d_xy,n_xy);
+                if self.built {
+                    self._c_.get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
+                } else {
+                    self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
+                }
             }
         } else {
             println!("Ray tracing through the GMT must be performed first!")
@@ -711,6 +741,59 @@ impl Propagation for Atmosphere {
         self
     }
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
-        self.time_propagate(0.0, src)
+        self.time_propagate(self.secs, src)
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ceo_built_atmosphere() {
+        let mut gmt = Gmt::new(0,None);
+        gmt.build();
+        let mut wfs = ShackHartmann::new(1,48,16,25.5/48.0);
+        wfs.build(8,Some(24),None);
+        let mut src = wfs.new_guide_stars();
+        src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
+        let mut atm = Atmosphere::new();
+        atm.build(0.15,25.);
+        src.through(&mut gmt);
+        atm.propagate(&mut src);
+        let mut wfe_rms = src.wfe_rms_10e(-9)[0];
+        println!("WFE RMS: {:.3}",wfe_rms);
+        /*
+        let mut wfe_rms = (0..30).into_iter().map(|i|{
+            atm.secs = i as f64;
+            src.through(&mut gmt);
+            src.is_opd_to_phase = false;
+            atm.propagate(&mut src);
+            src.wfe_rms_10e(-9)[0]
+        }).collect::<Vec<f32>>();
+        wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("WFE RMS: [{:.0},{:.0},{:.0}]nm",wfe_rms[0],wfe_rms[29],wfe_rms[15]);
+        */
+    }
+    fn ceo_atmosphere() {
+        let mut gmt = Gmt::new(0,None);
+        gmt.build();
+        let mut wfs = ShackHartmann::new(1,48,16,25.5/48.0);
+        wfs.build(8,Some(24),None);
+        let mut src = wfs.new_guide_stars();
+        src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
+        let mut atm = Atmosphere::new();
+        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
+        let mut wfe_rms = (0..30).into_iter().map(|i|{
+            atm.secs = i as f64;
+            src.through(&mut gmt);
+            src.is_opd_to_phase = false;
+            atm.propagate(&mut src);
+            src.wfe_rms_10e(-9)[0]
+        }).collect::<Vec<f32>>();
+        wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("WFE RMS: [{:.0},{:.0},{:.0}]nm",wfe_rms[0],wfe_rms[29],wfe_rms[15]);
+    }
+
 }

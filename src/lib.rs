@@ -7,6 +7,7 @@ use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::f32;
 use std::f64;
 use std::time::Instant;
+use crate::ceo::Propagation;
 
 pub mod bindings;
 pub mod ceo;
@@ -471,25 +472,9 @@ impl OpticalPathToDSH48 {
         self.sensor.calibrate(&mut self.gs, 0.9).unwrap();
         self
     }
-    pub fn build_atmosphere(&mut self,        r_not: f32,
-                            l_not: f32,
-                            width: f32,
-                            n_px: i32,
-                            field_size: f32,
-                            duration: f32,
-                            fullpath_to_phasescreens: &str,
-                            n_duration: i32,
-    ){
-        self.atm.build(                r_not,
-                                   l_not,
-                                   width,
-                                   n_px,
-                                   field_size,
-                                   duration,
-                                   fullpath_to_phasescreens,
-                                   n_duration,
-);
-    }
+    pub fn build_atmosphere(&mut self,fullpath_to_phasescreens: &str){
+        self.atm.load_from_json(fullpath_to_phasescreens);
+}
     pub fn propagate_src(&mut self) {
         self.gs.through(&mut self.gmt).through(&mut self.sensor);
     }
@@ -500,7 +485,16 @@ impl OpticalPathToDSH48 {
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
         self.gs.rotate_rays(alt_az_pa.2);
 
-        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+        let atm_sampling = 1e-2;
+        let n = (inc_secs/atm_sampling) as u32;
+        for k in 0..n {
+            self.gs.through(&mut self.gmt);
+            self.gs.is_opd_to_phase = false;
+            self.atm.propagate(&mut self.gs);
+            self.gs.is_opd_to_phase = true;
+            self.gs.through(&mut self.sensor);
+            self.atm.secs += atm_sampling;
+        }
         self
     }
     pub fn local(&mut self) -> (f64,f64,f64,f64) {
