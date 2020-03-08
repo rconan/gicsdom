@@ -284,7 +284,7 @@ impl Source {
             self._c_.rays.rot_angle = angle;
         }
     }
-    pub fn wfe_rms(&mut self) {
+    pub fn wfe_rms(&mut self) -> Result<Vec<f32>,String> {
         if self.is_ray_trace {
             if !self.is_opd_to_phase {
                 unsafe {
@@ -295,12 +295,13 @@ impl Source {
             unsafe {
                 self._c_.wavefront.rms(self._wfe_rms.as_mut_ptr());
             }
+            Ok(self._wfe_rms.clone())
         } else {
-            println!("Ray tracing through the GMT must be performed first!")
+            return Err("Ray tracing through the GMT must be performed first!".to_string());
         }
     }
     pub fn wfe_rms_10e(&mut self, exp: i32) -> Vec<f32> {
-        self.wfe_rms();
+        self.wfe_rms().unwrap();
         self._wfe_rms
             .iter()
             .map(|x| x * 10_f32.powi(-exp))
@@ -724,11 +725,11 @@ impl Propagation for Atmosphere {
                     src._c_.wavefront.reset();
                     src._c_.opd2phase();
                 }
+                src.is_opd_to_phase = true;
             }
             unsafe {
                 let n_xy = src.pupil_sampling;
                 let d_xy = (src.pupil_size/(n_xy-1) as f64) as f32;
-                println!("d_xy={};n_xy={}",d_xy,n_xy);
                 if self.built {
                     self._c_.get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
                 } else {
@@ -760,23 +761,16 @@ mod tests {
         src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
         let mut atm = Atmosphere::new();
         atm.build(0.15,25.);
-        src.through(&mut gmt);
-        atm.propagate(&mut src);
-        let mut wfe_rms = src.wfe_rms_10e(-9)[0];
-        println!("WFE RMS: {:.3}",wfe_rms);
-        /*
         let mut wfe_rms = (0..30).into_iter().map(|i|{
             atm.secs = i as f64;
             src.through(&mut gmt);
-            src.is_opd_to_phase = false;
             atm.propagate(&mut src);
             src.wfe_rms_10e(-9)[0]
         }).collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
         println!("WFE RMS: [{:.0},{:.0},{:.0}]nm",wfe_rms[0],wfe_rms[29],wfe_rms[15]);
-        */
     }
-    fn ceo_atmosphere() {
+    fn ceo_load_atmosphere() {
         let mut gmt = Gmt::new(0,None);
         gmt.build();
         let mut wfs = ShackHartmann::new(1,48,16,25.5/48.0);
