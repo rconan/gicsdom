@@ -1,5 +1,6 @@
 extern crate hifitime;
 
+use crate::ceo::Propagation;
 use hifitime::Epoch;
 use indicatif::{ProgressBar, ProgressStyle};
 use ndarray::Array2;
@@ -7,13 +8,12 @@ use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::f32;
 use std::f64;
 use std::time::Instant;
-use crate::ceo::Propagation;
 
 pub mod bindings;
 pub mod ceo;
 
 const DEG2RAD: f64 = f64::consts::PI / 180.0;
-const  RAD2ARCMIN: f64 = 180.*60./f64::consts::PI;
+const RAD2ARCMIN: f64 = 180. * 60. / f64::consts::PI;
 const GMT_LAT: f64 = -29.049;
 const GMT_LONG: f64 = -70.682;
 
@@ -36,20 +36,17 @@ pub struct Rotation {
 }
 impl Rotation {
     pub fn new(o: f64, axis: u8) -> Rotation {
-        Rotation {
-            o,
-            axis,
-        }
+        Rotation { o, axis }
     }
     pub fn apply(&self, v: Vec<f64>) -> Vec<f64> {
-        let (s,c) = self.o.sin_cos();
+        let (s, c) = self.o.sin_cos();
         let x = v[0];
         let y = v[1];
         let z = v[2];
         let rot_v: Vec<f64> = match self.axis {
-            0 => vec![x,c*y+s*z,-s*y+c*z],
-            1 => vec![c*x-s*z,y,s*x+c*z],
-            2 => vec![c*x+s*y,-s*x+c*y,z],
+            0 => vec![x, c * y + s * z, -s * y + c * z],
+            1 => vec![c * x - s * z, y, s * x + c * z],
+            2 => vec![c * x + s * y, -s * x + c * y, z],
             _ => {
                 println!("Rotation axis must be one of: 0 for x, 1 for y or 2 for z!");
                 vec![0.0; 3]
@@ -160,16 +157,16 @@ impl SkyCoordinates {
         let altaz = self.altaz(obs);
         let sc_alt = altaz.0.sin_cos();
         let sc_az = altaz.1.sin_cos();
-        let (x,y,z) = (sc_az.1 * sc_alt.1, sc_az.0 * sc_alt.1, sc_alt.0);
+        let (x, y, z) = (sc_az.1 * sc_alt.1, sc_az.0 * sc_alt.1, sc_alt.0);
         let ref_altaz = reference.altaz(obs);
         /*Rotation::new(f64::consts::FRAC_PI_2 - ref_altaz.0, 1)
-            .apply(Rotation::new(ref_altaz.1, 2).apply(xyz))
-         */
-        let (s,c) = ref_altaz.1.sin_cos();
-        let w: Vec<f64> = vec![c*x+s*y,-s*x+c*y,z];
-        let (s,c) = (f64::consts::FRAC_PI_2 - ref_altaz.0).sin_cos();
-        let (x,y,z) = (w[0],w[1],w[2]);
-        let w: Vec<f64> = vec![c*x-s*z,y,s*x+c*z];
+           .apply(Rotation::new(ref_altaz.1, 2).apply(xyz))
+        */
+        let (s, c) = ref_altaz.1.sin_cos();
+        let w: Vec<f64> = vec![c * x + s * y, -s * x + c * y, z];
+        let (s, c) = (f64::consts::FRAC_PI_2 - ref_altaz.0).sin_cos();
+        let (x, y, z) = (w[0], w[1], w[2]);
+        let w: Vec<f64> = vec![c * x - s * z, y, s * x + c * z];
         w
     }
     pub fn local_polar(&self, reference: &SkyCoordinates, obs: &Observation) -> (f32, f32) {
@@ -177,9 +174,13 @@ impl SkyCoordinates {
         let v = pol2cart(u);
         (v[0] as f32, v[1] as f32)
     }
-    pub fn local_polar_arcmin_deg(&self, reference: &SkyCoordinates, obs: &Observation) -> (f64, f64) {
-        let (r,o) = self.local_polar(reference, obs);
-        (r as f64*RAD2ARCMIN,o as f64/DEG2RAD)
+    pub fn local_polar_arcmin_deg(
+        &self,
+        reference: &SkyCoordinates,
+        obs: &Observation,
+    ) -> (f64, f64) {
+        let (r, o) = self.local_polar(reference, obs);
+        (r as f64 * RAD2ARCMIN, o as f64 / DEG2RAD)
     }
 }
 
@@ -191,7 +192,7 @@ pub struct OpticalPathToSH48 {
     pub gs: ceo::Source,
     pub sensor: ceo::GeometricShackHartmann,
     pub probe_id: i32,
-    alt_az_pa: (f64,f64,f64), 
+    alt_az_pa: (f64, f64, f64),
 }
 impl OpticalPathToSH48 {
     pub fn new(
@@ -214,30 +215,32 @@ impl OpticalPathToSH48 {
             gs: ceo::Source::empty(),
             sensor: ceo::Geometric_ShackHartmann::new(1, n_side_lenslet, n_px_lenslet, d),
             probe_id,
-            alt_az_pa: (0.,0.,0.),
+            alt_az_pa: (0., 0., 0.),
         }
     }
     pub fn build(&mut self, mag: f64) -> &mut Self {
         self.gmt.build();
         self.sensor.build();
         self.gs = self.sensor.new_guide_stars();
-        let q = self.probe.local(&self.telescope,&self.obs);
+        let q = self.probe.local(&self.telescope, &self.obs);
         let z = q[0].hypot(q[1]) as f32;
         let a = q[1].atan2(q[0]) as f32;
-        let zen: Vec<f32> = vec![z];//6.0*f32::consts::PI/180./60.];
-        let azi: Vec<f32> = vec![a];//2. * (self.probe_id as f32) * f32::consts::PI / 3.];
-        self.gs
-            .build("V", zen, azi, vec![mag as f32]);
+        let zen: Vec<f32> = vec![z]; //6.0*f32::consts::PI/180./60.];
+        let azi: Vec<f32> = vec![a]; //2. * (self.probe_id as f32) * f32::consts::PI / 3.];
+        self.gs.build("V", zen, azi, vec![mag as f32]);
 
         self.alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
         self.gs.rotate_rays(self.alt_az_pa.2);
 
-        self.gs.through(&mut self.gmt);
-        self.sensor.calibrate(&mut self.gs, 0.9).unwrap();
+        self.gs.through(&mut self.gmt).xpupil();
+        self.sensor.calibrate(&mut self.gs, 0.9);
         self
     }
     pub fn propagate_src(&mut self) {
-        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+        self.gs
+            .through(&mut self.gmt)
+            .xpupil()
+            .through(&mut self.sensor);
     }
     pub fn update(&mut self, inc_secs: f64, gstate: &ceo::GmtState) -> &mut Self {
         self.obs.add_seconds(inc_secs);
@@ -246,13 +249,18 @@ impl OpticalPathToSH48 {
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
         self.gs.rotate_rays(alt_az_pa.2);
 
-        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+        self.gs
+            .through(&mut self.gmt)
+            .xpupil()
+            .through(&mut self.sensor);
         self
     }
-    pub fn local(&mut self) -> (f64,f64,f64) {
-        let (z,a) = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
+    pub fn local(&mut self) -> (f64, f64, f64) {
+        let (z, a) = self
+            .probe
+            .local_polar_arcmin_deg(&self.telescope, &self.obs);
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
-        (z,a,(self.alt_az_pa.2-alt_az_pa.2)/DEG2RAD)
+        (z, a, (self.alt_az_pa.2 - alt_az_pa.2) / DEG2RAD)
     }
     pub fn calibrate(&mut self, progress: Option<ProgressBar>) -> Array2<f32> {
         let n_rbm: usize = 84;
@@ -422,8 +430,8 @@ pub struct OpticalPathToDSH48 {
     pub sensor: ceo::ShackHartmann,
     pub atm: ceo::Atmosphere,
     pub probe_id: i32,
-    tel_alt_az_pa: (f64,f64,f64),
-    za: (f64,f64)
+    tel_alt_az_pa: (f64, f64, f64),
+    za: (f64, f64),
 }
 impl OpticalPathToDSH48 {
     pub fn new(
@@ -447,60 +455,83 @@ impl OpticalPathToDSH48 {
             sensor: ceo::ShackHartmann::new(1, n_side_lenslet, n_px_lenslet, d),
             atm: ceo::Atmosphere::new(),
             probe_id,
-            tel_alt_az_pa: (0.,0.,0.),
-            za: (0.,0.)
+            tel_alt_az_pa: (0., 0., 0.),
+            za: (0., 0.),
         }
     }
-    pub fn build(&mut self, n_px_framelet: i32, n_px_imagelet: Option<i32>, osf: Option<i32>, mag: f64) -> &mut Self {
+    pub fn build(
+        &mut self,
+        n_px_framelet: i32,
+        n_px_imagelet: Option<i32>,
+        osf: Option<i32>,
+        mag: f64,
+    ) -> &mut Self {
         self.gmt.build();
-        self.sensor.build(n_px_framelet,n_px_imagelet,osf);
+        self.sensor.build(n_px_framelet, n_px_imagelet, osf);
         self.gs = self.sensor.new_guide_stars();
-        let q = self.probe.local(&self.telescope,&self.obs);
+        let q = self.probe.local(&self.telescope, &self.obs);
         let z = q[0].hypot(q[1]) as f32;
         let a = q[1].atan2(q[0]) as f32;
-        let zen: Vec<f32> = vec![z];//6.0*f32::consts::PI/180./60.];
-        let azi: Vec<f32> = vec![a];//2. * (self.probe_id as f32) * f32::consts::PI / 3.];
-        self.gs
-            .build("V", zen, azi, vec![mag as f32]);
+        let zen: Vec<f32> = vec![z]; //6.0*f32::consts::PI/180./60.];
+        let azi: Vec<f32> = vec![a]; //2. * (self.probe_id as f32) * f32::consts::PI / 3.];
+        self.gs.build("V", zen, azi, vec![mag as f32]);
 
         self.tel_alt_az_pa = self.telescope.alt_az_parallactic(&self.obs);
-        self.za = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
+        self.za = self
+            .probe
+            .local_polar_arcmin_deg(&self.telescope, &self.obs);
         self.gs.rotate_rays(self.tel_alt_az_pa.2);
         self.gs.set_fwhm(3.16);
 
-        self.gs.through(&mut self.gmt);
-        self.sensor.calibrate(&mut self.gs, 0.9).unwrap();
+        self.gs.through(&mut self.gmt).xpupil();
+        self.sensor.calibrate(&mut self.gs, 0.9);
         self
     }
-    pub fn build_atmosphere(&mut self,fullpath_to_phasescreens: &str){
-        self.atm.load_from_json(fullpath_to_phasescreens);
-}
+    pub fn build_atmosphere(&mut self, fullpath_to_phasescreens: &str) {
+        self.atm.load_from_json(fullpath_to_phasescreens).unwrap();
+    }
     pub fn propagate_src(&mut self) {
-        self.gs.through(&mut self.gmt).through(&mut self.sensor);
+        self.gs
+            .through(&mut self.gmt)
+            .xpupil()
+            .through(&mut self.sensor);
     }
     pub fn update(&mut self, inc_secs: f64, gstate: &ceo::GmtState) -> &mut Self {
         self.obs.add_seconds(inc_secs);
         self.gmt.update(gstate);
 
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
+        /*
         self.gs.rotate_rays(alt_az_pa.2);
 
         let atm_sampling = 1e-2;
-        let n = (inc_secs/atm_sampling) as u32;
+        let n = (inc_secs / atm_sampling) as u32;
         for k in 0..n {
-            self.gs.through(&mut self.gmt);
-            self.gs.is_opd_to_phase = false;
-            self.atm.propagate(&mut self.gs);
-            self.gs.is_opd_to_phase = true;
-            self.gs.through(&mut self.sensor);
+            self.gs
+                .through(&mut self.gmt)
+                .xpupil()
+                .through(&mut self.atm)
+                .through(&mut self.sensor);
             self.atm.secs += atm_sampling;
         }
+        */
+        self.gs
+            .through(&mut self.gmt)
+            .xpupil()
+            .through(&mut self.sensor);
         self
     }
-    pub fn local(&mut self) -> (f64,f64,f64,f64) {
-        let (z,a) = self.probe.local_polar_arcmin_deg(&self.telescope,&self.obs);
+    pub fn local(&mut self) -> (f64, f64, f64, f64) {
+        let (z, a) = self
+            .probe
+            .local_polar_arcmin_deg(&self.telescope, &self.obs);
         let alt_az_pa = self.telescope.alt_az_parallactic(&self.obs);
-        (z,a,self.za.1-a,(self.tel_alt_az_pa.2-alt_az_pa.2)/DEG2RAD)
+        (
+            z,
+            a,
+            self.za.1 - a,
+            (self.tel_alt_az_pa.2 - alt_az_pa.2) / DEG2RAD,
+        )
     }
 }
 impl Drop for OpticalPathToDSH48 {

@@ -1,11 +1,11 @@
 use super::bindings::*;
 
+use ndarray::Array2;
 use serde::Deserialize;
 use std::error::Error;
+use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
-use ndarray::Array2;
-use std::ffi::CString;
 use std::{f32, mem};
 
 #[derive(Clone, Debug)]
@@ -173,52 +173,8 @@ pub struct Source {
     pupil_size: f64,
     pupil_sampling: i32,
     pub _wfe_rms: Vec<f32>,
-    pub is_ray_trace: bool,
-    pub is_opd_to_phase: bool,
 }
 impl Source {
-    pub fn test(
-        band: &str,
-        zenith: &mut Vec<f32>,
-        azimuth: &mut Vec<f32>,
-        magnitude: &mut Vec<f32>,
-        pupil_size: f64,
-        pupil_sampling: i32,
-    ) -> Source {
-        assert_eq!(zenith.len(), azimuth.len());
-        assert_eq!(zenith.len(), magnitude.len());
-        let band = CString::new(band).unwrap();
-        let size = zenith.len() as i32;
-        let mut this = Source {
-            _c_: unsafe { mem::zeroed() },
-            size: size,
-            pupil_size,
-            pupil_sampling,
-            _wfe_rms: Vec::new(),
-            is_ray_trace: false,
-            is_opd_to_phase: false,
-        };
-        let mut_ref_to_this = &mut this;
-        unsafe {
-            let origin = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 25.0,
-            };
-            mut_ref_to_this._c_.setup7(
-                band.into_raw(),
-                magnitude.as_mut_ptr(),
-                zenith.as_mut_ptr(),
-                azimuth.as_mut_ptr(),
-                f32::INFINITY,
-                size,
-                pupil_size,
-                pupil_sampling,
-                origin,
-            );
-        }
-        this
-    }
     pub fn empty() -> Source {
         Source {
             _c_: unsafe { mem::zeroed() },
@@ -226,8 +182,6 @@ impl Source {
             pupil_size: 0.0,
             pupil_sampling: 0,
             _wfe_rms: vec![],
-            is_ray_trace: false,
-            is_opd_to_phase: false,
         }
     }
     pub fn new(size: i32, pupil_size: f64, pupil_sampling: i32) -> Source {
@@ -237,8 +191,6 @@ impl Source {
             pupil_size,
             pupil_sampling,
             _wfe_rms: vec![0.0; size as usize],
-            is_ray_trace: false,
-            is_opd_to_phase: false,
         }
     }
     pub fn from(args: (i32, f64, i32)) -> Source {
@@ -284,24 +236,23 @@ impl Source {
             self._c_.rays.rot_angle = angle;
         }
     }
-    pub fn wfe_rms(&mut self) -> Result<Vec<f32>,String> {
-        if self.is_ray_trace {
-            if !self.is_opd_to_phase {
-                unsafe {
-                    self._c_.wavefront.reset();
-                    self._c_.opd2phase();
-                }
-            }
-            unsafe {
-                self._c_.wavefront.rms(self._wfe_rms.as_mut_ptr());
-            }
-            Ok(self._wfe_rms.clone())
-        } else {
-            return Err("Ray tracing through the GMT must be performed first!".to_string());
+    pub fn xpupil(&mut self) -> &mut Self {
+        unsafe {
+            self._c_.wavefront.reset();
+            self._c_.opd2phase();
         }
+        self
+    }
+    pub fn wfe_rms(&mut self) -> Vec<f32> {
+        unsafe {
+            self._c_.wavefront.rms(self._wfe_rms.as_mut_ptr());
+        }
+        self._wfe_rms.clone()
     }
     pub fn wfe_rms_10e(&mut self, exp: i32) -> Vec<f32> {
-        self.wfe_rms().unwrap();
+        unsafe {
+            self._c_.wavefront.rms(self._wfe_rms.as_mut_ptr());
+        }
         self._wfe_rms
             .iter()
             .map(|x| x * 10_f32.powi(-exp))
@@ -312,8 +263,6 @@ impl Source {
             self._c_.wavefront.reset();
             self._c_.reset_rays();
         }
-        self.is_ray_trace = false;
-        self.is_opd_to_phase = false;
     }
 }
 impl Drop for Source {
@@ -338,8 +287,6 @@ impl Propagation for Gmt {
             self._c_m2.trace(rays);
             rays.to_sphere1(-5.830, 2.197173);
         }
-        src.is_ray_trace = true;
-        src.is_opd_to_phase = false;
         self
     }
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
@@ -455,21 +402,11 @@ impl Geometric_ShackHartmann {
             self.n_px_lenslet * self.n_side_lenslet + 1,
         )
     }
-    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> Result<&mut Self, String> {
-        if src.is_ray_trace {
-            if !src.is_opd_to_phase {
-                unsafe {
-                    src._c_.wavefront.reset();
-                    src._c_.opd2phase();
-                }
-            }
-            unsafe {
-                self._c_.calibrate(&mut src._c_, threshold as f32);
-            }
-        } else {
-            return Err("Ray tracing through the GMT must be performed first!".to_string());
+    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
+        unsafe {
+            self._c_.calibrate(&mut src._c_, threshold as f32);
         }
-        Ok(self)
+        self
     }
     pub fn process(&mut self) -> &mut Self {
         self.centroids = vec![0.0; self.n_centroids as usize];
@@ -501,22 +438,12 @@ impl Drop for Geometric_ShackHartmann {
 }
 impl Propagation for Geometric_ShackHartmann {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
-        if src.is_ray_trace {
-            if !src.is_opd_to_phase {
-                unsafe {
-                    src._c_.wavefront.reset();
-                    src._c_.opd2phase();
-                }
-            }
-            unsafe {
-                self._c_.propagate(&mut src._c_);
-            }
-        } else {
-            println!("Ray tracing through the GMT must be performed first!")
+        unsafe {
+            self._c_.propagate(&mut src._c_);
         }
         self
     }
-    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+    fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.propagate(src)
     }
 }
@@ -574,22 +501,12 @@ impl Diffractive_ShackHartmann {
             self.n_px_lenslet * self.n_side_lenslet + 1,
         )
     }
-    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> Result<&mut Self, String> {
-        if src.is_ray_trace {
-            if !src.is_opd_to_phase {
-                unsafe {
-                    src._c_.wavefront.reset();
-                    src._c_.opd2phase();
-                }
-            }
-            unsafe {
-                self._c_.calibrate(&mut src._c_, threshold as f32);
-                self._c_.camera.reset();
-            }
-        } else {
-            return Err("Ray tracing through the GMT must be performed first!".to_string());
+    pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
+        unsafe {
+            self._c_.calibrate(&mut src._c_, threshold as f32);
+            self._c_.camera.reset();
         }
-        Ok(self)
+        self
     }
     pub fn process(&mut self) -> &mut Self {
         self.centroids = vec![0.0; self.n_centroids as usize];
@@ -638,18 +555,8 @@ impl Drop for Diffractive_ShackHartmann {
 }
 impl Propagation for Diffractive_ShackHartmann {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
-        if src.is_ray_trace {
-            if !src.is_opd_to_phase {
-                unsafe {
-                    src._c_.wavefront.reset();
-                    src._c_.opd2phase();
-                }
-            }
-            unsafe {
-                self._c_.propagate(&mut src._c_);
-            }
-        } else {
-            println!("Ray tracing through the GMT must be performed first!")
+        unsafe {
+            self._c_.propagate(&mut src._c_);
         }
         self
     }
@@ -686,17 +593,13 @@ impl Atmosphere {
             built: true,
         }
     }
-    pub fn build(
-        &mut self,
-        r_not: f32,
-        l_not: f32,
-    ) -> &mut Self {
+    pub fn build(&mut self, r_not: f32, l_not: f32) -> &mut Self {
         unsafe {
-            self._c_.gmt_setup4(r_not,l_not,2020);
+            self._c_.gmt_setup4(r_not, l_not, 2020);
         }
         self
     }
-    pub fn load_from_json(&mut self,json_file: &str) -> Result<(&mut Self),Box<dyn Error>> {
+    pub fn load_from_json(&mut self, json_file: &str) -> Result<(&mut Self), Box<dyn Error>> {
         let file = File::open(json_file)?;
         let reader = BufReader::new(file);
         let gmt_atm_args: GmtAtmosphere = serde_json::from_reader(reader)?;
@@ -719,25 +622,16 @@ impl Atmosphere {
 }
 impl Propagation for Atmosphere {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
-        if src.is_ray_trace {
-            if !src.is_opd_to_phase {
-                unsafe {
-                    src._c_.wavefront.reset();
-                    src._c_.opd2phase();
-                }
-                src.is_opd_to_phase = true;
+        unsafe {
+            let n_xy = src.pupil_sampling;
+            let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
+            if self.built {
+                self._c_
+                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
+            } else {
+                self._c_
+                    .rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             }
-            unsafe {
-                let n_xy = src.pupil_sampling;
-                let d_xy = (src.pupil_size/(n_xy-1) as f64) as f32;
-                if self.built {
-                    self._c_.get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
-                } else {
-                    self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32 );
-                }
-            }
-        } else {
-            println!("Ray tracing through the GMT must be performed first!")
         }
         self
     }
@@ -746,48 +640,55 @@ impl Propagation for Atmosphere {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn ceo_built_atmosphere() {
-        let mut gmt = Gmt::new(0,None);
+        let mut gmt = Gmt::new(0, None);
         gmt.build();
-        let mut wfs = ShackHartmann::new(1,48,16,25.5/48.0);
-        wfs.build(8,Some(24),None);
+        let mut wfs = ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
+        wfs.build(8, Some(24), None);
         let mut src = wfs.new_guide_stars();
-        src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
+        src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
         let mut atm = Atmosphere::new();
-        atm.build(0.15,25.);
-        let mut wfe_rms = (0..30).into_iter().map(|i|{
-            atm.secs = i as f64;
-            src.through(&mut gmt);
-            atm.propagate(&mut src);
-            src.wfe_rms_10e(-9)[0]
-        }).collect::<Vec<f32>>();
+        atm.build(0.15, 25.);
+        let n = 10;
+        let mut wfe_rms = (0..n)
+            .into_iter()
+            .map(|i| {
+                atm.secs = i as f64;
+                src.through(&mut gmt).xpupil().through(&mut atm);
+                src.wfe_rms_10e(-9)[0]
+            })
+            .collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: [{:.0},{:.0},{:.0}]nm",wfe_rms[0],wfe_rms[29],wfe_rms[15]);
+        println!("WFE RMS: {:?}nm",wfe_rms);
     }
     fn ceo_load_atmosphere() {
-        let mut gmt = Gmt::new(0,None);
+        let mut gmt = Gmt::new(0, None);
         gmt.build();
-        let mut wfs = ShackHartmann::new(1,48,16,25.5/48.0);
-        wfs.build(8,Some(24),None);
+        let mut wfs = ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
+        wfs.build(8, Some(24), None);
         let mut src = wfs.new_guide_stars();
-        src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
+        src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
         let mut atm = Atmosphere::new();
-        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
-        let mut wfe_rms = (0..30).into_iter().map(|i|{
-            atm.secs = i as f64;
-            src.through(&mut gmt);
-            src.is_opd_to_phase = false;
-            atm.propagate(&mut src);
-            src.wfe_rms_10e(-9)[0]
-        }).collect::<Vec<f32>>();
+        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json")
+            .unwrap();
+        let mut wfe_rms = (0..30)
+            .into_iter()
+            .map(|i| {
+                atm.secs = i as f64;
+                src.through(&mut gmt).xpupil();
+                atm.propagate(&mut src);
+                src.wfe_rms_10e(-9)[0]
+            })
+            .collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: [{:.0},{:.0},{:.0}]nm",wfe_rms[0],wfe_rms[29],wfe_rms[15]);
+        println!(
+            "WFE RMS: [{:.0},{:.0},{:.0}]nm",
+            wfe_rms[0], wfe_rms[29], wfe_rms[15]
+        );
     }
-
 }

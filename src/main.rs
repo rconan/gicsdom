@@ -138,15 +138,15 @@ fn main() {
     let h_48 = thread::spawn(move || {
         let mut sh48_0 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
         sh48_0.build(8, Some(24), None, probe_sh48_gs_mag.0);
-        sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+        //sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
 
         let mut sh48_1 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
         sh48_1.build(8, Some(24), None, probe_sh48_gs_mag.1);
-        sh48_1.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+        //sh48_1.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
 
         let mut sh48_2 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
         sh48_2.build(8, Some(24), None, probe_sh48_gs_mag.2);
-        sh48_2.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+        //sh48_2.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
 
         let exposure_time = 30.0;
         let readout_noise_rms = 0.5;
@@ -230,7 +230,7 @@ fn main() {
         let mut src = ceo::Source::new(1, pupil_size, pupil_sampling);
         src.build("V", vec![0.0], vec![0.0], vec![0.0]);
 
-        let mut src_wfe_rms = src.through(&mut gmt).wfe_rms_10e(-9)[0];
+        let mut src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
         let mut onaxis_pssn: f32;
         let mut src_pssn = ceo::PSSn::new(15e-2, 25.0, 0.0);
         src_pssn.build(&mut src);
@@ -250,7 +250,7 @@ fn main() {
 
             gmt.update(&gstate);
 
-            src_wfe_rms = src.through(&mut gmt).wfe_rms_10e(-9)[0];
+            src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
             onaxis_pssn = src_pssn.reset(&mut src);
 
             sci_term
@@ -272,13 +272,13 @@ fn main() {
         rbm: Array2::<f32>::zeros((14, 6)),
         bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
     };
-    /*gstate0.rbm[(0, 0)] = 1e-5;
+    gstate0.rbm[(0, 0)] = 1e-5;
     gstate0.rbm[(8, 4)] = 1e-6;
     gstate0.rbm[(2, 3)] = -1e-6;
     gstate0.rbm[(11, 1)] = -1e-5;
     gstate0.bm[[0, 0]] = 1e-5;
     gstate0.bm[[1, 0]] = 1e-5;
-    gstate0.bm[[2, 1]] = 1e-5;*/
+    gstate0.bm[[2, 1]] = 1e-5;
 
     let n_rbm = 84 as usize;
     let m1_n_mode = 27;
@@ -370,7 +370,7 @@ fn main() {
     let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
     term.move_cursor_down(3).unwrap();
     term.write_line(&format!("{:=>60}", "",)).unwrap();
-    let n = (1. * 60. / sampling).ceil() as u64;
+    let n = (15. * 60. / sampling).ceil() as u64;
     let now = Instant::now();
     for _k in 0..n {
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
