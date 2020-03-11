@@ -666,6 +666,7 @@ mod tests {
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
         println!("WFE RMS: {:?}nm",wfe_rms);
     }
+    #[test]
     fn ceo_load_atmosphere() {
         let mut gmt = Gmt::new(0, None);
         gmt.build();
@@ -676,19 +677,16 @@ mod tests {
         let mut atm = Atmosphere::new();
         atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json")
             .unwrap();
-        let mut wfe_rms = (0..30)
+        let n = 10;
+        let mut wfe_rms = (0..n)
             .into_iter()
             .map(|i| {
                 atm.secs = i as f64;
-                src.through(&mut gmt).xpupil();
-                atm.propagate(&mut src);
+                src.through(&mut gmt).xpupil().through(&mut atm);
                 src.wfe_rms_10e(-9)[0]
             })
             .collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!(
-            "WFE RMS: [{:.0},{:.0},{:.0}]nm",
-            wfe_rms[0], wfe_rms[29], wfe_rms[15]
-        );
+        println!("WFE RMS: {:?}nm",wfe_rms);
     }
 }

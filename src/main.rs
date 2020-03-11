@@ -113,7 +113,7 @@ fn main() {
     let probe_ids = (field.p2 as i32, field.p3 as i32, field.p4 as i32);
     let probe_sh48_gs_mag = (field.v2, field.v3, field.v4);
 
-    let sampling = 30.0;
+    let sampling = 30.0f64;
 
     let term = Term::buffered_stdout();
 
@@ -138,20 +138,25 @@ fn main() {
     let h_48 = thread::spawn(move || {
         let mut sh48_0 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
         sh48_0.build(8, Some(24), None, probe_sh48_gs_mag.0);
-        //sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+//        sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
 
         let mut sh48_1 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
         sh48_1.build(8, Some(24), None, probe_sh48_gs_mag.1);
-        //sh48_1.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+//        sh48_1.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
 
         let mut sh48_2 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
         sh48_2.build(8, Some(24), None, probe_sh48_gs_mag.2);
-        //sh48_2.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin");
+//        sh48_2.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
+
+        let mut atm = ceo::Atmosphere::new();
+        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
 
         let exposure_time = 30.0;
         let readout_noise_rms = 0.5;
         let n_background_photon = 0.0;
         let noise_factor = 1.4142;
+
+        let atm_sampling = 1e-2f64;
 
         loop {
             let gstate = match from_plant.recv() {
@@ -159,48 +164,62 @@ fn main() {
                 Err(_) => break,
             };
 
-            let (z0, a0, da0, p0) = sh48_0.update(sampling, &gstate).local();
+            sh48_0.gmt.update(&gstate);
+            sh48_1.gmt.update(&gstate);
+            sh48_2.gmt.update(&gstate);
+
+            let mut stopwatch = 0.0f64;
+            while stopwatch<sampling {
+                let (z0, a0, da0, p0) = sh48_0.update(atm_sampling, &mut atm).local();
+                let (z1, a1, da1, p1) = sh48_1.update(atm_sampling, &mut atm).local();
+                let (z2, a2, da2, p2) = sh48_2.update(atm_sampling, &mut atm).local();
+                stopwatch += atm_sampling;
+                atm.secs += atm_sampling;
+                sh48_term
+                    .write_line(&format!(
+                        "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2} [{:5.2}]",
+                        sh48_0.probe_id, z0, a0,da0,p0,
+                        sh48_1.probe_id, z1, a1,da1,p1,
+                        sh48_2.probe_id, z2, a2,da2,p2,
+                        stopwatch
+                    ))
+                    .unwrap();
+                sh48_term.flush().unwrap();
+                sh48_term.move_cursor_up(3).unwrap();
+            }
+            sh48_term.move_cursor_down(3).unwrap();
+
             sh48_0
                 .sensor
-/*                .readout(
+                .readout(
                     exposure_time,
                     readout_noise_rms,
                     n_background_photon,
                     noise_factor,
-                )*/
+                )
                 .process();
 
-            let (z1, a1, da1, p1) = sh48_1.update(sampling, &gstate).local();
             sh48_1
                 .sensor
-/*                .readout(
+                .readout(
                     exposure_time,
                     readout_noise_rms,
                     n_background_photon,
                     noise_factor,
-                )*/
+                )
                 .process();
 
-            let (z2, a2, da2, p2) = sh48_2.update(sampling, &gstate).local();
             sh48_2
                 .sensor
-/*                .readout(
+                .readout(
                     exposure_time,
                     readout_noise_rms,
                     n_background_photon,
                     noise_factor,
-                )*/
+                )
                 .process();
 
-            sh48_term
-                .write_line(&format!(
-                    "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}",
-                    sh48_0.probe_id, z0, a0,da0,p0,
-                        sh48_1.probe_id, z1, a1,da1,p1,
-                        sh48_2.probe_id, z2, a2,da2,p2
-                ))
-                .unwrap();
-            sh48_term.flush().unwrap();
+
 
             let mut q: Vec<f32> = Vec::with_capacity(
                 (sh48_0.sensor.n_centroids + sh48_1.sensor.n_centroids + sh48_2.sensor.n_centroids)
@@ -272,14 +291,14 @@ fn main() {
         rbm: Array2::<f32>::zeros((14, 6)),
         bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
     };
-    gstate0.rbm[(0, 0)] = 1e-5;
+/*    gstate0.rbm[(0, 0)] = 1e-5;
     gstate0.rbm[(8, 4)] = 1e-6;
     gstate0.rbm[(2, 3)] = -1e-6;
     gstate0.rbm[(11, 1)] = -1e-5;
     gstate0.bm[[0, 0]] = 1e-5;
     gstate0.bm[[1, 0]] = 1e-5;
     gstate0.bm[[2, 1]] = 1e-5;
-
+*/
     let n_rbm = 84 as usize;
     let m1_n_mode = 27;
     let n_side_lenslet = 48i32;
@@ -371,12 +390,15 @@ fn main() {
     term.move_cursor_down(3).unwrap();
     term.write_line(&format!("{:=>60}", "",)).unwrap();
     let n = (15. * 60. / sampling).ceil() as u64;
+    let mut cum_et = 0u64;
     let now = Instant::now();
-    for _k in 0..n {
+    for k in 0..n {
+        let now = Instant::now();
+
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
         term.write_line(&format!(
-            "  {} {:+>6.2} {:+>6.2} {:+>6.2}",
-            obs.datetime, alt, az, pa
+            "  {} {:+>6.2} {:+>6.2} {:+>6.2} ({}/{})",
+            obs.datetime, alt, az, pa, k+1,n
         ))
         .unwrap();
         term.write_line(&format!("{:->60}", "")).unwrap();
@@ -413,11 +435,19 @@ fn main() {
 
         obs.add_seconds(sampling);
         //thread::sleep(Duration::from_secs(2));
-        term.move_cursor_up(6).unwrap();
+
+        term.write_line(&format!("{:->60}", "")).unwrap();
+        let et = now.elapsed().as_secs();
+        cum_et += et;
+        let eta = (n-k-1)*cum_et/(k+1);
+        term.write_line(&format!(" Step: {}s ; Total: {}s ; ETA: {}s", et, cum_et, eta))
+            .unwrap();
+        term.write_line(&format!("{:=>60}", "",)).unwrap();
+        term.move_cursor_up(9).unwrap();
     }
 //    let et = now.elapsed().as_secs();
 //    println!("ET: {}s",et);
-
+/*
     term.move_cursor_down(6).unwrap();
     term.write_line(&format!("{:->60}", "")).unwrap();
     let et = now.elapsed().as_secs();
@@ -426,7 +456,7 @@ fn main() {
         .unwrap();
     term.write_line(&format!("{:=>60}", "",)).unwrap();
     term.flush().unwrap();
-
+*/
     drop(to_science);
     drop(to_sh48);
 

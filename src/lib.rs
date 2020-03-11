@@ -496,28 +496,16 @@ impl OpticalPathToDSH48 {
             .xpupil()
             .through(&mut self.sensor);
     }
-    pub fn update(&mut self, inc_secs: f64, gstate: &ceo::GmtState) -> &mut Self {
+    pub fn update(&mut self, inc_secs: f64,
+                  atm: &mut ceo::Atmosphere) -> &mut Self {
         self.obs.add_seconds(inc_secs);
-        self.gmt.update(gstate);
-
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
-        /*
         self.gs.rotate_rays(alt_az_pa.2);
-
-        let atm_sampling = 1e-2;
-        let n = (inc_secs / atm_sampling) as u32;
-        for k in 0..n {
-            self.gs
-                .through(&mut self.gmt)
-                .xpupil()
-                .through(&mut self.atm)
-                .through(&mut self.sensor);
-            self.atm.secs += atm_sampling;
-        }
-        */
+//        self.gmt.update(gstate);
         self.gs
             .through(&mut self.gmt)
             .xpupil()
+            .through(atm)
             .through(&mut self.sensor);
         self
     }

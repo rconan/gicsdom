@@ -26,7 +26,7 @@ fn ceo_atmosphere_get_screen(c: &mut Criterion) {
     let mut gmt = ceo::Gmt::new(0,None);
     gmt.build();
     let mut atm = ceo::Atmosphere::new();
-    atm.build(0.15,30.0,26.0,401,0.0,1.0,"/home/ubuntu/DATA/test.bin",1);
+    atm.build(0.15,30.0);
 
     let mut group = c.benchmark_group("CEO ATM");
     group.sample_size(10);
@@ -36,8 +36,7 @@ fn ceo_atmosphere_get_screen(c: &mut Criterion) {
         src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
         let fname = format!("n={}",n);
         group.bench_function(fname, |b| b.iter(|| {
-            src.through(&mut gmt);
-            atm.propagate(&mut src);
+            src.through(&mut gmt).xpupil().through(&mut atm);
         })
         );
     }
@@ -56,7 +55,7 @@ fn ceo_shack_hartmann(c: &mut Criterion) {
     let mut group = c.benchmark_group("CEO SH WFS");
     group.sample_size(10);
     group.bench_function("SH48", |b| b.iter(|| {
-        src.through(&mut gmt).through(&mut wfs);
+        src.through(&mut gmt).xpupil().through(&mut wfs);
     })
     );
 }
@@ -69,23 +68,13 @@ fn ceo_shack_hartmann_with_atmosphere(c: &mut Criterion) {
     let mut src = wfs.new_guide_stars();
     src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
     let mut atm = ceo::Atmosphere::new();
-    atm.build(            0.15,
-            30.0,
-            26.0,
-            1300,
-            20.0 * f32::consts::PI / 180. / 60.,
-            15.0,
-            "/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin",
-            80,
-    );
+    atm.build(0.15,30.0);
 
     let mut group = c.benchmark_group("CEO SH WFS ATM");
     group.sample_size(10);
     group.bench_function("SH48_ATM", |b| b.iter(|| {
         src.through(&mut gmt);
-        src.is_opd_to_phase = false;
         atm.propagate(&mut src);
-        src.is_opd_to_phase = true;
         src.through(&mut wfs);
     })
     );
@@ -99,24 +88,14 @@ fn ceo_shack_hartmann_with_atmosphere_integrated(c: &mut Criterion) {
     let mut src = wfs.new_guide_stars();
     src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
     let mut atm = ceo::Atmosphere::new();
-    atm.build(            0.15,
-            30.0,
-            26.0,
-            1300,
-            20.0 * f32::consts::PI / 180. / 60.,
-            15.0,
-            "/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.bin",
-            80,
-    );
+    atm.build(0.15,30.0,);
 
     let mut group = c.benchmark_group("CEO SH WFS ATM INT.");
     group.sample_size(10);
 
     group.bench_function("SH48_ATM", |b| b.iter(|| {
         src.through(&mut gmt);
-        src.is_opd_to_phase = false;
         atm.propagate(&mut src);
-        src.is_opd_to_phase = true;
         src.through(&mut wfs);
     })
     );
@@ -130,9 +109,7 @@ fn ceo_shack_hartmann_with_atmosphere_integrated(c: &mut Criterion) {
         let inc_secs = 30.0;
         let n = (inc_secs/atm_sampling) as u32;
         for k in 0..n {
-            src.is_opd_to_phase = false;
             atm.propagate(&mut src);
-            src.is_opd_to_phase = true;
             src.through(&mut wfs);
             atm.secs += atm_sampling;
         }
@@ -142,5 +119,5 @@ fn ceo_shack_hartmann_with_atmosphere_integrated(c: &mut Criterion) {
 
 
 criterion_group!(benches,
-                 ceo_shack_hartmann_with_atmosphere_integrated);
+                 ceo_atmosphere_get_screen);
 criterion_main!(benches);
