@@ -42,9 +42,9 @@ impl<S, C> Session<S, C> {
     fn dual_channel(&self) -> (Sender<C>, Receiver<S>) {
         (self.client.send.clone(), self.server.recv.clone())
     }
-    /*fn main_channel(&self) -> (Sender<S>, Receiver<C>) {
+    fn main_channel(&self) -> (Sender<S>, Receiver<C>) {
         (self.server.send.clone(), self.client.recv.clone())
-    }*/
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,7 +73,11 @@ struct Field {
 }
 
 fn main() {
-    let chat_plant_sh48: Session<GmtState, Vec<f32>> = Session::new(bounded(0), bounded(0));
+    let chat_plant_sh48: [Session<GmtState, Vec<f32>>; 3] = [
+        Session::new(bounded(0), bounded(0)),
+        Session::new(bounded(0), bounded(0)),
+        Session::new(bounded(0), bounded(0)),
+    ];
     let chat_plant_science: Session<GmtState, &str> = Session::new(bounded(0), unbounded());
 
     let mut field = Field {
@@ -110,32 +114,90 @@ fn main() {
         (field.ra3, field.dec3),
         (field.ra4, field.dec4),
     ];
-    let probe_ids = (field.p2 as i32, field.p3 as i32, field.p4 as i32);
-    let probe_sh48_gs_mag = (field.v2, field.v3, field.v4);
+    let probe_ids = [field.p2 as i32, field.p3 as i32, field.p4 as i32];
+    let probe_sh48_gs_mag = [field.v2, field.v3, field.v4];
 
     let sampling = 30.0f64;
 
     let term = Term::buffered_stdout();
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    let sh48_datetime = datetime.clone();
-/*
-    let mut sh48 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
-    sh48.build(8, Some(24), None, probe_sh48_gs_mag.0);
-    sh48.build_atmosphere(
-        0.15,
-        30.0,
-        26.0,
-        401,
-        20.0 * f32::consts::PI / 180. / 60.,
-        15.0,
-        "/home/ubuntu/DATA/gmtAtmosphereL025_2.bin",
-        4,
-    );
+    let mut h_48 = vec![];
+    for (i, chat_plant_sh48_) in chat_plant_sh48.iter().enumerate() {
+        let sh48_datetime = datetime.clone();
+        let sh48_term = term.clone();
+        let (to_plant, from_plant) = chat_plant_sh48_.dual_channel();
+        h_48.push(thread::spawn(move || {
+            ceo::set_gpu(i as i32+1);
+
+            let mut atm = ceo::Atmosphere::new();
+            atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
+            let atm_sampling = 1e-2f64;
+
+            let exposure_time = 30.0;
+            let readout_noise_rms = 0.5;
+            let n_background_photon = 0.0;
+            let noise_factor = 1.4142;
+
+            let mut sh48 =
+                OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[i], probe_ids[i]);
+            sh48.build(8, Some(24), None, probe_sh48_gs_mag[i]);
+
+/*            sh48_term
+                .write_line(&format!(
+                    "SH48 #{}",
+                    sh48.probe_id
+                ))
+                .unwrap();
 */
+            loop {
+                let gstate = match from_plant.recv() {
+                    Ok(state) => state,
+                    Err(_) => break,
+                };
+                sh48.gmt.update(&gstate);
+
+                let mut stopwatch = 0.0f64;
+                while stopwatch<sampling {
+                    let (z, a, da, p) = sh48.update(atm_sampling, &mut atm).local();
+                    stopwatch += atm_sampling;
+                    atm.secs += atm_sampling;
+  
+                    sh48_term.move_cursor_to(0,46+i).unwrap();
+                    sh48_term
+                        .write_line(&format!(
+                            "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2} [{:5.2}]",
+                            sh48.probe_id, z, a,da,p,
+                            stopwatch
+                        ))
+                        .unwrap();
+                    sh48_term.flush().unwrap();
+  
+                }
+                //sh48_term.move_cursor_down(1).unwrap();
+
+                sh48.sensor
+                    .readout(
+                        exposure_time,
+                        readout_noise_rms,
+                        n_background_photon,
+                        noise_factor,
+                    )
+                    .process();
+
+                to_plant.send(sh48.sensor.centroids.clone()).unwrap();
+            }
+            drop(sh48);
+        }));
+    }
+/*
+        let sh48_datetime = datetime.clone();
     let sh48_term = term.clone();
     let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
     let h_48 = thread::spawn(move || {
+
+        ceo::set_gpu(1);
+
         let mut sh48_0 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
         sh48_0.build(8, Some(24), None, probe_sh48_gs_mag.0);
 //        sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
@@ -231,7 +293,8 @@ fn main() {
             to_plant.send(q).unwrap();
         }
     });
-    // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+         */
+        // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let (_to_plant, from_plant) = chat_plant_science.dual_channel();
@@ -272,6 +335,7 @@ fn main() {
             src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
             onaxis_pssn = src_pssn.reset(&mut src);
 
+            sci_term.move_cursor_to(0,45).unwrap();
             sci_term
                 .write_line(&format!(
                     "WFE RMS: {:.1} nm; PSSn: {:>6.4}",
@@ -310,7 +374,6 @@ fn main() {
     let mut bm = Array2::<f32>::zeros((7, m1_n_mode as usize));
 
     let to_science = chat_plant_science.server.send; // plant_to_science.0;
-    let to_sh48 = chat_plant_sh48.server.send; // plant_to_sh48.0;
     let mut gstate = GmtState {
         rbm: Array2::<f32>::zeros((14, 6)),
         bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
@@ -381,13 +444,12 @@ fn main() {
     //println!("{:?}", rp.recv());
     //let __m = rp.recv().unwrap();
     // ---------------------------------------------------
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(20));
 
     let mut obs = Observation::new(&datetime, -29.04, -70.682);
     let pointing = SkyCoordinates::new(telescope.0, telescope.1);
 
-    let from_sh48 = chat_plant_sh48.client.recv; // sh48_plan_chat.1;
-    term.move_cursor_down(3).unwrap();
+    term.move_cursor_to(0,42).unwrap();
     term.write_line(&format!("{:=>60}", "",)).unwrap();
     let n = (15. * 60. / sampling).ceil() as u64;
     let mut cum_et = 0u64;
@@ -396,6 +458,7 @@ fn main() {
         let now = Instant::now();
 
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
+        term.move_cursor_to(0,43).unwrap();
         term.write_line(&format!(
             "  {} {:+>6.2} {:+>6.2} {:+>6.2} ({}/{})",
             obs.datetime, alt, az, pa, k+1,n
@@ -405,13 +468,21 @@ fn main() {
         term.flush().unwrap();
 
         to_science.send(gstate.clone()).unwrap();
-        to_sh48.send(gstate.clone()).unwrap();
 
-        let centroids = match from_sh48.recv() {
-            Ok(state) => state,
-            Err(_) => break,
-        };
-        let slopes = Array::from_shape_vec((n_c, 1), centroids).unwrap();
+        let mut q: Vec<f32> = Vec::with_capacity((n_c) as usize);
+
+        for chat_plant_sh48_ in chat_plant_sh48.iter() {
+            let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
+
+            to_sh48.send(gstate.clone()).unwrap();
+
+            let mut centroids = match from_sh48.recv() {
+                Ok(state) => state,
+                Err(_) => break,
+            };
+            q.append(&mut centroids);
+        }
+        let slopes = Array::from_shape_vec((n_c, 1), q).unwrap();
         _c_e = __m.dot(&slopes);
         let q = gain
             * _c_e
@@ -436,6 +507,7 @@ fn main() {
         obs.add_seconds(sampling);
         //thread::sleep(Duration::from_secs(2));
 
+        term.move_cursor_to(0,49).unwrap();
         term.write_line(&format!("{:->60}", "")).unwrap();
         let et = now.elapsed().as_secs();
         cum_et += et;
@@ -443,7 +515,6 @@ fn main() {
         term.write_line(&format!(" Step: {}s ; Total: {}s ; ETA: {}s", et, cum_et, eta))
             .unwrap();
         term.write_line(&format!("{:=>60}", "",)).unwrap();
-        term.move_cursor_up(9).unwrap();
     }
 //    let et = now.elapsed().as_secs();
 //    println!("ET: {}s",et);
@@ -458,8 +529,17 @@ fn main() {
     term.flush().unwrap();
 */
     drop(to_science);
-    drop(to_sh48);
+    for chat_plant_sh48_ in &chat_plant_sh48 {
+        let (to_plant, from_plant) = chat_plant_sh48_.dual_channel();
+        drop(from_plant);
+        drop(to_plant);
+        let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
+        drop(to_sh48);
+            drop(from_sh48);
+    }
+    for h in h_48 {
+        h.join().unwrap();
+    }
 
-    h_48.join().unwrap();
     h_science.join().unwrap();
 }

@@ -8,6 +8,12 @@ use std::fs::File;
 use std::io::BufReader;
 use std::{f32, mem};
 
+pub fn set_gpu(id: i32) {
+    unsafe {
+        set_device(id);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GmtState {
     pub rbm: Array2<f32>,

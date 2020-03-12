@@ -10,6 +10,7 @@ fn main() {
         .clang_arg("-v")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .whitelist_type("mask")
+        .whitelist_function("set_device")
         .whitelist_function("dev2host")
         .whitelist_type("source")
         .whitelist_type("pssn")

@@ -535,6 +535,10 @@ pub struct cublasContext {
     _unused: [u8; 0],
 }
 pub type cublasHandle_t = *mut cublasContext;
+extern "C" {
+    #[link_name = "\u{1}_Z10set_devicei"]
+    pub fn set_device(id: ::std::os::raw::c_int);
+}
 pub type rtd = f64;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
