@@ -654,7 +654,7 @@ mod tests {
         src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
         let mut atm = Atmosphere::new();
         atm.build(0.15, 25.);
-        let n = 3;
+        let n = 10;
         let mut wfe_rms = (0..n)
             .into_iter()
             .map(|i| {
@@ -666,7 +666,6 @@ mod tests {
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
         println!("WFE RMS: {:?}nm",wfe_rms);
     }
-    /*
     fn ceo_load_atmosphere() {
         let mut gmt = Gmt::new(0, None);
         gmt.build();
@@ -691,36 +690,5 @@ mod tests {
             "WFE RMS: [{:.0},{:.0},{:.0}]nm",
             wfe_rms[0], wfe_rms[29], wfe_rms[15]
         );
-     */
-    #[test]
-    fn ceo_geometric_shackhartmann() {
-        let mut gmt = Gmt::new(0, None);
-        gmt.build();
-        let mut wfs = ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
-        wfs.build(8, Some(24), None);
-        let mut src = wfs.new_guide_stars();
-        src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
-        src.through(&mut gmt).xpupil();
-        wfs.calibrate(&mut src,0.9);
-
-        wfs.reset();
-        for i in 1..=7 {
-            gmt.set_m1_segment_state(i, &vec![0.,0.,0.], &vec![1e-6,0.,0.]);
-        }
-        src.through(&mut gmt).xpupil().through(&mut wfs);
-        wfs.process();
-
-        let mut s = wfs.centroids.clone();
-        s.sort_by(|a,b|a.partial_cmp(b).unwrap());
-        let n = s.len();
-        let s_med = match n {
-            even if even % 2 == 0 => {
-                let fst_med = s[(even / 2) - 1];
-                let snd_med = s[even / 2];
-                (fst_med + snd_med) / 2.0
-            },
-            odd => s[odd / 2]
-        };
-        println!("WFS centroids: min={},max={},median={}",s[0],s[n-1],s_med*1e6);
     }
 }
