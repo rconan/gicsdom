@@ -49,7 +49,7 @@ impl<S, C> Session<S, C> {
 
 #[derive(Debug, Deserialize)]
 //#[serde(rename_all = "PascalCase")]
-struct Field {
+struct StarField {
     index: u32,
     datetime: String,
     ra0: f64,
@@ -71,6 +71,11 @@ struct Field {
     v4: f64,
     p4: u8,
 }
+#[derive(Debug, Deserialize)]
+struct ScienceField {
+    zenith: f64,
+    azimuth: f64,
+}
 
 fn main() {
     let chat_plant_sh48: [Session<GmtState, Vec<f32>>; 3] = [
@@ -80,7 +85,7 @@ fn main() {
     ];
     let chat_plant_science: Session<GmtState, &str> = Session::new(bounded(0), unbounded());
 
-    let mut field = Field {
+    let mut field = StarField {
         index: 0,
         datetime: String::new(),
         ra0: 0.0,
@@ -132,7 +137,7 @@ fn main() {
 
             let mut atm = ceo::Atmosphere::new();
             atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
-            let atm_sampling = 1e-2f64;
+            let atm_sampling = 1e-1f64;
 
             let exposure_time = 30.0;
             let readout_noise_rms = 0.5;
@@ -143,13 +148,6 @@ fn main() {
                 OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[i], probe_ids[i]);
             sh48.build(8, Some(24), None, probe_sh48_gs_mag[i]);
 
-/*            sh48_term
-                .write_line(&format!(
-                    "SH48 #{}",
-                    sh48.probe_id
-                ))
-                .unwrap();
-*/
             loop {
                 let gstate = match from_plant.recv() {
                     Ok(state) => state,
@@ -174,7 +172,6 @@ fn main() {
                     sh48_term.flush().unwrap();
   
                 }
-                //sh48_term.move_cursor_down(1).unwrap();
 
                 sh48.sensor
                     .readout(
@@ -190,113 +187,22 @@ fn main() {
             drop(sh48);
         }));
     }
-/*
-        let sh48_datetime = datetime.clone();
-    let sh48_term = term.clone();
-    let (to_plant, from_plant) = chat_plant_sh48.dual_channel();
-    let h_48 = thread::spawn(move || {
-
-        ceo::set_gpu(1);
-
-        let mut sh48_0 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[0], probe_ids.0);
-        sh48_0.build(8, Some(24), None, probe_sh48_gs_mag.0);
-//        sh48_0.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
-
-        let mut sh48_1 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[1], probe_ids.1);
-        sh48_1.build(8, Some(24), None, probe_sh48_gs_mag.1);
-//        sh48_1.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
-
-        let mut sh48_2 = OpticalPathToDSH48::new(&sh48_datetime, telescope, probes[2], probe_ids.2);
-        sh48_2.build(8, Some(24), None, probe_sh48_gs_mag.2);
-//        sh48_2.build_atmosphere("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json");
-
-        let mut atm = ceo::Atmosphere::new();
-        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
-
-        let exposure_time = 30.0;
-        let readout_noise_rms = 0.5;
-        let n_background_photon = 0.0;
-        let noise_factor = 1.4142;
-
-        let atm_sampling = 1e-2f64;
-
-        loop {
-            let gstate = match from_plant.recv() {
-                Ok(state) => state,
-                Err(_) => break,
-            };
-
-            sh48_0.gmt.update(&gstate);
-            sh48_1.gmt.update(&gstate);
-            sh48_2.gmt.update(&gstate);
-
-            let mut stopwatch = 0.0f64;
-            while stopwatch<sampling {
-                let (z0, a0, da0, p0) = sh48_0.update(atm_sampling, &mut atm).local();
-                let (z1, a1, da1, p1) = sh48_1.update(atm_sampling, &mut atm).local();
-                let (z2, a2, da2, p2) = sh48_2.update(atm_sampling, &mut atm).local();
-                stopwatch += atm_sampling;
-                atm.secs += atm_sampling;
-                sh48_term
-                    .write_line(&format!(
-                        "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2}\nSH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2} [{:5.2}]",
-                        sh48_0.probe_id, z0, a0,da0,p0,
-                        sh48_1.probe_id, z1, a1,da1,p1,
-                        sh48_2.probe_id, z2, a2,da2,p2,
-                        stopwatch
-                    ))
-                    .unwrap();
-                sh48_term.flush().unwrap();
-                sh48_term.move_cursor_up(3).unwrap();
-            }
-            sh48_term.move_cursor_down(3).unwrap();
-
-            sh48_0
-                .sensor
-                .readout(
-                    exposure_time,
-                    readout_noise_rms,
-                    n_background_photon,
-                    noise_factor,
-                )
-                .process();
-
-            sh48_1
-                .sensor
-                .readout(
-                    exposure_time,
-                    readout_noise_rms,
-                    n_background_photon,
-                    noise_factor,
-                )
-                .process();
-
-            sh48_2
-                .sensor
-                .readout(
-                    exposure_time,
-                    readout_noise_rms,
-                    n_background_photon,
-                    noise_factor,
-                )
-                .process();
-
-
-
-            let mut q: Vec<f32> = Vec::with_capacity(
-                (sh48_0.sensor.n_centroids + sh48_1.sensor.n_centroids + sh48_2.sensor.n_centroids)
-                    as usize,
-            );
-            q.append(&mut sh48_0.sensor.centroids.clone());
-            q.append(&mut sh48_1.sensor.centroids.clone());
-            q.append(&mut sh48_2.sensor.centroids.clone());
-            to_plant.send(q).unwrap();
-        }
-    });
-         */
         // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    let mut science_field = ScienceField {
+        zenith: 0.0,
+        azimuth: 0.0,
+    };
+    let mut zen = vec![];
+    let mut azi = vec![];
+    let mut rdr = Reader::from_path("KPP_field_sampler.csv").unwrap();
+    for result in rdr.deserialize() {
+        science_field = result.unwrap();
+        zen.push((science_field.zenith.to_radians()/60.) as f32);
+        azi.push(science_field.azimuth.to_radians() as f32);
+    }
+
     let (_to_plant, from_plant) = chat_plant_science.dual_channel();
     let sci_term = term.clone();
     let h_science = thread::spawn(move || {
@@ -309,20 +215,15 @@ fn main() {
         gmt.build();
 
         // Science initialization
-        let mut src = ceo::Source::new(1, pupil_size, pupil_sampling);
-        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let n_src = zen.len();
+        let mut src = ceo::Source::new(n_src as i32, pupil_size, pupil_sampling);
+        src.build("V", zen, azi, vec![0.0;n_src]);
 
         let mut src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
-        let mut onaxis_pssn: f32;
+        let mut onaxis_pssn: f32 = 0.0;
+        let mut pssn_spatial_uniformity: f32 = 0.0;
         let mut src_pssn = ceo::PSSn::new(15e-2, 25.0, 0.0);
         src_pssn.build(&mut src);
-        /*
-        println!(
-            "WFE RMS: {:.1} nm; PSSn: {:>6.4}",
-            src_wfe_rms,
-            src_pssn.reset(&mut src)
-        );
-        */
 
         loop {
             let gstate = match from_plant.recv() {
@@ -333,13 +234,15 @@ fn main() {
             gmt.update(&gstate);
 
             src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
-            onaxis_pssn = src_pssn.reset(&mut src);
+            src_pssn.peek(&mut src);
+            onaxis_pssn = src_pssn.estimates[0];
+            pssn_spatial_uniformity = src_pssn.spatial_uniformity();
 
             sci_term.move_cursor_to(0,45).unwrap();
             sci_term
                 .write_line(&format!(
-                    "WFE RMS: {:.1} nm; PSSn: {:>6.4}",
-                    src_wfe_rms, onaxis_pssn
+                    "WFE RMS: {:.1} nm; PSSn: {:>6.4} {:>6.4}%",
+                    src_wfe_rms, onaxis_pssn, pssn_spatial_uniformity
                 ))
                 .unwrap();
             sci_term.flush().unwrap();
@@ -448,9 +351,10 @@ fn main() {
 
     let mut obs = Observation::new(&datetime, -29.04, -70.682);
     let pointing = SkyCoordinates::new(telescope.0, telescope.1);
+    let (alt0, az0, pa0) = pointing.alt_az_parallactic_deg(&obs);
 
     term.move_cursor_to(0,42).unwrap();
-    term.write_line(&format!("{:=>60}", "",)).unwrap();
+    term.write_line(&format!("{:=>75}", "",)).unwrap();
     let n = (15. * 60. / sampling).ceil() as u64;
     let mut cum_et = 0u64;
     let now = Instant::now();
@@ -460,21 +364,24 @@ fn main() {
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
         term.move_cursor_to(0,43).unwrap();
         term.write_line(&format!(
-            "  {} {:+>6.2} {:+>6.2} {:+>6.2} ({}/{})",
-            obs.datetime, alt, az, pa, k+1,n
+            "  {} ({:+>6.2},{:+>5.2}) ({:+>6.2},{:+>5.2}) ({:+>6.2},{:+>5.2}) [{}/{}]",
+            obs.datetime, alt, alt-alt0, az, az-az0, pa, pa-pa0, k+1,n
         ))
         .unwrap();
-        term.write_line(&format!("{:->60}", "")).unwrap();
+        term.write_line(&format!("{:->75}", "")).unwrap();
         term.flush().unwrap();
 
         to_science.send(gstate.clone()).unwrap();
 
         let mut q: Vec<f32> = Vec::with_capacity((n_c) as usize);
 
+
         for chat_plant_sh48_ in chat_plant_sh48.iter() {
             let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
-
             to_sh48.send(gstate.clone()).unwrap();
+        }
+        for chat_plant_sh48_ in chat_plant_sh48.iter() {
+            let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
 
             let mut centroids = match from_sh48.recv() {
                 Ok(state) => state,
@@ -508,13 +415,13 @@ fn main() {
         //thread::sleep(Duration::from_secs(2));
 
         term.move_cursor_to(0,49).unwrap();
-        term.write_line(&format!("{:->60}", "")).unwrap();
+        term.write_line(&format!("{:->75}", "")).unwrap();
         let et = now.elapsed().as_secs();
         cum_et += et;
         let eta = (n-k-1)*cum_et/(k+1);
-        term.write_line(&format!(" Step: {}s ; Total: {}s ; ETA: {}s", et, cum_et, eta))
+        term.write_line(&format!(" Step: {:>4}s ; Total: {:>5}s ; ETA: {:>5}s", et, cum_et, eta))
             .unwrap();
-        term.write_line(&format!("{:=>60}", "",)).unwrap();
+        term.write_line(&format!("{:=>75}", "",)).unwrap();
     }
 //    let et = now.elapsed().as_secs();
 //    println!("ET: {}s",et);

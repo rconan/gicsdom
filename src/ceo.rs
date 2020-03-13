@@ -2,6 +2,7 @@ use super::bindings::*;
 
 use ndarray::Array2;
 use serde::Deserialize;
+use std::cmp::Ordering;
 use std::error::Error;
 use std::ffi::CString;
 use std::fs::File;
@@ -310,6 +311,7 @@ pub struct PSSn {
     r_not: f64,
     l_not: f64,
     zenith: f64,
+    pub estimates: Vec<f32>,
 }
 impl PSSn {
     pub fn new(r_not: f64, l_not: f64, zenith: f64) -> PSSn {
@@ -318,6 +320,7 @@ impl PSSn {
             r_not,
             l_not,
             zenith,
+            estimates: vec![],
         }
     }
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
@@ -325,29 +328,31 @@ impl PSSn {
             self._c_
                 .setup(&mut src._c_, self.r_not as f32, self.l_not as f32);
         }
+        self.estimates = vec![0.0; self._c_.N as usize];
         self
     }
-    pub fn reset(&mut self, src: &mut Source) -> f32 {
-        let pssn_val: f32;
-        unsafe {
-            self._c_.otf(&mut src._c_);
-            pssn_val = self._c_.eval();
-            self._c_.N_O = 0;
-        }
-        pssn_val
+    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
+        self.peek(src);
+        self._c_.N_O = 0;
+        self
     }
-    pub fn peek(&mut self, src: &mut Source) -> f32 {
-        let pssn_val: f32;
+    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             self._c_.otf(&mut src._c_);
-            pssn_val = self._c_.eval();
+            self._c_.eval1(self.estimates.as_mut_ptr())
         }
-        pssn_val
+        self
     }
-    pub fn sum(&mut self, src: &mut Source) {
+    pub fn accumulate(&mut self, src: &mut Source) {
         unsafe {
             self._c_.otf(&mut src._c_);
         }
+    }
+    pub fn spatial_uniformity(&mut self) -> f32 {
+        let mut pssn_values = self.estimates.clone();
+        pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        100.*((pssn_values.len() as f32) * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
+            / pssn_values.iter().sum::<f32>()
     }
 }
 pub struct Geometric_ShackHartmann {
@@ -670,7 +675,7 @@ mod tests {
             })
             .collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: {:?}nm",wfe_rms);
+        println!("WFE RMS: {:?}nm", wfe_rms);
     }
     #[test]
     fn ceo_load_atmosphere() {
@@ -693,6 +698,6 @@ mod tests {
             })
             .collect::<Vec<f32>>();
         wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: {:?}nm",wfe_rms);
+        println!("WFE RMS: {:?}nm", wfe_rms);
     }
 }
