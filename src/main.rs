@@ -78,6 +78,9 @@ struct ScienceField {
 }
 
 fn main() {
+    let sampling = 30.0f64;
+    let term = Term::buffered_stdout();
+
     let chat_plant_sh48: [Session<GmtState, Vec<f32>>; 3] = [
         Session::new(bounded(0), bounded(0)),
         Session::new(bounded(0), bounded(0)),
@@ -85,6 +88,7 @@ fn main() {
     ];
     let chat_plant_science: Session<GmtState, &str> = Session::new(bounded(0), unbounded());
 
+    // STARFIELD <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let mut field = StarField {
         index: 0,
         datetime: String::new(),
@@ -121,22 +125,33 @@ fn main() {
     ];
     let probe_ids = [field.p2 as i32, field.p3 as i32, field.p4 as i32];
     let probe_sh48_gs_mag = [field.v2, field.v3, field.v4];
-
-    let sampling = 30.0f64;
-
-    let term = Term::buffered_stdout();
+    // STARFIELD <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    let mut rdr = Reader::from_path("r0_15mn.csv").unwrap();
+    let mut r0_15mn_time_series: Vec<f64> = vec![];
+    for result in rdr.deserialize() {
+        r0_15mn_time_series = result.unwrap();
+        println!("{:?}", r0_15mn_time_series);
+        if r0_15mn_time_series[0] as u32 == 0 {
+            break;
+        }
+    }
+    r0_15mn_time_series.remove(0);
+
     let mut h_48 = vec![];
     for (i, chat_plant_sh48_) in chat_plant_sh48.iter().enumerate() {
         let sh48_datetime = datetime.clone();
         let sh48_term = term.clone();
+        let sh48_r0_15mn_time_series = r0_15mn_time_series.clone();
         let (to_plant, from_plant) = chat_plant_sh48_.dual_channel();
         h_48.push(thread::spawn(move || {
-            ceo::set_gpu(i as i32+1);
+            ceo::set_gpu(i as i32 + 1);
 
             let mut atm = ceo::Atmosphere::new();
-            atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json").unwrap();
+            let mut atmosphere_file =
+                format!("{}_{}", "/home/ubuntu/DATA/gmtAtmosphereL025_1579821046", i);
+            atm.load_from_json(&atmosphere_file).unwrap();
             let atm_sampling = 1e-1f64;
 
             let exposure_time = 30.0;
@@ -156,21 +171,30 @@ fn main() {
                 sh48.gmt.update(&gstate);
 
                 let mut stopwatch = 0.0f64;
-                while stopwatch<sampling {
-                    let (z, a, da, p) = sh48.update(atm_sampling, &mut atm).local();
+                while stopwatch < sampling {
+
+                    let r0_mn = atm.secs / 60.;
+                    let r0_mn_floor = r0_mn.floor();
+                    let i_r0 = r0_mn_floor as usize;
+                    let r0_mn_rem = r0_mn - r0_mn_floor;
+                    let cz35 = sh48.za().cos().powf(0.6);
+                    let r0 = cz35
+                        * (r0_mn_rem * sh48_r0_15mn_time_series[i_r0 + 1]
+                            + (1. - r0_mn_rem) * sh48_r0_15mn_time_series[i_r0]);
+                    atm.set_r0(r0);
+                    let (z, a, da, p) = sh48.update(&mut atm).local();
+                    sh48.add_secs(atm_sampling);
                     stopwatch += atm_sampling;
                     atm.secs += atm_sampling;
-  
-                    sh48_term.move_cursor_to(0,46+i).unwrap();
+
+                    sh48_term.move_cursor_to(0, 46 + i).unwrap();
                     sh48_term
                         .write_line(&format!(
-                            "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2} [{:5.2}]",
-                            sh48.probe_id, z, a,da,p,
-                            stopwatch
+                            "SH48 #{}  {:>4.2}' {:>+7.2} {:>+6.2} {:>+6.2} [{:5.2}] [{:5.3}]",
+                            sh48.probe_id, z, a, da, p, stopwatch, r0
                         ))
                         .unwrap();
                     sh48_term.flush().unwrap();
-  
                 }
 
                 sh48.sensor
@@ -187,7 +211,7 @@ fn main() {
             drop(sh48);
         }));
     }
-        // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    // SH48 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let mut science_field = ScienceField {
@@ -199,7 +223,7 @@ fn main() {
     let mut rdr = Reader::from_path("KPP_field_sampler.csv").unwrap();
     for result in rdr.deserialize() {
         science_field = result.unwrap();
-        zen.push((science_field.zenith.to_radians()/60.) as f32);
+        zen.push((science_field.zenith.to_radians() / 60.) as f32);
         azi.push(science_field.azimuth.to_radians() as f32);
     }
 
@@ -217,7 +241,7 @@ fn main() {
         // Science initialization
         let n_src = zen.len();
         let mut src = ceo::Source::new(n_src as i32, pupil_size, pupil_sampling);
-        src.build("V", zen, azi, vec![0.0;n_src]);
+        src.build("V", zen, azi, vec![0.0; n_src]);
 
         let mut src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
         let mut onaxis_pssn: f32 = 0.0;
@@ -238,7 +262,7 @@ fn main() {
             onaxis_pssn = src_pssn.estimates[0];
             pssn_spatial_uniformity = src_pssn.spatial_uniformity();
 
-            sci_term.move_cursor_to(0,45).unwrap();
+            sci_term.move_cursor_to(0, 45).unwrap();
             sci_term
                 .write_line(&format!(
                     "WFE RMS: {:.1} nm; PSSn: {:>6.4} {:>6.4}%",
@@ -258,14 +282,14 @@ fn main() {
         rbm: Array2::<f32>::zeros((14, 6)),
         bm: Array2::<f32>::zeros((7, m1_n_mode as usize)),
     };
-/*    gstate0.rbm[(0, 0)] = 1e-5;
-    gstate0.rbm[(8, 4)] = 1e-6;
-    gstate0.rbm[(2, 3)] = -1e-6;
-    gstate0.rbm[(11, 1)] = -1e-5;
-    gstate0.bm[[0, 0]] = 1e-5;
-    gstate0.bm[[1, 0]] = 1e-5;
-    gstate0.bm[[2, 1]] = 1e-5;
-*/
+    /*    gstate0.rbm[(0, 0)] = 1e-5;
+        gstate0.rbm[(8, 4)] = 1e-6;
+        gstate0.rbm[(2, 3)] = -1e-6;
+        gstate0.rbm[(11, 1)] = -1e-5;
+        gstate0.bm[[0, 0]] = 1e-5;
+        gstate0.bm[[1, 0]] = 1e-5;
+        gstate0.bm[[2, 1]] = 1e-5;
+    */
     let n_rbm = 84 as usize;
     let m1_n_mode = 27;
     let n_side_lenslet = 48i32;
@@ -292,7 +316,6 @@ fn main() {
     //let mut sh48 = OpticalPathToSH48::new(3);
     //let mut _d = sh48.build(vec![z, z, z], vec![0.0 * a, a, 2.0 * a]).calibrate(None);
 
-
     let f = File::open("recon.npz").unwrap_or_else(|error| {
         if error.kind() == ErrorKind::NotFound {
             File::create("recon.npz").unwrap_or_else(|error| {
@@ -306,41 +329,41 @@ fn main() {
     let mut npz = NpzReader::new(f).unwrap();
     let __m: Array2<f32> = npz.by_name("m").unwrap();
 
-/*
-    print!("SH48 calibration");
-    let now = Instant::now();
-    let mut sh48_0 = OpticalPathToSH48::new(&datetime, telescope, probes[0], 0);
-    let _d_0 = sh48_0.build(probe_sh48_gs_mag.0).calibrate(None);
-    let mut sh48_1 = OpticalPathToSH48::new(&datetime, telescope, probes[1], 1);
-    let _d_1 = sh48_1.build(probe_sh48_gs_mag.1).calibrate(None);
-    let mut sh48_2 = OpticalPathToSH48::new(&datetime, telescope, probes[2], 2);
-    let _d_2 = sh48_2.build(probe_sh48_gs_mag.2).calibrate(None);
-    let mut _d = stack(Axis(0), &[_d_0.view(), _d_1.view(), _d_2.view()]).unwrap();
-    println!(" in {}ms", now.elapsed().as_millis());
+    /*
+        print!("SH48 calibration");
+        let now = Instant::now();
+        let mut sh48_0 = OpticalPathToSH48::new(&datetime, telescope, probes[0], 0);
+        let _d_0 = sh48_0.build(probe_sh48_gs_mag.0).calibrate(None);
+        let mut sh48_1 = OpticalPathToSH48::new(&datetime, telescope, probes[1], 1);
+        let _d_1 = sh48_1.build(probe_sh48_gs_mag.1).calibrate(None);
+        let mut sh48_2 = OpticalPathToSH48::new(&datetime, telescope, probes[2], 2);
+        let _d_2 = sh48_2.build(probe_sh48_gs_mag.2).calibrate(None);
+        let mut _d = stack(Axis(0), &[_d_0.view(), _d_1.view(), _d_2.view()]).unwrap();
+        println!(" in {}ms", now.elapsed().as_millis());
 
-    print!("SVD decomposition");
-    let now = Instant::now();
-    let n_sv = n_rbm + m1_n_mode as usize * 7;
-    let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
-    println!(" in {}ms", now.elapsed().as_millis());
-    //    println!("Singular values:\n{}", sig);
-    let mut i_sig = sig.mapv(|x| 1.0 / x);
-    for k in 0..14 {
-        i_sig[n_sv - k - 1] = 0.0;
-    }
+        print!("SVD decomposition");
+        let now = Instant::now();
+        let n_sv = n_rbm + m1_n_mode as usize * 7;
+        let (u, sig, v_t) = _d.svddc_inplace(UVTFlag::Some).unwrap();
+        println!(" in {}ms", now.elapsed().as_millis());
+        //    println!("Singular values:\n{}", sig);
+        let mut i_sig = sig.mapv(|x| 1.0 / x);
+        for k in 0..14 {
+            i_sig[n_sv - k - 1] = 0.0;
+        }
 
-    let _u = u.unwrap();
-    let _vt = v_t.unwrap();
+        let _u = u.unwrap();
+        let _vt = v_t.unwrap();
 
-    let l_sv = Array2::from_diag(&i_sig);
-    print!("Computing the pseudo-inverse");
-    let now = Instant::now();
-    let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
-    println!(" in {}ms", now.elapsed().as_millis());
+        let l_sv = Array2::from_diag(&i_sig);
+        print!("Computing the pseudo-inverse");
+        let now = Instant::now();
+        let __m: Array2<f32> = _vt.t().dot(&l_sv.dot(&_u.t()));
+        println!(" in {}ms", now.elapsed().as_millis());
 
-    let mut npz = NpzWriter::new(File::create("recon.npz").unwrap());
-    npz.add_array("m", &__m).unwrap();
-*/
+        let mut npz = NpzWriter::new(File::create("recon.npz").unwrap());
+        npz.add_array("m", &__m).unwrap();
+    */
     //    sp.send(__m).unwrap();
     //});
     //let rp = sh48_from_calibrate.1;
@@ -353,7 +376,7 @@ fn main() {
     let pointing = SkyCoordinates::new(telescope.0, telescope.1);
     let (alt0, az0, pa0) = pointing.alt_az_parallactic_deg(&obs);
 
-    term.move_cursor_to(0,42).unwrap();
+    term.move_cursor_to(0, 42).unwrap();
     term.write_line(&format!("{:=>75}", "",)).unwrap();
     let n = (15. * 60. / sampling).ceil() as u64;
     let mut cum_et = 0u64;
@@ -362,10 +385,18 @@ fn main() {
         let now = Instant::now();
 
         let (alt, az, pa) = pointing.alt_az_parallactic_deg(&obs);
-        term.move_cursor_to(0,43).unwrap();
+        term.move_cursor_to(0, 43).unwrap();
         term.write_line(&format!(
             "  {} ({:+>6.2},{:+>5.2}) ({:+>6.2},{:+>5.2}) ({:+>6.2},{:+>5.2}) [{}/{}]",
-            obs.datetime, alt, alt-alt0, az, az-az0, pa, pa-pa0, k+1,n
+            obs.datetime,
+            alt,
+            alt - alt0,
+            az,
+            az - az0,
+            pa,
+            pa - pa0,
+            k + 1,
+            n
         ))
         .unwrap();
         term.write_line(&format!("{:->75}", "")).unwrap();
@@ -374,7 +405,6 @@ fn main() {
         to_science.send(gstate.clone()).unwrap();
 
         let mut q: Vec<f32> = Vec::with_capacity((n_c) as usize);
-
 
         for chat_plant_sh48_ in chat_plant_sh48.iter() {
             let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
@@ -414,27 +444,30 @@ fn main() {
         obs.add_seconds(sampling);
         //thread::sleep(Duration::from_secs(2));
 
-        term.move_cursor_to(0,49).unwrap();
+        term.move_cursor_to(0, 49).unwrap();
         term.write_line(&format!("{:->75}", "")).unwrap();
         let et = now.elapsed().as_secs();
         cum_et += et;
-        let eta = (n-k-1)*cum_et/(k+1);
-        term.write_line(&format!(" Step: {:>4}s ; Total: {:>5}s ; ETA: {:>5}s", et, cum_et, eta))
-            .unwrap();
+        let eta = (n - k - 1) * cum_et / (k + 1);
+        term.write_line(&format!(
+            " Step: {:>4}s ; Total: {:>5}s ; ETA: {:>5}s",
+            et, cum_et, eta
+        ))
+        .unwrap();
         term.write_line(&format!("{:=>75}", "",)).unwrap();
     }
-//    let et = now.elapsed().as_secs();
-//    println!("ET: {}s",et);
-/*
-    term.move_cursor_down(6).unwrap();
-    term.write_line(&format!("{:->60}", "")).unwrap();
-    let et = now.elapsed().as_secs();
-    let sim_rate = n / et;
-    term.write_line(&format!(" Done in {}s ({:.2}steps/s)", et, sim_rate))
-        .unwrap();
-    term.write_line(&format!("{:=>60}", "",)).unwrap();
-    term.flush().unwrap();
-*/
+    //    let et = now.elapsed().as_secs();
+    //    println!("ET: {}s",et);
+    /*
+        term.move_cursor_down(6).unwrap();
+        term.write_line(&format!("{:->60}", "")).unwrap();
+        let et = now.elapsed().as_secs();
+        let sim_rate = n / et;
+        term.write_line(&format!(" Done in {}s ({:.2}steps/s)", et, sim_rate))
+            .unwrap();
+        term.write_line(&format!("{:=>60}", "",)).unwrap();
+        term.flush().unwrap();
+    */
     drop(to_science);
     for chat_plant_sh48_ in &chat_plant_sh48 {
         let (to_plant, from_plant) = chat_plant_sh48_.dual_channel();
@@ -442,7 +475,7 @@ fn main() {
         drop(to_plant);
         let (to_sh48, from_sh48) = chat_plant_sh48_.main_channel();
         drop(to_sh48);
-            drop(from_sh48);
+        drop(from_sh48);
     }
     for h in h_48 {
         h.join().unwrap();

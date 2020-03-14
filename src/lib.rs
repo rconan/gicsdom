@@ -149,6 +149,12 @@ impl SkyCoordinates {
         let aap = self.alt_az_parallactic(obs);
         (aap.0.rad2deg(), aap.1.rad2deg())
     }
+    pub fn alt(&self, obs: &Observation) -> f64 {
+        self.altaz(obs).0
+    }
+    pub fn za(&self, obs: &Observation) -> f64 {
+        f64::consts::FRAC_PI_2 - self.alt(obs)
+    }
     pub fn alt_az_parallactic_deg(&self, obs: &Observation) -> (f64, f64, f64) {
         let aap = self.alt_az_parallactic(obs);
         (aap.0.rad2deg(), aap.1.rad2deg(), aap.2.rad2deg())
@@ -496,12 +502,14 @@ impl OpticalPathToDSH48 {
             .xpupil()
             .through(&mut self.sensor);
     }
-    pub fn update(&mut self, inc_secs: f64,
-                  atm: &mut ceo::Atmosphere) -> &mut Self {
+    pub fn add_secs(&mut self, inc_secs: f64) -> &mut Self {
         self.obs.add_seconds(inc_secs);
+        self
+    }
+    pub fn update(&mut self, atm: &mut ceo::Atmosphere) -> &mut Self {
         let alt_az_pa = self.probe.alt_az_parallactic(&self.obs);
         self.gs.rotate_rays(alt_az_pa.2);
-//        self.gmt.update(gstate);
+        //        self.gmt.update(gstate);
         self.gs
             .through(&mut self.gmt)
             .xpupil()
@@ -520,6 +528,9 @@ impl OpticalPathToDSH48 {
             self.za.1 - a,
             (self.tel_alt_az_pa.2 - alt_az_pa.2) / DEG2RAD,
         )
+    }
+    pub fn za(&mut self) -> f64 {
+        self.probe.za(&self.obs)
     }
 }
 impl Drop for OpticalPathToDSH48 {

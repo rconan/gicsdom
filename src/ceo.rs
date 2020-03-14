@@ -7,6 +7,7 @@ use std::error::Error;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::Path;
 use std::{f32, mem};
 
 pub fn set_gpu(id: i32) {
@@ -351,7 +352,8 @@ impl PSSn {
     pub fn spatial_uniformity(&mut self) -> f32 {
         let mut pssn_values = self.estimates.clone();
         pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        100.*((pssn_values.len() as f32) * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
+        100. * ((pssn_values.len() as f32)
+            * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
             / pssn_values.iter().sum::<f32>()
     }
 }
@@ -611,7 +613,10 @@ impl Atmosphere {
         self
     }
     pub fn load_from_json(&mut self, json_file: &str) -> Result<(&mut Self), Box<dyn Error>> {
-        let file = File::open(json_file)?;
+        let mut filename = json_file.to_string();
+        filename.push_str(".json");
+        let path = Path::new(&filename);
+        let file = File::open(path)?;
         let reader = BufReader::new(file);
         let gmt_atm_args: GmtAtmosphere = serde_json::from_reader(reader)?;
         let ps_path = CString::new(gmt_atm_args.filename).unwrap();
@@ -629,6 +634,9 @@ impl Atmosphere {
         }
         self.built = false;
         Ok((self))
+    }
+    pub fn set_r0(&mut self, new_r0: f64) {
+        self._c_.r0 = new_r0 as f32;
     }
 }
 impl Propagation for Atmosphere {
