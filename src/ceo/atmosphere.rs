@@ -1,26 +1,31 @@
+use serde::Deserialize;
+use std::error::Error;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::{f32, mem};
-use std::error::Error;
-use serde::Deserialize;
 
+use super::ceo_bindings::atmosphere;
 use super::Propagation;
 use super::Source;
-use super::ceo_bindings::atmosphere;
 
 #[derive(Deserialize, Debug)]
 struct GmtAtmosphere {
     r0: f32,
-    L0: f32,
-    L: f32,
-    NXY_PUPIL: i32,
+    #[serde(rename = "L0")]
+    l_not: f32,
+    #[serde(rename = "L")]
+    length: f32,
+    #[serde(rename = "lower_case")]
+    nxy_pupil: i32,
     fov: f32,
     duration: f32,
-    N_DURATION: i32,
+    #[serde(rename = "lower_case")]
+    n_duration: i32,
     filename: String,
-    SEED: i32,
+    #[serde(rename = "lower_case")]
+    seed: i32,
 }
 
 pub struct Atmosphere {
@@ -40,42 +45,65 @@ impl Atmosphere {
             built: true,
         }
     }
-    pub fn build(&mut self, r_not: f32, l_not: f32) -> &mut Self {
+    pub fn build(
+        &mut self,
+        r_not: f32,
+        l_not: f32,
+        n_layer: i32,
+        mut altitude: Vec<f32>,
+        mut xi0: Vec<f32>,
+        mut wind_speed: Vec<f32>,
+        mut wind_direction: Vec<f32>,
+    ) -> &mut Self {
+        unsafe {
+            self._c_.setup(
+                r_not,
+                l_not,
+                n_layer,
+                altitude.as_mut_ptr(),
+                xi0.as_mut_ptr(),
+                wind_speed.as_mut_ptr(),
+                wind_direction.as_mut_ptr(),
+            );
+        }
+        self
+    }
+    pub fn gmt_build(&mut self, r_not: f32, l_not: f32) -> &mut Self {
         unsafe {
             self._c_.gmt_setup4(r_not, l_not, 2020);
         }
         self
     }
-    pub fn load_from_json(&mut self, json_file: &str) -> Result<(&mut Self), Box<dyn Error>> {
+    pub fn load_from_json(&mut self, json_file: &str) -> Result<&mut Self, Box<dyn Error>> {
         let mut filename = json_file.to_string();
         filename.push_str(".json");
         let path = Path::new(&filename);
-        let file = File::open(path).expect(&format!("{}",path.display()));
+        let file = File::open(path).expect(&format!("{}", path.display()));
         let reader = BufReader::new(file);
         let gmt_atm_args: GmtAtmosphere = serde_json::from_reader(reader)?;
         let ps_path = CString::new(gmt_atm_args.filename.clone()).unwrap();
         unsafe {
             self._c_.gmt_setup6(
                 gmt_atm_args.r0,
-                gmt_atm_args.L0,
-                gmt_atm_args.L,
-                gmt_atm_args.NXY_PUPIL,
+                gmt_atm_args.l_not,
+                gmt_atm_args. length,
+                gmt_atm_args.nxy_pupil,
                 gmt_atm_args.fov,
                 gmt_atm_args.duration,
                 ps_path.into_raw(),
-                gmt_atm_args.N_DURATION,
-                gmt_atm_args.SEED,
+                gmt_atm_args.n_duration,
+                gmt_atm_args.seed,
             );
         }
         self.filename = String::from(gmt_atm_args.filename);
         self.built = false;
         let ps_path = CString::new(format!("{}", self.filename)).unwrap();
-        println!("{:?}",ps_path);
+        println!("{:?}", ps_path);
         unsafe {
             self._c_
                 .duration_loading(ps_path.into_raw(), self.k_duration);
         }
-        Ok((self))
+        Ok(self)
     }
     pub fn set_r0(&mut self, new_r0: f64) {
         self._c_.r0 = new_r0 as f32;
@@ -90,13 +118,11 @@ impl Propagation for Atmosphere {
                 self._c_
                     .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             } else {
-
                 let k_duration = (secs / self._c_.layers_duration as f64) as i32;
-                if (k_duration > self.k_duration) {
-                    let ps_path =
-                        CString::new(format!("{}", self.filename)).unwrap();
+                if k_duration > self.k_duration {
+                    let ps_path = CString::new(format!("{}", self.filename)).unwrap();
                     //println!("{:?}",ps_path);
-                    self._c_.duration_loading(ps_path.into_raw(),k_duration);
+                    self._c_.duration_loading(ps_path.into_raw(), k_duration);
                     self.k_duration = k_duration;
                 }
 

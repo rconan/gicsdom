@@ -1,8 +1,7 @@
 use std::ffi::CString;
 use std::{f32, mem};
-use ndarray::Array2;
 
-use super::ceo_bindings::{bundle,source,vector};
+use super::ceo_bindings::{source,vector};
 
 pub struct Source {
     pub _c_: source,
@@ -64,14 +63,10 @@ impl Source {
         self
     }
     pub fn set_fwhm(&mut self, value: f64) {
-        unsafe {
             self._c_.fwhm = value as f32;
-        }
     }
     pub fn rotate_rays(&mut self, angle: f64) {
-        unsafe {
             self._c_.rays.rot_angle = angle;
-        }
     }
     pub fn xpupil(&mut self) -> &mut Self {
         unsafe {

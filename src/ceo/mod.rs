@@ -11,7 +11,7 @@ pub use self::gmt::Gmt;
 pub use self::gmt::GmtState;
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use self::shackhartmann::{Geometric_ShackHartmann,GeometricShackHartmann,ShackHartmann};
+pub use self::shackhartmann::{GeometricShackHartmann,ShackHartmann};
 pub use ceo_bindings::{set_device,pssn};
 
 pub fn set_gpu(id: i32) {
@@ -24,16 +24,14 @@ pub struct PSSn {
     _c_: pssn,
     r_not: f64,
     l_not: f64,
-    zenith: f64,
     pub estimates: Vec<f32>,
 }
 impl PSSn {
-    pub fn new(r_not: f64, l_not: f64, zenith: f64) -> PSSn {
+    pub fn new(r_not: f64, l_not: f64) -> PSSn {
         PSSn {
             _c_: unsafe { mem::zeroed() },
             r_not,
             l_not,
-            zenith,
             estimates: vec![],
         }
     }

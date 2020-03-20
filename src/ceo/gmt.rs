@@ -178,7 +178,7 @@ impl Propagation for Gmt {
         }
         self
     }
-    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+    fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.propagate(src)
     }
 }

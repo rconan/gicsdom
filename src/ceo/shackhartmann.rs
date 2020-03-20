@@ -1,11 +1,10 @@
-use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host,geometricShackHartmann,shackHartmann};
 use super::Propagation;
 use super::Source;
 
-pub struct Geometric_ShackHartmann {
+pub struct GeometricShackHartmann {
     _c_: geometricShackHartmann,
     pub n_side_lenslet: i32,
     pub n_px_lenslet: i32,
@@ -14,7 +13,7 @@ pub struct Geometric_ShackHartmann {
     pub n_centroids: i32,
     pub centroids: Vec<f32>,
 }
-pub struct Diffractive_ShackHartmann {
+pub struct DiffractiveShackHartmann {
     _c_: shackHartmann,
     n_side_lenslet: i32,
     n_px_lenslet: i32,
@@ -23,14 +22,14 @@ pub struct Diffractive_ShackHartmann {
     pub n_centroids: i32,
     pub centroids: Vec<f32>,
 }
-impl Geometric_ShackHartmann {
+impl GeometricShackHartmann {
     pub fn new(
         n_sensor: i32,
         n_side_lenslet: i32,
         n_px_lenslet: i32,
         d: f64,
-    ) -> Geometric_ShackHartmann {
-        Geometric_ShackHartmann {
+    ) -> GeometricShackHartmann {
+        GeometricShackHartmann {
             _c_: unsafe { mem::zeroed() },
             n_side_lenslet,
             n_px_lenslet,
@@ -90,14 +89,14 @@ impl Geometric_ShackHartmann {
         self
     }
 }
-impl Drop for Geometric_ShackHartmann {
+impl Drop for GeometricShackHartmann {
     fn drop(&mut self) {
         unsafe {
             self._c_.cleanup();
         }
     }
 }
-impl Propagation for Geometric_ShackHartmann {
+impl Propagation for GeometricShackHartmann {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             self._c_.propagate(&mut src._c_);
@@ -108,14 +107,14 @@ impl Propagation for Geometric_ShackHartmann {
         self.propagate(src)
     }
 }
-impl Diffractive_ShackHartmann {
+impl DiffractiveShackHartmann {
     pub fn new(
         n_sensor: i32,
         n_side_lenslet: i32,
         n_px_lenslet: i32,
         d: f64,
-    ) -> Diffractive_ShackHartmann {
-        Diffractive_ShackHartmann {
+    ) -> DiffractiveShackHartmann {
+        DiffractiveShackHartmann {
             _c_: unsafe { mem::zeroed() },
             n_side_lenslet,
             n_px_lenslet,
@@ -207,23 +206,22 @@ impl Diffractive_ShackHartmann {
         self
     }
 }
-impl Drop for Diffractive_ShackHartmann {
+impl Drop for DiffractiveShackHartmann {
     fn drop(&mut self) {
         unsafe {
             self._c_.cleanup();
         }
     }
 }
-impl Propagation for Diffractive_ShackHartmann {
+impl Propagation for DiffractiveShackHartmann {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             self._c_.propagate(&mut src._c_);
         }
         self
     }
-    fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+    fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.propagate(src)
     }
 }
-pub type GeometricShackHartmann = Geometric_ShackHartmann;
-pub type ShackHartmann = Diffractive_ShackHartmann;
+pub type ShackHartmann = DiffractiveShackHartmann;
