@@ -68,6 +68,38 @@ impl Atmosphere {
         }
         self
     }
+    pub fn raytrace_build(
+        &mut self,
+        r_not: f32,
+        l_not: f32,
+        n_layer: i32,
+        mut altitude: Vec<f32>,
+        mut xi0: Vec<f32>,
+        mut wind_speed: Vec<f32>,
+        mut wind_direction: Vec<f32>,
+        width: f32,
+        n_width_px: i32,
+        field_size: f32,
+        duration: f32,
+    ) -> &mut Self {
+        unsafe {
+            self._c_.setup1(
+                r_not,
+                l_not,
+                n_layer,
+                altitude.as_mut_ptr(),
+                xi0.as_mut_ptr(),
+                wind_speed.as_mut_ptr(),
+                wind_direction.as_mut_ptr(),
+                width,
+                n_width_px,
+                field_size,
+                duration,
+            );
+        }
+        self.built = false;
+        self
+    }
     pub fn gmt_build(&mut self, r_not: f32, l_not: f32) -> &mut Self {
         unsafe {
             self._c_.gmt_setup4(r_not, l_not, 2020);
@@ -86,7 +118,7 @@ impl Atmosphere {
             self._c_.gmt_setup6(
                 gmt_atm_args.r0,
                 gmt_atm_args.l_not,
-                gmt_atm_args. length,
+                gmt_atm_args.length,
                 gmt_atm_args.nxy_pupil,
                 gmt_atm_args.fov,
                 gmt_atm_args.duration,
