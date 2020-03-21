@@ -53,6 +53,6 @@ fn main() {
     }
     println!("Propagation in {}ms", now.elapsed().as_millis());
 
-    println!("WFE RMS [{:?}]nm", &wfe_rms[..n_sample]);
-    println!("WFE RMS [{:?}]nm", &wfe_rms[n_sample..]);
+    println!("WFE RMS (polar-log)   [{:?}]nm", &wfe_rms[..n_sample]);
+    println!("WFE RMS (ray tracing) [{:?}]nm", &wfe_rms[n_sample..]);
 }
