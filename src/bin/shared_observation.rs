@@ -32,6 +32,19 @@ impl<S, C> Session<S, C> {
         (self.server.send.clone(), self.client.recv.clone())
     }
 }
+impl<T> Drop for Dyad<T>  {
+    fn drop(&mut self) {
+        drop(&self.send);
+        drop(&self.recv);
+    }
+}
+impl<S, C> Drop for Session<S, C> {
+    fn drop(&mut self) {
+        drop(&self.server);
+        drop(&self.client);
+    }
+}
+
 
 fn main() {
     let term = Term::buffered_stdout();
@@ -44,6 +57,7 @@ fn main() {
         Session::new(bounded(0), bounded(0)),
         Session::new(bounded(0), bounded(0)),
     ];
+
     let mut h = vec![];
 
     for (i, session) in probe_sessions.iter().enumerate() {
@@ -85,15 +99,10 @@ fn main() {
     }
 
     for session in probe_sessions.iter() {
-        //let (sprobe, rprobe) = session.dual_channel();
-        let (stel, rtel) = session.main_channel();
-//        stel.send(None);
-        drop(stel);
-        //drop(sprobe);
-        //drop(rprobe);
-        //drop(rtel);
+        drop(session);
     }
     for h_ in h {
+        println!("join");
         h_.join().unwrap();
     }
 }
