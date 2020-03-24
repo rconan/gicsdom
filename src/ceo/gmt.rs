@@ -89,7 +89,7 @@ impl Gmt {
         }
         self
     }
-    pub fn set_m1_segment_state(&mut self, sid: i32, t_xyz: &Vec<f64>, r_xyz: &Vec<f64>) {
+    pub fn set_m1_segment_state(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
         let t_xyz = vector {
             x: t_xyz[0],
             y: t_xyz[1],
@@ -104,7 +104,7 @@ impl Gmt {
             self._c_m1.update(t_xyz, r_xyz, sid);
         }
     }
-    pub fn set_m2_segment_state(&mut self, sid: i32, t_xyz: &Vec<f64>, r_xyz: &Vec<f64>) {
+    pub fn set_m2_segment_state(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
         let t_xyz = vector {
             x: t_xyz[0],
             y: t_xyz[1],
@@ -124,6 +124,7 @@ impl Gmt {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
+    /*
     pub fn update(&mut self, gstate: &GmtState) {
         let mut t_xyz = vec![0.0; 3];
         let mut r_xyz = vec![0.0; 3];
@@ -157,6 +158,7 @@ impl Gmt {
         }
         self.set_m1_modes(&mut a);
     }
+    */
 }
 impl Drop for Gmt {
     fn drop(&mut self) {
