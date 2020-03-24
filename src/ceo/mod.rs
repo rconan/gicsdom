@@ -1,18 +1,20 @@
 use std::{f32, mem};
 
 pub mod atmosphere;
-pub mod gmt;
-pub mod source;
-pub mod shackhartmann;
 pub mod ceo_bindings;
+pub mod gmt;
+pub mod imaging;
+pub mod shackhartmann;
+pub mod source;
 
 pub use self::atmosphere::Atmosphere;
 pub use self::gmt::Gmt;
 pub use self::gmt::GmtState;
+pub use self::imaging::Imaging;
+pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use self::shackhartmann::{GeometricShackHartmann,ShackHartmann};
-pub use ceo_bindings::{set_device,pssn};
+pub use ceo_bindings::{pssn, set_device};
 
 pub fn set_gpu(id: i32) {
     unsafe {
