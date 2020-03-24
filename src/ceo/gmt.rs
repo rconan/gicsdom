@@ -10,6 +10,7 @@ use super::Source;
 pub struct GmtState {
     pub rbm: Array2<f32>,
     pub bm: Array2<f32>,
+
 }
 pub struct Gmt {
     _c_m1_modes: modes,
@@ -48,22 +49,24 @@ impl Gmt {
         }
         this
     }
-    pub fn new(m1_n_mode: u64, m2_n_mode: Option<u64>) -> Gmt {
+    pub fn new() -> Gmt {
         Gmt {
             _c_m1_modes: unsafe { mem::zeroed() },
             _c_m2_modes: unsafe { mem::zeroed() },
             _c_m1: unsafe { mem::zeroed() },
             _c_m2: unsafe { mem::zeroed() },
-            m1_n_mode,
-            m2_n_mode: match m2_n_mode {
-                Some(m2_n_mode) => m2_n_mode,
-                None => 0,
-            },
-            a: vec![0.0],
+            m1_n_mode: 0,
+            m2_n_mode: 0,
+            a: vec![0.],
         }
     }
-    pub fn build(&mut self) -> &mut Gmt {
+    pub fn build(&mut self,m1_n_mode: u64, m2_n_mode: Option<u64>) -> &mut Gmt {
         let mode_type = CString::new("bending modes").unwrap();
+        self.m1_n_mode = m1_n_mode;
+        self.m2_n_mode = match m2_n_mode {
+            Some(m2_n_mode) => m2_n_mode,
+            None => 0,
+        };
         if self.m2_n_mode > 0 {
             self.a = vec![0.0; self.m2_n_mode as usize];
         }
