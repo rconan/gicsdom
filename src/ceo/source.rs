@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::{f32, mem};
 
-use super::ceo_bindings::{source,vector};
+use super::ceo_bindings::{source, vector};
 
 pub struct Source {
     pub _c_: source,
@@ -63,10 +63,10 @@ impl Source {
         self
     }
     pub fn set_fwhm(&mut self, value: f64) {
-            self._c_.fwhm = value as f32;
+        self._c_.fwhm = value as f32;
     }
     pub fn rotate_rays(&mut self, angle: f64) {
-            self._c_.rays.rot_angle = angle;
+        self._c_.rays.rot_angle = angle;
     }
     pub fn xpupil(&mut self) -> &mut Self {
         unsafe {
@@ -90,10 +90,31 @@ impl Source {
             .map(|x| x * 10_f32.powi(-exp))
             .collect()
     }
+    pub fn segments_gradients(&mut self) -> Vec<Vec<f32>> {
+        let mut sxy: Vec<Vec<f32>> = vec![vec![0.;7 * self.size as usize]; 2];
+        unsafe {
+            self._c_.wavefront.segments_gradient_averageFast(
+                sxy[0].as_mut_ptr(),
+                sxy[1].as_mut_ptr(),
+                self._c_.rays.L as f32,
+                self._c_.rays.d__piston_mask,
+            );
+        }
+        sxy
+    }
     pub fn reset(&mut self) {
         unsafe {
             self._c_.wavefront.reset();
             self._c_.reset_rays();
+        }
+    }
+    pub fn update(&mut self, mut zenith: Vec<f64>, mut azimuth: Vec<f64>) {
+        unsafe {
+            self._c_.update_directions(
+                zenith.as_mut_ptr(),
+                azimuth.as_mut_ptr(),
+                zenith.len() as i32,
+            );
         }
     }
 }
