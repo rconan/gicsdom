@@ -29,22 +29,23 @@ impl Observation {
     pub fn longitude_deg(&self) -> f64 {
         self.longitude.to_degrees()
     }
+    pub fn julian_day(&self) -> f64 {
+        self.epoch.as_jde_utc_days()
+    }
     pub fn j2000_day(&self) -> f64 {
-        let jde: f64 = self.epoch.as_jde_tt_days();
-        jde - 2451545.0
+        self.julian_day() - 2451545.0
+    }
+    pub fn greenwich_sideral_time(&self) -> f64 {
+        let (y, m, d, h, min, sec) = self.epoch.as_gregorian_utc();
+        let jd = Epoch::from_gregorian_utc_at_midnight(y,m,d).as_jde_utc_days(); 
+        let s = jd - 2451545.0;
+        let t = s/36525.;
+        let t0 = (6.697374558+(2400.051336+0.000025862*t)*t).rem_euclid(24.0);
+        let ut =(h as f64) + ((min as f64) + (sec as f64) / 60.0) / 60.0;
+        (ut*1.002737909 + t0).rem_euclid(24.0)
     }
     pub fn local_sidereal_time(&self) -> f64 {
-        let mut lst = 100.46
-            + 0.985647 * self.j2000_day()
-            + self.longitude_deg()
-            + 15.0 * self.decimal_hour();
-        if lst < 0_f64 {
-            lst += 360.0;
-        }
-        lst.to_radians()
-    }
-    pub fn local_sidereal_time_deg(&self) -> f64 {
-        self.local_sidereal_time().to_degrees()
+        (self.greenwich_sideral_time()*15.+self.longitude.to_degrees()).to_radians()
     }
     pub fn decimal_hour(&self) -> f64 {
         let (_y, _m, _d, h, min, sec) = self.epoch.as_gregorian_utc();
