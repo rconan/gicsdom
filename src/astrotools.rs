@@ -1,65 +1,124 @@
-use std::f64;
 use hifitime::Epoch;
+use std::f64;
 
 pub const GMT_LAT: f64 = -29.049;
 pub const GMT_LONG: f64 = -70.682;
 
 #[derive(Clone, Debug)]
+pub struct Time {
+    y: i32,
+    m: u8,
+    d: u8,
+    h: u8,
+    mn: u8,
+    s: u8,
+    fs: f64,
+}
+impl Time {
+    pub fn from_date_utc(y: i32, m: u8, d: u8, h: u8, mn: u8, s: f64) -> Self {
+        Time {
+            y,
+            m,
+            d,
+            h,
+            mn,
+            s: s.trunc() as u8,
+            fs: s - s.trunc(),
+        }
+    }
+    pub fn from_utc(h: u8, mn: u8, s: f64) -> Self {
+        Time {
+            y: 0,
+            m: 0,
+            d: 0,
+            h,
+            mn,
+            s: s.trunc() as u8,
+            fs: s - s.trunc(),
+        }
+    }
+    pub fn decimal_days(&self) -> f64 {
+        self.d as f64
+            + (self.h as f64 + self.mn as f64 * 60. + (self.s as f64 + self.fs) * 3600.) / 24.
+    }
+    pub fn decimal_hours(&self) -> f64 {
+        (self.h as f64) + ((self.mn as f64) + (self.s as f64 + self.fs) / 60.0) / 60.0
+    }
+    pub fn julian_date(&self) -> f64 {
+        if self.y < 1583 {
+            unimplemented!("Julian date is implemented for years after 1582!");
+        }
+        let (yp, mp) = if self.m == 1 || self.m == 2 {
+            (self.y as f64 - 1., self.m as f64 + 12.)
+        } else {
+            (self.y as f64, self.m as f64)
+        };
+        let a = (yp / 100.).trunc();
+        let b = 2. - a + (a / 4.).trunc();
+        let c = if yp < 0.0 {
+            (365.25 * yp - 0.75).trunc()
+        } else {
+            (365.25 * yp).trunc()
+        };
+        let d = (30.6001 * (mp + 1.)).trunc();
+        b + c + d + self.decimal_days() + 1720994.5
+    }
+    pub fn julian_date_at_midnight(&self) -> f64 {
+        if self.y < 1583 {
+            unimplemented!("Julian date is implemented for years after 1582!");
+        }
+        let (yp, mp) = if self.m == 1 || self.m == 2 {
+            (self.y as f64 - 1., self.m as f64 + 12.)
+        } else {
+            (self.y as f64, self.m as f64)
+        };
+        let a = (yp / 100.).trunc();
+        let b = 2. - a + (a / 4.).trunc();
+        let c = if yp < 0.0 {
+            (365.25 * yp - 0.75).trunc()
+        } else {
+            (365.25 * yp).trunc()
+        };
+        let d = (30.6001 * (mp + 1.)).trunc();
+        b + c + d + self.d as f64 + 1720994.5
+    }
+    pub fn greenwich_sidereal_time(&self) -> f64 {
+        let s = self.julian_date_at_midnight() - 2451545.0;
+        let t = s / 36525.;
+        let t0 = (6.697374558 + (2400.051336 + 0.000025862 * t) * t).rem_euclid(24.0);
+        let ut = self.decimal_hours();
+        (ut * 1.002737909 + t0).rem_euclid(24.0)
+    }
+    pub fn local_sidereal_time(&self, longitude_deg: f64) -> f64 {
+        self.greenwich_sidereal_time() + longitude_deg / 15.
+    }
+}
+#[derive(Clone, Debug)]
 pub struct Observation {
-    pub datetime: String,
     /// site latitude [radian]
     pub latitude: f64,
     /// site longitude [radian]
     pub longitude: f64,
-    //    height: f64,
-    epoch: Epoch,
+    pub utc: Time,
+    pub object: SkyCoordinates,
 }
 impl Observation {
-    pub fn new(_datetime: &str, latitude_deg: f64, longitude_deg: f64) -> Observation {
+    pub fn from_date_utc(
+        latitude_deg: f64,
+        longitude_deg: f64,
+        utc: Time,
+        object: SkyCoordinates,
+    ) -> Observation {
         Observation {
-            datetime: _datetime.to_string(),
             latitude: latitude_deg.to_radians(),
             longitude: longitude_deg.to_radians(),
-            epoch: Epoch::from_gregorian_utc_str(_datetime).unwrap(),
+            utc,
+            object,
         }
-    }
-    pub fn latitude_deg(&self) -> f64 {
-        self.latitude.to_degrees()
-    }
-    pub fn longitude_deg(&self) -> f64 {
-        self.longitude.to_degrees()
-    }
-    pub fn julian_day(&self) -> f64 {
-        self.epoch.as_jde_utc_days()
-    }
-    pub fn j2000_day(&self) -> f64 {
-        self.julian_day() - 2451545.0
-    }
-    pub fn greenwich_sideral_time(&self) -> f64 {
-        let (y, m, d, h, min, sec) = self.epoch.as_gregorian_utc();
-        let jd = Epoch::from_gregorian_utc_at_midnight(y,m,d).as_jde_utc_days(); 
-        let s = jd - 2451545.0;
-        let t = s/36525.;
-        let t0 = (6.697374558+(2400.051336+0.000025862*t)*t).rem_euclid(24.0);
-        let ut =(h as f64) + ((min as f64) + (sec as f64) / 60.0) / 60.0;
-        (ut*1.002737909 + t0).rem_euclid(24.0)
-    }
-    pub fn local_sidereal_time(&self) -> f64 {
-        (self.greenwich_sideral_time()*15.+self.longitude.to_degrees()).to_radians()
-    }
-    pub fn decimal_hour(&self) -> f64 {
-        let (_y, _m, _d, h, min, sec) = self.epoch.as_gregorian_utc();
-        (h as f64) + ((min as f64) + (sec as f64) / 60.0) / 60.0
-    }
-    pub fn add_seconds(&mut self, value: f64) -> &mut Self {
-        //let tai_sec = self.epoch.as_tai_seconds() + value;
-        self.epoch.mut_add_secs(value); // = Epoch::from_tai_seconds(tai_sec);
-        self.datetime = self.epoch.as_gregorian_utc_str();
-        self
     }
 }
 
-
+#[derive(Clone, Debug)]
 pub struct SkyCoordinates {
     /// right ascension and declination [degree]
     pub radec: (f64, f64),
@@ -78,20 +137,28 @@ impl SkyCoordinates {
         (self.radec.0.to_degrees(), self.radec.1.to_degrees())
     }
     pub fn hour_angle(&self, obs: &Observation) -> f64 {
-        obs.local_sidereal_time() - self.radec.0
+        let ha = obs.utc.local_sidereal_time(obs.longitude.to_degrees())
+            - self.radec.0.to_degrees() / 15.;
+        if ha<0. {
+            ha + 24.
+        } else {
+            ha
+        }
     }
     pub fn alt_az_parallactic(&self, obs: &Observation) -> (f64, f64, f64) {
-        let sin_cos_ha = self.hour_angle(obs).sin_cos();
+        let sin_cos_ha = (15.*self.hour_angle(obs)).to_radians().sin_cos();
         let sin_alt = self.radec.1.sin() * obs.latitude.sin()
             + self.radec.1.cos() * obs.latitude.cos() * sin_cos_ha.1;
         let alt = sin_alt.asin();
-        let sin_az = sin_cos_ha.0;
-        let cos_az = sin_cos_ha.1 * obs.latitude.sin() - self.radec.1.tan() * obs.latitude.cos();
-        let az = sin_az.atan2(cos_az);
+        let cos_az = obs.latitude.sin() * sin_cos_ha.1 - obs.latitude.cos() * self.radec.1.tan();
+//        let cos_az = sin_alt * obs.latitude.sin() - self.radec.1.sin();
+        let az = sin_cos_ha.0.atan2(cos_az);
+//        let az = cos_az.atan2(sin_cos_ha.0);
         let cos_p = obs.latitude.tan() * self.radec.1.cos() - self.radec.1.sin() * sin_cos_ha.1;
-        let p = sin_az.atan2(cos_p);
+        let p = sin_cos_ha.0.atan2(cos_p);
         (alt, az, p)
     }
+    /*
     pub fn altaz(&self, obs: &Observation) -> (f64, f64) {
         let aap = self.alt_az_parallactic(obs);
         (aap.0, aap.1)
@@ -137,6 +204,59 @@ impl SkyCoordinates {
         obs: &Observation,
     ) -> (f64, f64) {
         let (r, o) = self.local_polar(reference, obs);
-        (60.*r.to_degrees(), o.to_degrees())
+        (60. * r.to_degrees(), o.to_degrees())
+    }
+    */
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn time_decimal_days() {
+        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0.);
+        assert_eq!(t.decimal_days(), 19.75)
+    }
+
+    #[test]
+    fn time_decimal_hours() {
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        assert!((t.decimal_hours() - 14.614353).abs() < 1e-6)
+    }
+
+    #[test]
+    fn time_julian_date() {
+        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0.);
+        assert_eq!(t.julian_date(), 2455002.25)
+    }
+
+    #[test]
+    fn time_gst() {
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        assert!((t.greenwich_sidereal_time() - 4.668120).abs() < 1e-6)
+    }
+
+    #[test]
+    fn time_lst() {
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        assert!((t.local_sidereal_time(-64.) - 0.401453).abs() < 1e-6)
+    }
+
+    #[test]
+    fn sky_hour_angle() {
+        let t = Time::from_date_utc(1980, 4, 22, 18, 36, 51.67);
+        let ra = Time::from_utc(18, 32, 21.);
+        let s = SkyCoordinates::new(ra.decimal_hours() * 15., 0.0);
+        let obs = Observation::from_date_utc(0., -64., t, s);
+        assert!((obs.object.hour_angle(&obs) - 9.873237).abs() < 1e-6)
+    }
+
+    #[test]
+    fn sky_altaz() {
+        let t = Time::from_date_utc(2012,06,10,4,1,3.);
+        let s = SkyCoordinates::new(266.62156258190726, -27.776114821065107);
+        let obs = Observation::from_date_utc(GMT_LAT, GMT_LONG, t, s);
+        let (alt,az,p) = obs.object.alt_az_parallactic(&obs);
+        println!("alt={},az={},p={}",alt.to_degrees(),az.to_degrees(),p.to_degrees());
     }
 }
