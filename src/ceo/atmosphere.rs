@@ -176,6 +176,7 @@ impl Propagation for Atmosphere {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,3 +227,4 @@ mod tests {
         println!("WFE RMS: {:?}nm", wfe_rms);
     }
 }
+*/

@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 
 fn main() {
-    let mut gmt = ceo::Gmt::new(0, None);
-    gmt.build();
+    let mut gmt = ceo::Gmt::new();
+    gmt.build(0, None);
     let mut wfs = ceo::ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
     wfs.build(8, Some(24), None);
     let mut src = wfs.new_guide_stars();

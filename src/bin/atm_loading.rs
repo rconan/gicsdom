@@ -9,8 +9,8 @@ fn main() {
     for i in 0..3 {
         h.push(thread::spawn(move || {
             ceo::set_gpu(i as i32);
-            let mut gmt = ceo::Gmt::new(0, None);
-            gmt.build();
+            let mut gmt = ceo::Gmt::new();
+            gmt.build(0, None);
             let mut wfs = ceo::ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
             wfs.build(8, Some(24), None);
             let mut src = wfs.new_guide_stars();
