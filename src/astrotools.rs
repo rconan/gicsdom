@@ -1,4 +1,3 @@
-use hifitime::Epoch;
 use std::f64;
 
 pub const GMT_LAT: f64 = -29.049;
@@ -92,6 +91,9 @@ impl Time {
     pub fn local_sidereal_time(&self, longitude_deg: f64) -> f64 {
         self.greenwich_sidereal_time() + longitude_deg / 15.
     }
+    pub fn add_seconds(&mut self, secs: u8) {
+        self.s += secs
+    }
 }
 #[derive(Clone, Debug)]
 pub struct Observation {
@@ -139,26 +141,25 @@ impl SkyCoordinates {
     pub fn hour_angle(&self, obs: &Observation) -> f64 {
         let ha = obs.utc.local_sidereal_time(obs.longitude.to_degrees())
             - self.radec.0.to_degrees() / 15.;
-        if ha<0. {
+        if ha < 0. {
             ha + 24.
         } else {
             ha
         }
     }
     pub fn alt_az_parallactic(&self, obs: &Observation) -> (f64, f64, f64) {
-        let sin_cos_ha = (15.*self.hour_angle(obs)).to_radians().sin_cos();
+        let sin_cos_ha = (15. * self.hour_angle(obs)).to_radians().sin_cos();
         let sin_alt = self.radec.1.sin() * obs.latitude.sin()
             + self.radec.1.cos() * obs.latitude.cos() * sin_cos_ha.1;
         let alt = sin_alt.asin();
         let cos_az = obs.latitude.sin() * sin_cos_ha.1 - obs.latitude.cos() * self.radec.1.tan();
-//        let cos_az = sin_alt * obs.latitude.sin() - self.radec.1.sin();
+        //        let cos_az = sin_alt * obs.latitude.sin() - self.radec.1.sin();
         let az = sin_cos_ha.0.atan2(cos_az);
-//        let az = cos_az.atan2(sin_cos_ha.0);
+        //        let az = cos_az.atan2(sin_cos_ha.0);
         let cos_p = obs.latitude.tan() * self.radec.1.cos() - self.radec.1.sin() * sin_cos_ha.1;
         let p = sin_cos_ha.0.atan2(cos_p);
         (alt, az, p)
     }
-    /*
     pub fn altaz(&self, obs: &Observation) -> (f64, f64) {
         let aap = self.alt_az_parallactic(obs);
         (aap.0, aap.1)
@@ -177,12 +178,12 @@ impl SkyCoordinates {
         let aap = self.alt_az_parallactic(obs);
         (aap.0.to_degrees(), aap.1.to_degrees(), aap.2.to_degrees())
     }
-    pub fn local(&self, reference: &SkyCoordinates, obs: &Observation) -> Vec<f64> {
+    pub fn local(&self, obs: &Observation) -> Vec<f64> {
         let altaz = self.altaz(obs);
         let sc_alt = altaz.0.sin_cos();
         let sc_az = altaz.1.sin_cos();
         let (x, y, z) = (sc_az.1 * sc_alt.1, sc_az.0 * sc_alt.1, sc_alt.0);
-        let ref_altaz = reference.altaz(obs);
+        let ref_altaz = obs.object.altaz(obs);
         /*Rotation::new(f64::consts::FRAC_PI_2 - ref_altaz.0, 1)
            .apply(Rotation::new(ref_altaz.1, 2).apply(xyz))
         */
@@ -193,20 +194,15 @@ impl SkyCoordinates {
         let w: Vec<f64> = vec![c * x - s * z, y, s * x + c * z];
         w
     }
-    pub fn local_polar(&self, reference: &SkyCoordinates, obs: &Observation) -> (f64, f64) {
-        let u = self.local(reference, obs);
+    pub fn local_polar(&self, obs: &Observation) -> (f64, f64) {
+        let u = self.local(obs);
         let v = pol2cart(u);
         (v[0], v[1])
     }
-    pub fn local_polar_arcmin_deg(
-        &self,
-        reference: &SkyCoordinates,
-        obs: &Observation,
-    ) -> (f64, f64) {
-        let (r, o) = self.local_polar(reference, obs);
+    pub fn local_polar_arcmin_deg(&self, obs: &Observation) -> (f64, f64) {
+        let (r, o) = self.local_polar(obs);
         (60. * r.to_degrees(), o.to_degrees())
     }
-    */
 }
 #[cfg(test)]
 mod tests {
@@ -253,10 +249,15 @@ mod tests {
 
     #[test]
     fn sky_altaz() {
-        let t = Time::from_date_utc(2012,06,10,4,1,3.);
+        let t = Time::from_date_utc(2012, 06, 10, 4, 1, 3.);
         let s = SkyCoordinates::new(266.62156258190726, -27.776114821065107);
         let obs = Observation::from_date_utc(GMT_LAT, GMT_LONG, t, s);
-        let (alt,az,p) = obs.object.alt_az_parallactic(&obs);
-        println!("alt={},az={},p={}",alt.to_degrees(),az.to_degrees(),p.to_degrees());
+        let (alt, az, p) = obs.object.alt_az_parallactic(&obs);
+        println!(
+            "alt={},az={},p={}",
+            alt.to_degrees(),
+            az.to_degrees(),
+            p.to_degrees()
+        );
     }
 }

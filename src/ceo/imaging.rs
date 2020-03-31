@@ -1,6 +1,6 @@
-use std::{f32, mem};
+use std::mem;
 
-use super::ceo_bindings::{imaging};
+use super::ceo_bindings::imaging;
 use super::Propagation;
 use super::Source;
 
