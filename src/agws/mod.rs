@@ -6,10 +6,10 @@ pub mod probe {
 
     pub trait Sensor {
         fn build(&mut self, zenith: Vec<f32>, azimuth: Vec<f32>, magnitude: Vec<f32>);
-        fn through(&mut self);
+        fn through(&mut self) -> u32;
         fn guide_star(&mut self) -> &mut ceo::Source;
         fn gmt(&mut self) -> &mut ceo::Gmt;
-        fn wfs(&mut self) -> &mut ceo::Imaging;
+        fn detector(&mut self) -> &mut ceo::Imaging;
     }
 
     pub struct SH48 {
@@ -61,11 +61,12 @@ pub mod probe {
             self.guide_star
                 .build(&self.guide_star_band, zenith, azimuth, magnitude);
         }
-        fn through(&mut self) {
+        fn through(&mut self) -> u32 {
             self.guide_star
                 .through(&mut self.gmt)
                 .xpupil()
                 .through(&mut self.sensor);
+            self.sensor.n_frame()
         }
         fn guide_star(&mut self) -> &mut ceo::Source {
             &mut self.guide_star
@@ -73,7 +74,7 @@ pub mod probe {
         fn gmt(&mut self) -> &mut ceo::Gmt {
             &mut self.gmt
         }
-        fn wfs(&mut self) -> &mut ceo::Imaging {
+        fn detector(&mut self) -> &mut ceo::Imaging {
             &mut self.sensor
         }
     }
@@ -89,6 +90,8 @@ pub mod probe {
         probe_coordinates: astrotools::SkyCoordinates,
         guide_star_magnitude: f64,
         pub sensor: &'a mut S,
+        detector_integration_duration: u32,
+        pub detector_frame: Vec::<f32>,
         sender: Sender<T>,
         receiver: Receiver<R>,
     }
@@ -100,12 +103,15 @@ pub mod probe {
             probe_coordinates: astrotools::SkyCoordinates,
             guide_star_magnitude: f64,
             sensor: &'a mut S,
+            detector_integration_duration: u32,
             channel: (Sender<T>, Receiver<R>),
         ) -> Probe<S, T, R> {
             Probe {
                 probe_coordinates,
                 guide_star_magnitude,
                 sensor,
+                detector_integration_duration,
+                detector_frame: vec![],
                 sender: channel.0,
                 receiver: channel.1,
             }
@@ -118,6 +124,8 @@ pub mod probe {
                 vec![a as f32],
                 vec![self.guide_star_magnitude as f32],
             );
+            let resolution = self.sensor.detector().resolution() as usize;
+            self.detector_frame = vec![0f32;resolution*resolution];
         }
         pub fn update(
             &mut self,
@@ -129,8 +137,9 @@ pub mod probe {
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
             self.sensor.gmt().update(m1_rbm, m2_rbm);
-            self.sensor.through();
-            self.sensor.wfs();
+            if self.sensor.through()==self.detector_integration_duration {
+                self.sensor.detector().frame_transfer(&mut self.detector_frame).reset();
+            }
         }
     }
 }
