@@ -11,37 +11,40 @@ pub struct Time {
     h: u8,
     mn: u8,
     s: u8,
-    fs: f64,
+    fs: u32,
 }
 impl Time {
-    pub fn from_date_utc(y: i32, m: u8, d: u8, h: u8, mn: u8, s: f64) -> Self {
+    pub fn from_date_utc(y: i32, m: u8, d: u8, h: u8, mn: u8, s: u8) -> Self {
         Time {
             y,
             m,
             d,
             h,
             mn,
-            s: s.trunc() as u8,
-            fs: s - s.trunc(),
+            s,
+            fs: 0,
         }
     }
-    pub fn from_utc(h: u8, mn: u8, s: f64) -> Self {
+    pub fn from_utc(h: u8, mn: u8, s: u8) -> Self {
         Time {
             y: 0,
             m: 0,
             d: 0,
             h,
             mn,
-            s: s.trunc() as u8,
-            fs: s - s.trunc(),
+            s: s,
+            fs: 0,
         }
+    }
+    pub fn datetime(&self) -> String {
+        format!("{:4}-{:02}-{:02}T{:02}.{:02}.{:02}",self.y,self.m,self.d,self.h,self.mn,self.s)
     }
     pub fn decimal_days(&self) -> f64 {
         self.d as f64
-            + (self.h as f64 + self.mn as f64 * 60. + (self.s as f64 + self.fs) * 3600.) / 24.
+            + (self.h as f64 + self.mn as f64 * 60. + (self.s as f64 + self.fs as f64) * 3600.) / 24.
     }
     pub fn decimal_hours(&self) -> f64 {
-        (self.h as f64) + ((self.mn as f64) + (self.s as f64 + self.fs) / 60.0) / 60.0
+        (self.h as f64) + ((self.mn as f64) + (self.s as f64 + self.fs as f64) / 60.0) / 60.0
     }
     pub fn julian_date(&self) -> f64 {
         if self.y < 1583 {
@@ -91,8 +94,19 @@ impl Time {
     pub fn local_sidereal_time(&self, longitude_deg: f64) -> f64 {
         self.greenwich_sidereal_time() + longitude_deg / 15.
     }
-    pub fn add_seconds(&mut self, secs: u8) {
-        self.s += secs
+    pub fn add_seconds(&mut self, secs: f64) {
+        let mut s = self.decimal_hours()*3600. + secs;
+        self.h = (s/3600.).trunc() as u8;
+        if self.h>=24 {
+            let d = (self.h/24) as u8;
+            self.d += d;
+            self.h -= (self.d*24) as u8;
+        }
+        s -= self.h as f64*3600.;
+        self.mn = (s/60.).trunc() as u8; 
+        s -= self.mn as f64*60.;
+        self.s = s.round() as u8;
+//        self.fs = s - self.s as f64;
     }
 }
 #[derive(Clone, Debug)]
@@ -103,6 +117,9 @@ pub struct Observation {
     pub longitude: f64,
     pub utc: Time,
     pub object: SkyCoordinates,
+    pub sampling_time: f64,
+    pub duration: f64,
+    pub step: u32
 }
 impl Observation {
     pub fn from_date_utc(
@@ -110,12 +127,30 @@ impl Observation {
         longitude_deg: f64,
         utc: Time,
         object: SkyCoordinates,
+        sampling_time: f64,
+        duration: f64
     ) -> Observation {
         Observation {
             latitude: latitude_deg.to_radians(),
             longitude: longitude_deg.to_radians(),
             utc,
             object,
+            sampling_time,
+            duration,
+            step: 0,
+        }
+    }
+}
+impl Iterator for Observation {
+    type Item = u32;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.step += 1;
+        let s = self.step as f64*self.sampling_time;
+        self.utc.add_seconds(self.sampling_time);
+        if s<=self.duration {
+            Some(self.step)
+        } else {
+            None
         }
     }
 }
@@ -210,48 +245,48 @@ mod tests {
 
     #[test]
     fn time_decimal_days() {
-        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0.);
+        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0);
         assert_eq!(t.decimal_days(), 19.75)
     }
 
     #[test]
     fn time_decimal_hours() {
-        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51);
         assert!((t.decimal_hours() - 14.614353).abs() < 1e-6)
     }
 
     #[test]
     fn time_julian_date() {
-        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0.);
+        let t = Time::from_date_utc(2009, 6, 19, 18, 0, 0);
         assert_eq!(t.julian_date(), 2455002.25)
     }
 
     #[test]
     fn time_gst() {
-        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51);
         assert!((t.greenwich_sidereal_time() - 4.668120).abs() < 1e-6)
     }
 
     #[test]
     fn time_lst() {
-        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51.67);
+        let t = Time::from_date_utc(1980, 4, 22, 14, 36, 51);
         assert!((t.local_sidereal_time(-64.) - 0.401453).abs() < 1e-6)
     }
 
     #[test]
     fn sky_hour_angle() {
-        let t = Time::from_date_utc(1980, 4, 22, 18, 36, 51.67);
-        let ra = Time::from_utc(18, 32, 21.);
+        let t = Time::from_date_utc(1980, 4, 22, 18, 36, 51);
+        let ra = Time::from_utc(18, 32, 21);
         let s = SkyCoordinates::new(ra.decimal_hours() * 15., 0.0);
-        let obs = Observation::from_date_utc(0., -64., t, s);
+        let obs = Observation::from_date_utc(0., -64., t, s,1.,1.);
         assert!((obs.object.hour_angle(&obs) - 9.873237).abs() < 1e-6)
     }
 
     #[test]
     fn sky_altaz() {
-        let t = Time::from_date_utc(2012, 06, 10, 4, 1, 3.);
+        let t = Time::from_date_utc(2012, 06, 10, 4, 1, 3);
         let s = SkyCoordinates::new(266.62156258190726, -27.776114821065107);
-        let obs = Observation::from_date_utc(GMT_LAT, GMT_LONG, t, s);
+        let obs = Observation::from_date_utc(GMT_LAT, GMT_LONG, t, s,1.,1.);
         let (alt, az, p) = obs.object.alt_az_parallactic(&obs);
         println!(
             "alt={},az={},p={}",
