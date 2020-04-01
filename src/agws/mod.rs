@@ -9,6 +9,7 @@ pub mod probe {
         fn through(&mut self);
         fn guide_star(&mut self) -> &mut ceo::Source;
         fn gmt(&mut self) -> &mut ceo::Gmt;
+        fn wfs(&mut self) -> &mut ceo::Imaging;
     }
 
     pub struct SH48 {
@@ -72,6 +73,9 @@ pub mod probe {
         fn gmt(&mut self) -> &mut ceo::Gmt {
             &mut self.gmt
         }
+        fn wfs(&mut self) -> &mut ceo::Imaging {
+            &mut self.sensor
+        }
     }
     impl Drop for SH48 {
         fn drop(&mut self) {
@@ -95,7 +99,7 @@ pub mod probe {
         pub fn new(
             probe_coordinates: astrotools::SkyCoordinates,
             guide_star_magnitude: f64,
-            sensor: &mut S,
+            sensor: &'a mut S,
             channel: (Sender<T>, Receiver<R>),
         ) -> Probe<S, T, R> {
             Probe {
@@ -122,10 +126,11 @@ pub mod probe {
             m2_rbm: Option<Vec<Vec<f64>>>,
         ) {
             let (z, a) = self.probe_coordinates.local_polar(observation);
-            println!("({},{})", z.to_degrees() * 60., a.to_degrees());
+            //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
             self.sensor.gmt().update(m1_rbm, m2_rbm);
             self.sensor.through();
+            self.sensor.wfs();
         }
     }
 }
