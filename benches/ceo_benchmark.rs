@@ -3,6 +3,9 @@ use gicsdom::ceo;
 use crate::gicsdom::ceo::Propagation;
 use std::f32;
 use std::time::Duration;
+use ndarray::{Array1, Array2};
+use ndarray_npy::NpzReader;
+use std::fs::File;
 
 #[macro_use]
 extern crate criterion;
@@ -17,10 +20,25 @@ fn fibonacci(n: u64) -> u64 {
     }
 }
 
-
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib 20", |b| b.iter(|| fibonacci(20)));
 }
+
+
+fn opd_nan_filter(c: &mut Criterion) {
+    let mut npz = NpzReader::new(File::open("/home/rconan/Downloads/OPDData_OPD_Data_5.000000e+02.npz").unwrap()).unwrap();
+    let opd: Array1<f64> = npz.by_name("opd.npy").unwrap();
+    let mut group = c.benchmark_group("OPD");
+    group.bench_function("OPD", |b| b.iter(|| {
+        let iter = opd.iter().filter(|x| !x.is_nan());
+        let n = iter.clone().fold(0,|s,x| s + 1 ) as f64;
+        let m = iter.clone().fold(0.0,|s,x| s + x )/n;
+        let s2 = iter.clone().fold(0.0,|s,x| s + (x-m).powi(2) )/n;
+    })
+    );
+}
+
+/*
 
 fn ceo_atmosphere_get_screen(c: &mut Criterion) {
     let mut gmt = ceo::Gmt::new(0,None);
@@ -116,8 +134,7 @@ fn ceo_shack_hartmann_with_atmosphere_integrated(c: &mut Criterion) {
     })
     );
 }
+*/
 
-
-criterion_group!(benches,
-                 ceo_atmosphere_get_screen);
+criterion_group!(benches, opd_nan_filter);
 criterion_main!(benches);
