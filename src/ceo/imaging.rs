@@ -1,6 +1,6 @@
 use std::mem;
 
-use super::ceo_bindings::imaging;
+use super::ceo_bindings::{dev2host,imaging};
 use super::Propagation;
 use super::Source;
 
@@ -33,6 +33,24 @@ impl Imaging {
             );
         }
         self
+    }
+    pub fn frame_transfer(&mut self, frame: &mut Vec<f32>) -> &mut Self {
+        unsafe{
+            dev2host(frame.as_mut_ptr(),
+                     self._c_.d__frame,
+                     self.resolution()*self.resolution()*self._c_.N_SOURCE);
+        }
+        self
+    }
+    pub fn reset(&mut self) -> &mut Self {
+        unsafe { self._c_.reset(); }
+        self
+    }
+    pub fn resolution(&self) -> i32 {
+        self._c_.N_PX_CAMERA*self._c_.N_SIDE_LENSLET
+    }
+    pub fn n_frame(&self) -> u32 {
+        self._c_.N_FRAME as u32
     }
 }
 impl Drop for Imaging {
