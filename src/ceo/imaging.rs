@@ -34,6 +34,9 @@ impl Imaging {
         }
         self
     }
+    pub fn __ceo__(&self) -> &imaging {
+        &self._c_
+    }
     pub fn frame_transfer(&mut self, frame: &mut Vec<f32>) -> &mut Self {
         unsafe{
             dev2host(frame.as_mut_ptr(),

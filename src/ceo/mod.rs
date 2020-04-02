@@ -1,6 +1,7 @@
 use std::{f32, mem};
 
 pub mod atmosphere;
+pub mod centroiding;
 pub mod ceo_bindings;
 pub mod gmt;
 pub mod imaging;
@@ -8,8 +9,8 @@ pub mod shackhartmann;
 pub mod source;
 
 pub use self::atmosphere::Atmosphere;
-pub use self::gmt::Gmt;
-pub use self::gmt::GmtState;
+pub use self::centroiding::Centroiding;
+pub use self::gmt::{Gmt, GmtState};
 pub use self::imaging::Imaging;
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;

@@ -587,6 +587,18 @@ extern "C" {
     #[link_name = "\u{1}_Z8dev2hostPfS_i"]
     pub fn dev2host(host_data: *mut f32, dev_data: *mut f32, N: ::std::os::raw::c_int);
 }
+extern "C" {
+    #[link_name = "\u{1}_Z8host2devPfS_i"]
+    pub fn host2dev(dev_data: *mut f32, host_data: *mut f32, N: ::std::os::raw::c_int);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z13host2dev_charPcS_i"]
+    pub fn host2dev_char(
+        dev_data: *mut ::std::os::raw::c_char,
+        host_data: *mut ::std::os::raw::c_char,
+        N: ::std::os::raw::c_int,
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ray {

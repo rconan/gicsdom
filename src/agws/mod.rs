@@ -13,9 +13,9 @@ pub mod probe {
     }
 
     pub struct SH48 {
-        gmt: ceo::Gmt,
+        pub gmt: ceo::Gmt,
         m1_n_mode: u64,
-        sensor: ceo::Imaging,
+        pub sensor: ceo::Imaging,
         n_side_lenslet: i32,
         n_px_lenslet: i32,
         n_px_framelet: i32,
