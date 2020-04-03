@@ -29,12 +29,12 @@ impl Centroiding {
             centroids: vec![],
         }
     }
-    pub fn build(&mut self, n_lenslet: u32, n_source: u32) -> &mut Self {
-        self.n_lenslet_total = n_lenslet * n_lenslet * n_source;
+    pub fn build(&mut self, n_lenslet: u32) -> &mut Self {
+        self.n_lenslet_total = n_lenslet * n_lenslet;
         self.n_centroids = 2 * self.n_lenslet_total;
         self.n_valid_lenslet = self.n_lenslet_total;
         unsafe {
-            self._c_.setup(n_lenslet as i32, n_source as i32);
+            self._c_.setup(n_lenslet as i32, 1);
             self._c_mask_.setup(self.n_lenslet_total as i32);
         }
         self.flux = vec![0.0; self.n_lenslet_total as usize];
@@ -45,15 +45,15 @@ impl Centroiding {
         &mut self,
         sensor: &Imaging,
         reference: Option<&Centroiding>,
-    ) -> Option<Vec<f32>> {
+    ) -> &mut Self {
         if reference.is_none() {
             unsafe {
                 self._c_
                     .get_data1(sensor.__ceo__().d__frame, sensor.__ceo__().N_PX_CAMERA);
             }
-            return None;
         } else {
             let r = reference.unwrap();
+            assert_eq!(self.n_lenslet_total,r.n_lenslet_total);
             unsafe {
                 self._c_.get_data3(
                     sensor.__ceo__().d__frame,
@@ -63,24 +63,6 @@ impl Centroiding {
                     self.units,
                     r._c_mask_.m,
                 );
-                dev2host(
-                    self.centroids.as_mut_ptr(),
-                    self._c_.d__c,
-                    self.n_centroids as i32,
-                );
-            }
-            let mut valid_centroids: Vec<f32> = vec![];
-            if r.n_valid_lenslet < self.n_lenslet_total {
-                let n = r.n_valid_lenslet as usize;
-                valid_centroids = vec![0f32; 2 * n];
-                let mut l = 0;
-                for (k, v) in r.valid_lenslets.iter().enumerate() {
-                    if *v > 0 {
-                        valid_centroids[l] = self.centroids[k];
-                        valid_centroids[l + n] = self.centroids[k + r.n_lenslet_total as usize];
-                        l += 1;
-                    }
-                }
             }
             /*
             let n = r.n_lenslet_total as usize;
@@ -102,8 +84,35 @@ impl Centroiding {
                 .collect();
             vcx.append(&mut vcy);
             */
-            return Some(valid_centroids.clone());
         }
+        self
+    }
+    pub fn grab(&mut self) -> &mut Self {
+        unsafe {
+            dev2host(
+                self.centroids.as_mut_ptr(),
+                self._c_.d__c,
+                self.n_centroids as i32,
+            );
+        }
+        self
+    }
+    pub fn valids(&self, some_valid_lenslets: Option<&Vec<i8>>) -> Vec<f32> {
+        let valid_lenslets = some_valid_lenslets.or(Some(&self.valid_lenslets)).unwrap();
+        assert_eq!(self.n_lenslet_total,valid_lenslets.len() as u32);
+        let n = valid_lenslets
+            .iter()
+            .fold(0u32, |a, x| a + (*x as u32)) as usize;
+        let mut valid_centroids: Vec<f32> = vec![0f32; 2 * n];
+        let mut l = 0;
+        for (k, v) in valid_lenslets.iter().enumerate() {
+            if *v > 0 {
+                valid_centroids[l] = self.centroids[k];
+                valid_centroids[l + n] = self.centroids[k + valid_lenslets.len()];
+                l += 1;
+            }
+        }
+        return valid_centroids
     }
     pub fn lenslet_flux(&mut self) -> &Vec<f32> {
         unsafe {
@@ -132,12 +141,21 @@ impl Centroiding {
                 self.valid_lenslets.as_mut_ptr(),
                 self.n_lenslet_total as i32,
             );
+            self._c_mask_.reset();
+            self._c_mask_
+                .add1(self._c_.lenslet_mask, self.n_lenslet_total as i32);
         }
         self.n_valid_lenslet = self
             .valid_lenslets
             .iter()
             .fold(0u32, |a, x| a + (*x as u32));
         self.n_valid_lenslet
+    }
+    pub fn __ceo__(&mut self) -> (&centroiding, &mask) {
+        (&self._c_, &self._c_mask_)
+    }
+    pub fn __mut_ceo__(&mut self) -> (&mut centroiding, &mut mask) {
+        (&mut self._c_, &mut self._c_mask_)
     }
 }
 impl Drop for Centroiding {
