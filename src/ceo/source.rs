@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{source, vector};
+use super::{Centroiding, Imaging};
 
 pub struct Source {
     pub _c_: source,
@@ -91,7 +92,7 @@ impl Source {
             .collect()
     }
     pub fn segments_gradients(&mut self) -> Vec<Vec<f32>> {
-        let mut sxy: Vec<Vec<f32>> = vec![vec![0.;7 * self.size as usize]; 2];
+        let mut sxy: Vec<Vec<f32>> = vec![vec![0.; 7 * self.size as usize]; 2];
         unsafe {
             self._c_.wavefront.segments_gradient_averageFast(
                 sxy[0].as_mut_ptr(),
@@ -101,6 +102,26 @@ impl Source {
             );
         }
         sxy
+    }
+    pub fn lenslet_gradients(&mut self, n_lenslet: i32, lenslet_size: f64, data: &mut Centroiding) {
+        unsafe {
+            if data.n_valid_lenslet < data.n_lenslet_total {
+                self._c_.wavefront.finite_difference1(
+                    data.__mut_ceo__().0.d__cx,
+                    data.__mut_ceo__().0.d__cy,
+                    n_lenslet,
+                    lenslet_size as f32,
+                    data.__mut_ceo__().1,
+                );
+            } else {
+                self._c_.wavefront.finite_difference(
+                    data.__mut_ceo__().0.d__cx,
+                    data.__mut_ceo__().0.d__cy,
+                    n_lenslet,
+                    lenslet_size as f32,
+                );
+            }
+        }
     }
     pub fn reset(&mut self) {
         unsafe {
