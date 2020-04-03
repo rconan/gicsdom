@@ -16,11 +16,11 @@ pub mod probe {
         pub gmt: ceo::Gmt,
         m1_n_mode: u64,
         pub sensor: ceo::Imaging,
-        n_side_lenslet: i32,
-        n_px_lenslet: i32,
-        n_px_framelet: i32,
+        pub n_side_lenslet: i32,
+        pub n_px_lenslet: i32,
+        pub n_px_framelet: i32,
         binning: i32,
-        lenslet_size: f64,
+        pub lenslet_size: f64,
         pub guide_star: ceo::Source,
         guide_star_band: String,
     }
@@ -130,8 +130,8 @@ pub mod probe {
         pub fn update(
             &mut self,
             observation: &astrotools::Observation,
-            m1_rbm: Option<Vec<Vec<f64>>>,
-            m2_rbm: Option<Vec<Vec<f64>>>,
+            m1_rbm: Option<&Vec<Vec<f64>>>,
+            m2_rbm: Option<&Vec<Vec<f64>>>,
         ) {
             let (z, a) = self.probe_coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
