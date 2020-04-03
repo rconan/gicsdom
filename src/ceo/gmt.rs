@@ -123,7 +123,7 @@ impl Gmt {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
-    pub fn update(&mut self, m1_rbm: Option<Vec<Vec<f64>>>, m2_rbm: Option<Vec<Vec<f64>>>) {
+    pub fn update(&mut self, m1_rbm: Option<&Vec<Vec<f64>>>, m2_rbm: Option<&Vec<Vec<f64>>>) {
         if m1_rbm.is_some() {
             for (k, rbm) in m1_rbm.unwrap().iter().enumerate() {
                 self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
