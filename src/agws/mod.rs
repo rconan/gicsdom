@@ -147,10 +147,11 @@ pub mod probe {
             self.detector_frame = vec![0f32; resolution * resolution];
             let data_units = Some(self.sensor.pixel_scale());
             println!("pixel size: {:}",data_units.unwrap().to_degrees()*3600.);
+            let data_units = Some(1f64); // TODO: fix units issue
             self.sensor_data0
-                .build(self.sensor.lenslet_array().n_side_lenslet as u32, None);
+                .build(self.sensor.lenslet_array().n_side_lenslet as u32, data_units);
             self.sensor_data
-                .build(self.sensor.lenslet_array().n_side_lenslet as u32, None);
+                .build(self.sensor.lenslet_array().n_side_lenslet as u32, data_units);
             self.sensor.guide_star().set_fwhm(3.16);
         }
         pub fn calibrate_sensor(
