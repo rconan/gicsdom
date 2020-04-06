@@ -12,6 +12,7 @@ pub mod probe {
         fn detector(&mut self) -> &mut ceo::Imaging;
         fn lenslet_array(&self) -> LensletArray;
         fn pixel_scale(&mut self) -> f64;
+        fn noise(&self) -> ceo::imaging::NoiseDataSheet;
     }
 
     #[derive(Copy, Clone)]
@@ -30,6 +31,7 @@ pub mod probe {
         binning: i32,
         pub guide_star: ceo::Source,
         guide_star_band: String,
+        pub noise: ceo::imaging::NoiseDataSheet,
     }
     impl SH48 {
         pub fn new() -> SH48 {
@@ -46,6 +48,11 @@ pub mod probe {
                 binning: 3,
                 guide_star: ceo::Source::empty(),
                 guide_star_band: String::from("R+I"),
+                noise: ceo::imaging::NoiseDataSheet {
+                    rms_read_out_noise: 0.5,
+                    n_background_photon: 0.0,
+                    noise_factor: 2f64.sqrt(),
+                }
             }
         }
     }
@@ -92,6 +99,9 @@ pub mod probe {
         fn pixel_scale(&mut self) -> f64 {
             0.5*(self.binning as f64)*self.guide_star.wavelength()/self.optics.lenslet_size
         }
+        fn noise(&self) -> ceo::imaging::NoiseDataSheet {
+            self.noise
+        }
     }
     impl Drop for SH48 {
         fn drop(&mut self) {
@@ -105,7 +115,7 @@ pub mod probe {
         probe_coordinates: astrotools::SkyCoordinates,
         guide_star_magnitude: f64,
         pub sensor: &'a mut S,
-        detector_integration_duration: u32,
+        exposure: u32,
         pub detector_frame: Vec<f32>,
         pub sensor_data0: ceo::Centroiding,
         pub sensor_data: ceo::Centroiding,
@@ -120,14 +130,14 @@ pub mod probe {
             probe_coordinates: astrotools::SkyCoordinates,
             guide_star_magnitude: f64,
             sensor: &'a mut S,
-            detector_integration_duration: u32,
+            exposure: u32,
             channel: (Sender<T>, Receiver<R>),
         ) -> Probe<S, T, R> {
             Probe {
                 probe_coordinates,
                 guide_star_magnitude,
                 sensor,
-                detector_integration_duration,
+                exposure,
                 detector_frame: vec![],
                 sensor_data0: ceo::Centroiding::new(),
                 sensor_data: ceo::Centroiding::new(),
@@ -184,7 +194,11 @@ pub mod probe {
             self.sensor.guide_star().update(vec![z], vec![a]);
             self.sensor.gmt().update(m1_rbm, m2_rbm);
             self.sensor.through();
-            if self.sensor.detector().n_frame() == self.detector_integration_duration {
+            if self.sensor.detector().n_frame() == self.exposure {
+                let exposure = observation.sampling_time * self.exposure as f64;
+                println!("exposure: {}s",exposure);
+                let noise = Some(self.sensor.noise());
+                self.sensor.detector().readout(exposure,noise);
                 self.sensor_data
                     .process(self.sensor.detector(), Some(&self.sensor_data0));
                 self.sensor.detector().reset();
