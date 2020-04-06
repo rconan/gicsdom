@@ -7,6 +7,7 @@ pub mod gmt;
 pub mod imaging;
 pub mod shackhartmann;
 pub mod source;
+pub mod calibrations;
 
 pub use self::atmosphere::Atmosphere;
 pub use self::centroiding::Centroiding;
@@ -15,6 +16,7 @@ pub use self::imaging::Imaging;
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
+pub use self::calibrations::Calibration;
 pub use ceo_bindings::{pssn, set_device};
 
 pub fn set_gpu(id: i32) {

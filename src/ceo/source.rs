@@ -63,6 +63,9 @@ impl Source {
         }
         self
     }
+    pub fn wavelength(&mut self) -> f64 {
+        unsafe { self._c_.wavelength() as f64 }
+    }
     pub fn set_fwhm(&mut self, value: f64) {
         self._c_.fwhm = value as f32;
     }
