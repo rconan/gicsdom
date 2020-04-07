@@ -583,6 +583,217 @@ impl mask {
         mask_cleanup(self)
     }
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct stats {
+    pub handle: cublasHandle_t,
+    pub status: cublasStatus_t,
+}
+#[test]
+fn bindgen_test_layout_stats() {
+    assert_eq!(
+        ::std::mem::size_of::<stats>(),
+        16usize,
+        concat!("Size of: ", stringify!(stats))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<stats>(),
+        8usize,
+        concat!("Alignment of ", stringify!(stats))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<stats>())).handle as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stats),
+            "::",
+            stringify!(handle)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<stats>())).status as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stats),
+            "::",
+            stringify!(status)
+        )
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats5setupEv"]
+    pub fn stats_setup(this: *mut stats);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats7cleanupEv"]
+    pub fn stats_cleanup(this: *mut stats);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats4meanEPKfi"]
+    pub fn stats_mean(this: *mut stats, data: *const f32, n_data: ::std::os::raw::c_int) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats4meanEPKfP4maski"]
+    pub fn stats_mean1(
+        this: *mut stats,
+        data: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats3varEPKfi"]
+    pub fn stats_var(this: *mut stats, data: *const f32, n_data: ::std::os::raw::c_int) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats3stdEPKfi"]
+    pub fn stats_std(this: *mut stats, data: *const f32, n_data: ::std::os::raw::c_int) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats8diff_varEPKfS1_i"]
+    pub fn stats_diff_var(
+        this: *mut stats,
+        data_1: *const f32,
+        data_2: *const f32,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats8diff_stdEPKfS1_i"]
+    pub fn stats_diff_std(
+        this: *mut stats,
+        data_1: *const f32,
+        data_2: *const f32,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats3varEPKfP4maski"]
+    pub fn stats_var1(
+        this: *mut stats,
+        data1: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats3stdEPKfP4maski"]
+    pub fn stats_std1(
+        this: *mut stats,
+        data1: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats8diff_varEPKfS1_P4maski"]
+    pub fn stats_diff_var1(
+        this: *mut stats,
+        data1: *const f32,
+        data2: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN5stats8diff_stdEPKfS1_P4maski"]
+    pub fn stats_diff_std1(
+        this: *mut stats,
+        data1: *const f32,
+        data2: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32;
+}
+impl stats {
+    #[inline]
+    pub unsafe fn setup(&mut self) {
+        stats_setup(self)
+    }
+    #[inline]
+    pub unsafe fn cleanup(&mut self) {
+        stats_cleanup(self)
+    }
+    #[inline]
+    pub unsafe fn mean(&mut self, data: *const f32, n_data: ::std::os::raw::c_int) -> f32 {
+        stats_mean(self, data, n_data)
+    }
+    #[inline]
+    pub unsafe fn mean1(
+        &mut self,
+        data: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_mean1(self, data, M, n_data)
+    }
+    #[inline]
+    pub unsafe fn var(&mut self, data: *const f32, n_data: ::std::os::raw::c_int) -> f32 {
+        stats_var(self, data, n_data)
+    }
+    #[inline]
+    pub unsafe fn std(&mut self, data: *const f32, n_data: ::std::os::raw::c_int) -> f32 {
+        stats_std(self, data, n_data)
+    }
+    #[inline]
+    pub unsafe fn diff_var(
+        &mut self,
+        data_1: *const f32,
+        data_2: *const f32,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_diff_var(self, data_1, data_2, n_data)
+    }
+    #[inline]
+    pub unsafe fn diff_std(
+        &mut self,
+        data_1: *const f32,
+        data_2: *const f32,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_diff_std(self, data_1, data_2, n_data)
+    }
+    #[inline]
+    pub unsafe fn var1(
+        &mut self,
+        data1: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_var1(self, data1, M, n_data)
+    }
+    #[inline]
+    pub unsafe fn std1(
+        &mut self,
+        data1: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_std1(self, data1, M, n_data)
+    }
+    #[inline]
+    pub unsafe fn diff_var1(
+        &mut self,
+        data1: *const f32,
+        data2: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_diff_var1(self, data1, data2, M, n_data)
+    }
+    #[inline]
+    pub unsafe fn diff_std1(
+        &mut self,
+        data1: *const f32,
+        data2: *const f32,
+        M: *mut mask,
+        n_data: ::std::os::raw::c_int,
+    ) -> f32 {
+        stats_diff_std1(self, data1, data2, M, n_data)
+    }
+}
 extern "C" {
     #[link_name = "\u{1}_Z8dev2hostPfS_i"]
     pub fn dev2host(host_data: *mut f32, dev_data: *mut f32, N: ::std::os::raw::c_int);
@@ -598,6 +809,266 @@ extern "C" {
         host_data: *mut ::std::os::raw::c_char,
         N: ::std::os::raw::c_int,
     );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct gpu_float {
+    pub dev_data: *mut f32,
+    pub host_data: *mut f32,
+    pub N: ::std::os::raw::c_int,
+    pub nb: ::std::os::raw::c_int,
+    pub S: stats,
+}
+#[test]
+fn bindgen_test_layout_gpu_float() {
+    assert_eq!(
+        ::std::mem::size_of::<gpu_float>(),
+        40usize,
+        concat!("Size of: ", stringify!(gpu_float))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<gpu_float>(),
+        8usize,
+        concat!("Alignment of ", stringify!(gpu_float))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).dev_data as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(dev_data)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).host_data as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(host_data)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).N as *const _ as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(N)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).nb as *const _ as usize },
+        20usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(nb)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).S as *const _ as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(S)
+        )
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float5setupEv"]
+    pub fn gpu_float_setup(this: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float5setupEi"]
+    pub fn gpu_float_setup1(this: *mut gpu_float, N_T: ::std::os::raw::c_int);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float10dev_mallocEv"]
+    pub fn gpu_float_dev_malloc(this: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float8free_devEv"]
+    pub fn gpu_float_free_dev(this: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float8dev2hostEv"]
+    pub fn gpu_float_dev2host(this: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float8host2devEv"]
+    pub fn gpu_float_host2dev(this: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float5resetEv"]
+    pub fn gpu_float_reset(this: *mut gpu_float);
+}
+impl gpu_float {
+    #[inline]
+    pub unsafe fn setup(&mut self) {
+        gpu_float_setup(self)
+    }
+    #[inline]
+    pub unsafe fn setup1(&mut self, N_T: ::std::os::raw::c_int) {
+        gpu_float_setup1(self, N_T)
+    }
+    #[inline]
+    pub unsafe fn dev_malloc(&mut self) {
+        gpu_float_dev_malloc(self)
+    }
+    #[inline]
+    pub unsafe fn free_dev(&mut self) {
+        gpu_float_free_dev(self)
+    }
+    #[inline]
+    pub unsafe fn dev2host(&mut self) {
+        gpu_float_dev2host(self)
+    }
+    #[inline]
+    pub unsafe fn host2dev(&mut self) {
+        gpu_float_host2dev(self)
+    }
+    #[inline]
+    pub unsafe fn reset(&mut self) {
+        gpu_float_reset(self)
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct gpu_double {
+    pub dev_data: *mut f64,
+    pub host_data: *mut f64,
+    pub N: ::std::os::raw::c_int,
+    pub nb: ::std::os::raw::c_int,
+    pub S: stats,
+}
+#[test]
+fn bindgen_test_layout_gpu_double() {
+    assert_eq!(
+        ::std::mem::size_of::<gpu_double>(),
+        40usize,
+        concat!("Size of: ", stringify!(gpu_double))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<gpu_double>(),
+        8usize,
+        concat!("Alignment of ", stringify!(gpu_double))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).dev_data as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(dev_data)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).host_data as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(host_data)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).N as *const _ as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(N)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).nb as *const _ as usize },
+        20usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(nb)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).S as *const _ as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(S)
+        )
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double5setupEv"]
+    pub fn gpu_double_setup(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double5setupEi"]
+    pub fn gpu_double_setup1(this: *mut gpu_double, N_T: ::std::os::raw::c_int);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double10dev_mallocEv"]
+    pub fn gpu_double_dev_malloc(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double8free_devEv"]
+    pub fn gpu_double_free_dev(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double8dev2hostEv"]
+    pub fn gpu_double_dev2host(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double8host2devEv"]
+    pub fn gpu_double_host2dev(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double5resetEv"]
+    pub fn gpu_double_reset(this: *mut gpu_double);
+}
+impl gpu_double {
+    #[inline]
+    pub unsafe fn setup(&mut self) {
+        gpu_double_setup(self)
+    }
+    #[inline]
+    pub unsafe fn setup1(&mut self, N_T: ::std::os::raw::c_int) {
+        gpu_double_setup1(self, N_T)
+    }
+    #[inline]
+    pub unsafe fn dev_malloc(&mut self) {
+        gpu_double_dev_malloc(self)
+    }
+    #[inline]
+    pub unsafe fn free_dev(&mut self) {
+        gpu_double_free_dev(self)
+    }
+    #[inline]
+    pub unsafe fn dev2host(&mut self) {
+        gpu_double_dev2host(self)
+    }
+    #[inline]
+    pub unsafe fn host2dev(&mut self) {
+        gpu_double_host2dev(self)
+    }
+    #[inline]
+    pub unsafe fn reset(&mut self) {
+        gpu_double_reset(self)
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

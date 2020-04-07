@@ -9,6 +9,8 @@ fn main() {
         .clang_arg("-I/usr/local/cuda-10.1/include")
         .clang_arg("-v")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .whitelist_type("gpu_float")
+        .whitelist_type("gpu_double")
         .whitelist_type("mask")
         .whitelist_function("set_device")
         .whitelist_function("host2dev_char")
