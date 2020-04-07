@@ -6,7 +6,7 @@ pub mod probe {
 
     pub trait Sensor {
         fn build(&mut self, zenith: Vec<f32>, azimuth: Vec<f32>, magnitude: Vec<f32>);
-        fn through(&mut self) -> &mut Self;
+        fn through(&mut self, opd: Option<&mut ceo::CuFloat>) -> &mut Self;
         fn guide_star(&mut self) -> &mut ceo::Source;
         fn gmt(&mut self) -> &mut ceo::Gmt;
         fn detector(&mut self) -> &mut ceo::Imaging;
@@ -52,7 +52,7 @@ pub mod probe {
                     rms_read_out_noise: 0.5,
                     n_background_photon: 0.0,
                     noise_factor: 2f64.sqrt(),
-                }
+                },
             }
         }
     }
@@ -77,11 +77,20 @@ pub mod probe {
             self.guide_star
                 .build(&self.guide_star_band, zenith, azimuth, magnitude);
         }
-        fn through(&mut self) -> &mut Self {
-            self.guide_star
-                .through(&mut self.gmt)
-                .xpupil()
-                .through(&mut self.sensor);
+        fn through(&mut self, opd: Option<&mut ceo::CuFloat>) -> &mut Self {
+            if opd.is_none() {
+                self.guide_star
+                    .through(&mut self.gmt)
+                    .xpupil()
+                    .through(&mut self.sensor);
+            }
+            if opd.is_some() {
+                self.guide_star
+                    .through(&mut self.gmt)
+                    .xpupil()
+                    .add(opd.unwrap())
+                    .through(&mut self.sensor);
+            }
             self
         }
         fn guide_star(&mut self) -> &mut ceo::Source {
@@ -97,7 +106,7 @@ pub mod probe {
             self.optics.clone()
         }
         fn pixel_scale(&mut self) -> f64 {
-            0.5*(self.binning as f64)*self.guide_star.wavelength()/self.optics.lenslet_size
+            0.5 * (self.binning as f64) * self.guide_star.wavelength() / self.optics.lenslet_size
         }
         fn noise(&self) -> ceo::imaging::NoiseDataSheet {
             self.noise
@@ -119,6 +128,7 @@ pub mod probe {
         pub detector_frame: Vec<f32>,
         pub sensor_data0: ceo::Centroiding,
         pub sensor_data: ceo::Centroiding,
+        sampling_time: f64,
         sender: Sender<T>,
         receiver: Receiver<R>,
     }
@@ -141,6 +151,7 @@ pub mod probe {
                 detector_frame: vec![],
                 sensor_data0: ceo::Centroiding::new(),
                 sensor_data: ceo::Centroiding::new(),
+                sampling_time: 0.0,
                 sender: channel.0,
                 receiver: channel.1,
             }
@@ -156,29 +167,32 @@ pub mod probe {
             let resolution = self.sensor.detector().resolution() as usize;
             self.detector_frame = vec![0f32; resolution * resolution];
             let data_units = Some(self.sensor.pixel_scale());
-            println!("pixel size: {:}",data_units.unwrap().to_degrees()*3600.);
+            println!("pixel size: {:}", data_units.unwrap().to_degrees() * 3600.);
             let data_units = Some(1f64); // TODO: fix units issue
-            self.sensor_data0
-                .build(self.sensor.lenslet_array().n_side_lenslet as u32, data_units);
-            self.sensor_data
-                .build(self.sensor.lenslet_array().n_side_lenslet as u32, data_units);
+            self.sensor_data0.build(
+                self.sensor.lenslet_array().n_side_lenslet as u32,
+                data_units,
+            );
+            self.sensor_data.build(
+                self.sensor.lenslet_array().n_side_lenslet as u32,
+                data_units,
+            );
             self.sensor.guide_star().set_fwhm(3.16);
+            self.sampling_time = observation.sampling_time;
         }
-        pub fn calibrate_sensor(
-            &mut self,
-            intensity_threshold: f64,
-        ) {
+        pub fn calibrate_sensor(&mut self, intensity_threshold: f64) {
             self.sensor.gmt().reset();
             self.sensor.detector().reset();
-            self.sensor.through();
+            self.sensor.through(None);
             self.sensor_data0.process(self.sensor.detector(), None);
-            let n_valid_lenslet = self.sensor_data0.set_valid_lenslets(Some(intensity_threshold),None);
+            let n_valid_lenslet = self
+                .sensor_data0
+                .set_valid_lenslets(Some(intensity_threshold), None);
             println!(
                 "# valid lenslet: {} ({:.0}%)",
                 n_valid_lenslet,
-                100f64
-                    * n_valid_lenslet as f64
-                        / (self.sensor.lenslet_array().n_side_lenslet
+                100f64 * n_valid_lenslet as f64
+                    / (self.sensor.lenslet_array().n_side_lenslet
                         * self.sensor.lenslet_array().n_side_lenslet) as f64
             );
             self.sensor.detector().reset();
@@ -188,21 +202,29 @@ pub mod probe {
             observation: &astrotools::Observation,
             m1_rbm: Option<&Vec<Vec<f64>>>,
             m2_rbm: Option<&Vec<Vec<f64>>>,
-        ) -> Option<Vec<f32>> {
+        ) -> &mut Self {
             let (z, a) = self.probe_coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
             self.sensor.gmt().update(m1_rbm, m2_rbm);
-            self.sensor.through();
+            self
+        }
+        pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> Option<Vec<f32>> {
+            self.sensor.through(phase);
+            println!("WFE RMS: {:.0}nm",self.sensor.guide_star().wfe_rms_10e(-9)[0]);
             if self.sensor.detector().n_frame() == self.exposure {
-                let exposure = observation.sampling_time * self.exposure as f64;
-                println!("exposure: {}s",exposure);
+                let exposure = self.sampling_time * self.exposure as f64;
+                println!("exposure: {}s", exposure);
                 let noise = Some(self.sensor.noise());
-                self.sensor.detector().readout(exposure,noise);
+                self.sensor.detector().readout(exposure, noise);
                 self.sensor_data
                     .process(self.sensor.detector(), Some(&self.sensor_data0));
                 self.sensor.detector().reset();
-                return Some(self.sensor_data.grab().valids(Some(&self.sensor_data0.valid_lenslets)))
+                return Some(
+                    self.sensor_data
+                        .grab()
+                        .valids(Some(&self.sensor_data0.valid_lenslets)),
+                );
             }
             None
         }
