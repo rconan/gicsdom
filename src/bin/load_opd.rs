@@ -1,5 +1,6 @@
 use std::f64;
 
+use gicsdom::ceo;
 use gicsdom::DomeSeeing;
 
 fn std(opd: Vec<f64>) -> f64 {
@@ -11,18 +12,46 @@ fn std(opd: Vec<f64>) -> f64 {
 }
 
 fn main() {
-
-    let mut domeseeing = DomeSeeing::new(0,0,"cd",12,Some(5.0));
+    let mut domeseeing = DomeSeeing::new(0, 0, "cd", 12, Some(5.0));
     domeseeing.list();
     let opd = domeseeing.load_at(0.0);
     let iter = opd.iter().filter(|x| !x.is_nan());
     let n = iter.clone().fold(0, |s, x| s + 1) as f64;
     let m = iter.clone().fold(0.0, |s, x| s + x) / n;
     let s2 = iter.clone().fold(0.0, |s, x| s + (x - m).powi(2)) / n;
-    println!("l={} ; n={} ; m={} nm ; s={} micron", opd.len(), n, m * 1e9, 1e6 * s2.sqrt());
+    println!(
+        "l={} ; n={} ; m={} nm ; s={} micron",
+        opd.len(),
+        n,
+        m * 1e9,
+        1e6 * s2.sqrt()
+    );
+
+    let mut gmt = ceo::Gmt::new();
+    gmt.build(0, None);
+    let mut src = ceo::Source::new(1, 25.5, 769);
+    src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+    src.through(&mut gmt).xpupil();
+    println!("WFE RMS: {:?}nm", src.wfe_rms_10e(-9));
+
+    let mut gopd = ceo::CuFloat::new();
+    gopd.malloc(769 * 769);
 
     for _ in 0..40 {
-        println!("WFE RMS: {:8.3}nm",std(domeseeing.next().unwrap()));
+        let opd = domeseeing.next().unwrap();
+        let mut opd_f32: Vec<f32> = opd
+            .iter()
+            .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
+            .collect();
+        print!("WFE RMS: {:8.3}nm", std(opd));
+        gopd.up(&mut opd_f32);
+        println!(
+            " ; {:8.3}nm",
+            src.through(&mut gmt)
+                .xpupil()
+                .add(&mut gopd)
+                .wfe_rms_10e(-9)[0]
+        );
     }
 
     /*
