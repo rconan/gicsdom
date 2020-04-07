@@ -1,7 +1,9 @@
 pub mod ceo;
 pub mod astrotools;
 pub mod agws;
+pub mod domeseeing;
 
+pub use domeseeing::DomeSeeing;
 
 pub struct Rotation {
     pub o: f64,
