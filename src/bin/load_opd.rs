@@ -2,16 +2,28 @@ use std::f64;
 
 use gicsdom::DomeSeeing;
 
+fn std(opd: Vec<f64>) -> f64 {
+    let iter = opd.iter().filter(|x| !x.is_nan());
+    let n = iter.clone().fold(0, |s, x| s + 1) as f64;
+    let m = iter.clone().fold(0.0, |s, x| s + x) / n;
+    let s2 = iter.clone().fold(0.0, |s, x| s + (x - m).powi(2)) / n;
+    1e9 * s2.sqrt()
+}
+
 fn main() {
 
-    let mut domeseeing = DomeSeeing::new(0,0,"cd",12);
-    domeseeing.scan();
+    let mut domeseeing = DomeSeeing::new(0,0,"cd",12,Some(5.0));
+    domeseeing.list();
     let opd = domeseeing.load_at(0.0);
     let iter = opd.iter().filter(|x| !x.is_nan());
     let n = iter.clone().fold(0, |s, x| s + 1) as f64;
     let m = iter.clone().fold(0.0, |s, x| s + x) / n;
     let s2 = iter.clone().fold(0.0, |s, x| s + (x - m).powi(2)) / n;
     println!("l={} ; n={} ; m={} nm ; s={} micron", opd.len(), n, m * 1e9, 1e6 * s2.sqrt());
+
+    for _ in 0..40 {
+        println!("WFE RMS: {:8.3}nm",std(domeseeing.next().unwrap()));
+    }
 
     /*
     let mut npz = NpzReader::new(
