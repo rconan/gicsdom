@@ -11,7 +11,7 @@ pub struct Time {
     h: u8,
     mn: u8,
     s: u8,
-    fs: u32,
+    fs: f64,
 }
 impl Time {
     pub fn from_date_utc(y: i32, m: u8, d: u8, h: u8, mn: u8, s: u8) -> Self {
@@ -22,7 +22,7 @@ impl Time {
             h,
             mn,
             s,
-            fs: 0,
+            fs: 0.0,
         }
     }
     pub fn from_utc(h: u8, mn: u8, s: u8) -> Self {
@@ -33,11 +33,11 @@ impl Time {
             h,
             mn,
             s: s,
-            fs: 0,
+            fs: 0.0,
         }
     }
     pub fn datetime(&self) -> String {
-        format!("{:4}-{:02}-{:02}T{:02}.{:02}.{:02}",self.y,self.m,self.d,self.h,self.mn,self.s)
+        format!("{:4}-{:02}-{:02}T{:02}:{:02}:{:06.3}",self.y,self.m,self.d,self.h,self.mn,self.s as f64 + self.fs)
     }
     pub fn decimal_days(&self) -> f64 {
         self.d as f64
@@ -106,7 +106,7 @@ impl Time {
         self.mn = (s/60.).trunc() as u8; 
         s -= self.mn as f64*60.;
         self.s = s.round() as u8;
-//        self.fs = s - self.s as f64;
+        self.fs = s - self.s as f64;
     }
 }
 #[derive(Clone, Debug)]
