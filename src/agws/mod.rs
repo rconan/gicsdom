@@ -134,6 +134,11 @@ pub mod probe {
         }
     }
 
+    pub enum ProbeSensors {
+        SH24,
+        SH48,
+    }
+
     pub struct Probe<'a, S: Sensor> {
         probe_coordinates: astrotools::SkyCoordinates,
         guide_star_magnitude: f64,
@@ -218,16 +223,20 @@ pub mod probe {
             let (z, a) = self.probe_coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
+            //print!("Probe receiving GMT state ...");
             let state = self.receiver.recv().unwrap();
+            //println!("OK");
             self.sensor.gmt().update(Some(&state.m1_rbm), Some(&state.m2_rbm));
             self
         }
         pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> &mut Self {
             self.sensor.through(phase);
-            println!("WFE RMS: {:.0}nm",self.sensor.guide_star().wfe_rms_10e(-9)[0]);
-            if self.sensor.detector().n_frame() == self.exposure {
+            let n_frame = self.sensor.detector().n_frame();
+            println!("WFE RMS: {:.0}nm ; frame #{:0.4}",self.sensor.guide_star().wfe_rms_10e(-9)[0],n_frame);
+            //print!("Probe sending centroids ...");
+            if n_frame == self.exposure {
                 let exposure = self.sampling_time * self.exposure as f64;
-                println!("exposure: {}s", exposure);
+                print!("exposure: {}s", exposure);
                 let noise = Some(self.sensor.noise());
                 self.sensor.detector().readout(exposure, noise);
                 self.sensor_data
@@ -247,6 +256,7 @@ pub mod probe {
             } else {
                 self.sender.send(None).unwrap();
             }
+            //println!("OK");
             self
         }
     }

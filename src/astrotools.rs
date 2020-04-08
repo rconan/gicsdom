@@ -119,7 +119,9 @@ pub struct Observation {
     pub object: SkyCoordinates,
     pub sampling_time: f64,
     pub duration: f64,
-    pub step: u32
+    pub step: u32,
+    pub ended: bool,
+
 }
 impl Observation {
     pub fn from_date_utc(
@@ -138,6 +140,7 @@ impl Observation {
             sampling_time,
             duration,
             step: 0,
+            ended: false,
         }
     }
 }
@@ -150,6 +153,7 @@ impl Iterator for Observation {
         if s<=self.duration {
             Some(self.step)
         } else {
+            self.ended = true;
             None
         }
     }
