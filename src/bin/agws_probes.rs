@@ -6,9 +6,7 @@ use gicsdom::astrotools;
 use gicsdom::ceo;
 use gicsdom::DomeSeeing;
 use ndarray::Array;
-use std::cell::RefCell;
 use std::f32;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -42,15 +40,15 @@ fn main() {
     )));
     //    println!("OBS: {}", obs.borrow().utc.datetime());
 
-    /*
     let mut domeseeing = DomeSeeing::new(0, 0, "cd", 12, Some(1.0 / sampling_time));
     domeseeing.list();
-     */
+    let opd = Arc::new(Mutex::new(vec![0f32;769*769]));
 
     let mut handles = vec![];
     let _probe_channel_ = probe_channel.clone();
     let _telescope_channel_ = telescope_channel.clone();
     let _obs_ = Arc::clone(&obs);
+    let _opd_ = Arc::clone(&opd);
     let handle = thread::spawn(move || {
         let mut sh48 = agws::probe::SH48::new();
         let optics = sh48.optics;
@@ -90,17 +88,7 @@ fn main() {
         probe.sensor.detector().reset();
 
         loop {
-            let mut opd = vec![0f32;769*769];
-            /*
-            let mut opd: Vec<f32> = domeseeing
-                .next()
-                .unwrap()
-                .iter()
-                .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
-                .collect();
-            //        let opd = domeseeing.next().unwrap();
-            */
-            gopd.up(&mut opd);
+
             //println!("Probe locking obs");
             {
                 let __obs = _obs_.lock().unwrap();
@@ -118,7 +106,11 @@ fn main() {
                 probe.update(&__obs);
             }
             //println!("Probe releasing obs");
-            probe.through(None);//Some(&mut gopd));
+            {
+                let mut __opd = _opd_.lock().unwrap();
+                gopd.up(&mut __opd);
+                probe.through(Some(&mut gopd));
+            }
 
         }
     });
@@ -153,7 +145,16 @@ fn main() {
     println!("U={}", 3600.0 * u.to_degrees());
 
     print!("Plant sending GMT state ...");
-    telescope_channel.0.send(state.clone()).unwrap();
+    {
+        telescope_channel.0.send(state.clone()).unwrap();
+        let mut _opd = opd.lock().unwrap();
+        *_opd = domeseeing
+            .next()
+            .unwrap()
+            .iter()
+            .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
+            .collect();
+    }
     println!("OK");
 
     let now = Instant::now();
@@ -172,7 +173,16 @@ fn main() {
         //println!("Plant locking obs");
         {
             //print!("Plant sending GMT state ...");
-            telescope_channel.0.send(state.clone()).unwrap();
+            {
+                telescope_channel.0.send(state.clone()).unwrap();
+                let mut _opd = opd.lock().unwrap();
+                *_opd = domeseeing
+                    .next()
+                    .unwrap()
+                    .iter()
+                    .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
+                    .collect();
+            }
             //println!("OK");
             let mut _obs_ = obs.lock().unwrap();
             println!(
