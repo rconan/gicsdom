@@ -2,7 +2,7 @@ pub mod probe {
 
     use crate::astrotools;
     use crate::ceo;
-    use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+    use crossbeam_channel::{Receiver, Sender};
 
     #[derive(Clone)]
     pub struct GmtState {

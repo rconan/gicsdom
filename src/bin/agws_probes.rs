@@ -5,12 +5,11 @@ use gicsdom::agws::probe::Sensor;
 use gicsdom::astrotools;
 use gicsdom::ceo;
 use gicsdom::DomeSeeing;
-use ndarray::{Array, Array2, ShapeBuilder};
+use ndarray::Array;
 use std::cell::RefCell;
-use std::cmp::Ord;
 use std::rc::Rc;
 use std::time::Instant;
-use std::{f32, f64};
+use std::f32;
 
 fn main() {
     let telescope_channel: (Sender<GmtState>, Receiver<GmtState>) = bounded(1);
@@ -31,14 +30,14 @@ fn main() {
     let mut domeseeing = DomeSeeing::new(0, 0, "cd", 12, Some(1.0 / sampling_time));
     domeseeing.list();
 
-    let obs = RefCell::new(astrotools::Observation::from_date_utc(
+    let obs = Rc::new(RefCell::new(astrotools::Observation::from_date_utc(
         astrotools::GMT_LAT,
         astrotools::GMT_LONG,
         astrotools::Time::from_date_utc(2012, 6, 10, 4, 1, 3),
         astrotools::SkyCoordinates::new(266.62156258190726, -27.776114821065107),
         sampling_time,
         duration,
-    ));
+    )));
     println!("OBS: {}", obs.borrow().utc.datetime());
 
     let mut sh48 = agws::probe::SH48::new();
@@ -80,22 +79,22 @@ fn main() {
     //probe.update(&obs.borrow(), Some(&state.m1_rbm), Some(&state.m2_rbm));
 
     /*
-    let mut stt = probe.sensor.guide_star().segments_gradients();
-    for a in 0..2 {
-        for i in 0..7 {
-            stt[a][i] -= stt0[a][i];
-            stt[a][i] *= 1e6;
+        let mut stt = probe.sensor.guide_star().segments_gradients();
+        for a in 0..2 {
+            for i in 0..7 {
+                stt[a][i] -= stt0[a][i];
+                stt[a][i] *= 1e6;
+            }
         }
-    }
-    println!("{:+.2?}", stt);
-*/
+        println!("{:+.2?}", stt);
+    */
     probe.sensor.detector().reset();
 
     let u: f32 = 1.5 * 0.715e-6 * 48.0 / 25.5;
     println!("U={}", 3600.0 * u.to_degrees());
 
-    let mut gopd = ceo::CuFloat::new();
-    gopd.malloc(769 * 769);
+    let gopd = Rc::new(RefCell::new(ceo::CuFloat::new()));
+    gopd.borrow_mut().malloc(769 * 769);
 
     let now = Instant::now();
     loop {
@@ -106,19 +105,17 @@ fn main() {
             probe.sensor.detector().n_frame(),
         );
 
-        /*
         let opd = domeseeing.next().unwrap();
         let mut opd_f32: Vec<f32> = opd
             .iter()
             .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
             .collect();
-        gopd.up(&mut opd_f32);
-         */
-        
+        gopd.borrow_mut().up(&mut opd_f32);
+
         telescope_channel.0.send(state.clone()).unwrap();
         probe
             .update(&obs.borrow())
-            .through(None);//Some(&mut gopd));
+            .through(Some(&mut gopd.borrow_mut()));
 
         let centroids = probe_channel.1.recv().unwrap();
         if centroids.is_some() {

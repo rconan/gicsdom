@@ -49,7 +49,7 @@ impl CuFloat {
         self
     }
     pub fn as_mut_ptr(&mut self) -> *mut f32 {
-        unsafe { self._c_.dev_data }
+        self._c_.dev_data
     }
 }
 impl Drop for CuFloat {

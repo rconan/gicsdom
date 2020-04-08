@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{source, vector};
-use super::{Centroiding, Imaging, CuFloat};
+use super::{Centroiding, CuFloat};
 
 pub struct Source {
     pub _c_: source,
