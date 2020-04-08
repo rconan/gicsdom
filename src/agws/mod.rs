@@ -4,6 +4,20 @@ pub mod probe {
     use crate::ceo;
     use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
+    #[derive(Clone)]
+    pub struct GmtState {
+        pub m1_rbm: Vec<Vec<f64>>,
+        pub m2_rbm: Vec<Vec<f64>>,
+    }
+    impl GmtState {
+        pub fn new() -> GmtState {
+            GmtState {
+                m1_rbm: vec![vec![0.; 6]; 7],
+                m2_rbm: vec![vec![0.; 6]; 7],
+            }
+        }
+    }
+
     pub trait Sensor {
         fn build(&mut self, zenith: Vec<f32>, azimuth: Vec<f32>, magnitude: Vec<f32>);
         fn through(&mut self, opd: Option<&mut ceo::CuFloat>) -> &mut Self;
@@ -120,7 +134,7 @@ pub mod probe {
         }
     }
 
-    pub struct Probe<'a, S: Sensor, T, R> {
+    pub struct Probe<'a, S: Sensor> {
         probe_coordinates: astrotools::SkyCoordinates,
         guide_star_magnitude: f64,
         pub sensor: &'a mut S,
@@ -129,10 +143,10 @@ pub mod probe {
         pub sensor_data0: ceo::Centroiding,
         pub sensor_data: ceo::Centroiding,
         sampling_time: f64,
-        sender: Sender<T>,
-        receiver: Receiver<R>,
+        sender: Sender<Option<Vec<f32>>>,
+        receiver: Receiver<GmtState>,
     }
-    impl<'a, S, T, R> Probe<'a, S, T, R>
+    impl<'a, S> Probe<'a, S>
     where
         S: Sensor,
     {
@@ -141,8 +155,8 @@ pub mod probe {
             guide_star_magnitude: f64,
             sensor: &'a mut S,
             exposure: u32,
-            channel: (Sender<T>, Receiver<R>),
-        ) -> Probe<S, T, R> {
+            channel: (Sender<Option<Vec<f32>>>, Receiver<GmtState>),
+        ) -> Probe<S> {
             Probe {
                 probe_coordinates,
                 guide_star_magnitude,
@@ -200,16 +214,15 @@ pub mod probe {
         pub fn update(
             &mut self,
             observation: &astrotools::Observation,
-            m1_rbm: Option<&Vec<Vec<f64>>>,
-            m2_rbm: Option<&Vec<Vec<f64>>>,
         ) -> &mut Self {
             let (z, a) = self.probe_coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
-            self.sensor.gmt().update(m1_rbm, m2_rbm);
+            let state = self.receiver.recv().unwrap();
+            self.sensor.gmt().update(Some(&state.m1_rbm), Some(&state.m2_rbm));
             self
         }
-        pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> Option<Vec<f32>> {
+        pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> &mut Self {
             self.sensor.through(phase);
             println!("WFE RMS: {:.0}nm",self.sensor.guide_star().wfe_rms_10e(-9)[0]);
             if self.sensor.detector().n_frame() == self.exposure {
@@ -220,13 +233,21 @@ pub mod probe {
                 self.sensor_data
                     .process(self.sensor.detector(), Some(&self.sensor_data0));
                 self.sensor.detector().reset();
+                /*
                 return Some(
                     self.sensor_data
                         .grab()
                         .valids(Some(&self.sensor_data0.valid_lenslets)),
                 );
+                 */
+                self.sender.send(Some(
+                    self.sensor_data
+                        .grab()
+                        .valids(Some(&self.sensor_data0.valid_lenslets)))).unwrap();
+            } else {
+                self.sender.send(None).unwrap();
             }
-            None
+            self
         }
     }
 }
