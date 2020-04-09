@@ -30,6 +30,7 @@ fn main() {
     let telescope_channel: Vec<(Sender<GmtState>, Receiver<GmtState>)> = vec![unbounded(); N_PROBE];
     let probe_channel: Vec<(Sender<Option<Vec<f32>>>, Receiver<Option<Vec<f32>>>)> =
         vec![unbounded(); N_PROBE];
+    let science_channel: (Sender<GmtState>, Receiver<GmtState>) = unbounded();
 
     let obs = Arc::new(Mutex::new(astrotools::Observation::from_date_utc(
         astrotools::GMT_LAT,
@@ -45,6 +46,7 @@ fn main() {
     domeseeing.list();
     let opd = Arc::new(Mutex::new(vec![0f32; 769 * 769]));
 
+    // AGWS <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let mut handles = vec![];
     for k in 0..N_PROBE {
         let _probe_channel_ = probe_channel[k].clone();
@@ -68,6 +70,7 @@ fn main() {
             //        probe.init(&obs.borrow());
             probe.calibrate_sensor(0.9);
 
+            // Calibration ----------------
             print!("Calibrating ");
             let m1_n_mode = 17;
             let now = Instant::now();
@@ -83,6 +86,7 @@ fn main() {
                 );
             println!(" in {}s", now.elapsed().as_millis());
             _probe_channel_.0.send(Some(calibration)).unwrap();
+            // Calibration ----------------
 
             let mut gopd = ceo::CuFloat::new();
             gopd.malloc(769 * 769);
@@ -119,9 +123,57 @@ fn main() {
         handles.push(handle);
     }
 
+    // AGWS <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    // Calibration ----------------
     let calibration: Vec<Vec<f32>> = probe_channel.iter().map(|x| x.1.recv().unwrap().unwrap()).collect();
     let n_mode = 14;
     let m = ceo::calibrations::pseudo_inverse(calibration, n_mode);
+    // Calibration ----------------
+
+    // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    let science_receiver = science_channel.1.clone();
+    let _obs_ = Arc::clone(&obs);
+    let handle = thread::spawn(move || {
+        let n_src = 1usize;
+        let zen = vec![0f32;n_src];
+        let azi = vec![0f32;n_src];
+        let pupil_size = 25.5;
+        let pupil_sampling = 512;
+        let m1_n_mode = 27;
+
+        // GMT initialization
+        let mut gmt = ceo::Gmt::new();
+        gmt.build(m1_n_mode, None);
+
+        let mut src = ceo::Source::new(1, pupil_size, pupil_sampling);
+        src.build("V", zen, azi, vec![0.0; n_src]);
+
+        let mut src_pssn = ceo::PSSn::new(15e-2, 25.0);
+        src_pssn.build(&mut src);
+
+        loop {
+            {
+                let __obs = _obs_.lock().unwrap();
+                if __obs.ended {
+                    println!("Observation has ended!");
+                    break;
+                }
+            }
+
+            let gmt_state: GmtState = science_receiver.recv().unwrap();
+            gmt.update(Some(&gmt_state.m1_rbm), Some(&gmt_state.m2_rbm));
+            let src_wfe_rms =src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
+            src_pssn.peek(&mut src);
+            let onaxis_pssn = src_pssn.estimates[0];
+            let pssn_spatial_uniformity = src_pssn.spatial_uniformity();
+            println!("SCIENCE :: WFE RMS: {:.1} nm; PSSn: {:>6.4} {:>6.4}%",
+                     src_wfe_rms, onaxis_pssn, pssn_spatial_uniformity);
+        }
+
+    });
+    handles.push(handle);
+    // SCIENCE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     //let stt0 = probe.sensor.guide_star().segments_gradients();
     /*
@@ -151,15 +203,18 @@ fn main() {
     {
         //print!("Plant sending GMT state ...");
         telescope_channel.iter().for_each(|x| x.0.send(state.clone()).unwrap());
+        science_channel.0.send(state.clone()).unwrap();
         //println!("OK");
         let mut _opd = opd.lock().unwrap();
+        /*
         *_opd = domeseeing
             .next()
             .unwrap()
             .iter()
             .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
             .collect();
-        //*_opd = vec![0f32;769*769];
+        */
+        *_opd = vec![0f32;769*769];
     }
     obs.lock().unwrap().next();
 
@@ -182,14 +237,17 @@ fn main() {
             //print!("Plant sending GMT state ...");
             {
                 telescope_channel.iter().for_each(|x| x.0.send(state.clone()).unwrap());
+                science_channel.0.send(state.clone()).unwrap();
                 let mut _opd = opd.lock().unwrap();
+                /*
                 *_opd = domeseeing
                     .next()
                     .unwrap()
                     .iter()
                     .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
                     .collect();
-                //*_opd = vec![0f32;769*769];
+                */
+                *_opd = vec![0f32;769*769];
             }
             //println!("OK");
             let mut _obs_ = obs.lock().unwrap();
