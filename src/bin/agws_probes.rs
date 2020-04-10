@@ -10,10 +10,69 @@ use std::f32;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
+use termion;
+use serde::Deserialize;
+use csv::Reader;
 
 const N_PROBE: usize = 3;
 
+#[derive(Default, Debug, Deserialize)]
+//#[serde(rename_all = "PascalCase")]
+struct StarField {
+    index: u32,
+    datetime: String,
+    ra0: f64,
+    dec0: f64,
+    ra1: f64,
+    dec1: f64,
+    v1: f64,
+    p1: u8,
+    ra2: f64,
+    dec2: f64,
+    v2: f64,
+    p2: u8,
+    ra3: f64,
+    dec3: f64,
+    v3: f64,
+    p3: u8,
+    ra4: f64,
+    dec4: f64,
+    v4: f64,
+    p4: u8,
+}
+#[derive(Default,Debug, Deserialize)]
+struct ScienceField {
+    zenith: f64,
+    azimuth: f64,
+}
+
+
 fn main() {
+    println! {"{}",termion::clear::All};
+
+    // STARFIELD <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    let mut field: StarField = Default::default();
+    let mut rdr = Reader::from_path("guide_stars.rs.csv").unwrap();
+    for result in rdr.deserialize() {
+        field = result.unwrap();
+//        println!("{:?}", field);
+    }
+    let datetime = field.datetime;
+    let telescope = (field.ra0, field.dec0);
+    let probes = [
+        (field.ra2, field.dec2),
+        (field.ra3, field.dec3),
+        (field.ra4, field.dec4),
+    ];
+    let probe_ids = [field.p2 as i32, field.p3 as i32, field.p4 as i32];
+    let probe_sh48_gs_mag = [field.v2, field.v3, field.v4];
+    // STARFIELD <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    println!("{}{}######## MAIN #########{}",
+             termion::style::Invert,
+             termion::cursor::Goto(1, 1),
+             termion::style::Reset);
+
     /*
     An AGWS is defined by a date and time of observation and
     the RA and DEC sky coordinates of:
@@ -54,11 +113,18 @@ fn main() {
         let _obs_ = Arc::clone(&obs);
         let _opd_ = Arc::clone(&opd);
         let handle = thread::spawn(move || {
+            println!(
+                "{}{}###### AGWS PROBE #{} ######{}",
+                termion::cursor::Goto(1, (10 * (k + 1)) as u16),
+                termion::style::Invert,
+                k + 1,
+                termion::style::Reset
+            );
             let mut sh48 = agws::probe::SH48::new();
             let optics = sh48.optics;
             let mut probe = agws::probe::Probe::new(
-                astrotools::SkyCoordinates::new(266.62156258190726, -27.776114821065107),
-                18.,
+                astrotools::SkyCoordinates::new(probes[k].0,probes[k].1),
+                probe_sh48_gs_mag[k],
                 &mut sh48,
                 sh48_integration,
                 (_probe_channel_.0.clone(), _telescope_channel_.1),
@@ -71,7 +137,10 @@ fn main() {
             probe.calibrate_sensor(0.9);
 
             // Calibration ----------------
-            print!("Calibrating ");
+            println!(
+                "{}Calibrating ... ",
+                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16)
+            );
             let m1_n_mode = 17;
             let now = Instant::now();
             let mut m2_tt = ceo::Calibration::new(optics, None);
@@ -84,7 +153,11 @@ fn main() {
                         ceo::calibrations::RigidBodyMotion::Rxyz(1, 1e-6),
                     ],
                 );
-            println!(" in {}s", now.elapsed().as_millis());
+            println!(
+                "{}Calibrated in {}s",
+                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16),
+                now.elapsed().as_millis()
+            );
             _probe_channel_.0.send(Some(calibration)).unwrap();
             // Calibration ----------------
 
@@ -94,30 +167,52 @@ fn main() {
             probe.sensor.detector().reset();
 
             loop {
-                //println!("Probe #{} locking obs",k);
+                println!(
+                    "{}{}OBS locked",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 3) as u16),
+                    termion::clear::CurrentLine
+                );
                 {
                     let __obs = _obs_.lock().unwrap();
 
                     println!(
-                        "Probe: {} #{:03}",
+                        "{}Probe: {} #{:03}",
+                        termion::cursor::Goto(1, (10 * (k + 1) + 1) as u16),
                         __obs.utc.datetime(),
                         __obs.step,
                     );
 
                     if __obs.ended {
-                        println!("Observation has ended!");
+                        //println!("Observation has ended!");
+                        println!(
+                            "{}OBS released",
+                            termion::cursor::Goto(1, (10 * (k + 1) + 3) as u16)
+                        );
                         break;
                     }
                     probe.update(&__obs);
                 }
                 //println!("Probe #{} releasing obs",k);
+                println!(
+                    "{}OBS released",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 3) as u16)
+                );
                 //println!("Probe #{} locking opd",k);
+                println!(
+                    "{}{}OPD locked",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16),
+                    termion::clear::CurrentLine
+                );
                 {
                     let mut __opd = _opd_.lock().unwrap();
                     gopd.up(&mut __opd);
                     probe.through(Some(&mut gopd));
                 }
                 //println!("Probe #{} releasing opd",k);
+                println!(
+                    "{}OPD released",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16)
+                );
             }
         });
         handles.push(handle);
@@ -126,7 +221,10 @@ fn main() {
     // AGWS <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     // Calibration ----------------
-    let calibration: Vec<Vec<f32>> = probe_channel.iter().map(|x| x.1.recv().unwrap().unwrap()).collect();
+    let calibration: Vec<Vec<f32>> = probe_channel
+        .iter()
+        .map(|x| x.1.recv().unwrap().unwrap())
+        .collect();
     let n_mode = 14;
     let m = ceo::calibrations::pseudo_inverse(calibration, n_mode);
     // Calibration ----------------
@@ -150,24 +248,36 @@ fn main() {
         src.build("V", zen, azi, vec![0.0; n_src]);
 
         let mut src_pssn = ceo::PSSn::new(15e-2, 25.0);
-        src_pssn.build(&mut src);
+        src_pssn.build(&mut src.through(&mut gmt).xpupil());
 
         loop {
             {
                 let __obs = _obs_.lock().unwrap();
                 if __obs.ended {
-                    println!("Observation has ended!");
+                    println!("{}Science Observation has ended!",
+                             termion::cursor::Goto(1,7 as u16));
                     break;
                 }
             }
 
+            println!(
+                "{}{}Science <<<",
+                termion::cursor::Goto(1,6),
+                termion::clear::CurrentLine
+            );
             let gmt_state: GmtState = science_receiver.recv().unwrap();
+            println!(
+                "{}Science <<< OK!",
+                termion::cursor::Goto(1,6)
+            );
+
             gmt.update(Some(&gmt_state.m1_rbm), Some(&gmt_state.m2_rbm));
             let src_wfe_rms =src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
             src_pssn.peek(&mut src);
             let onaxis_pssn = src_pssn.estimates[0];
             let pssn_spatial_uniformity = src_pssn.spatial_uniformity();
-            println!("SCIENCE :: WFE RMS: {:.1} nm; PSSn: {:>6.4} {:>6.4}%",
+            println!("{}SCIENCE :: WFE RMS: {:.1} nm; PSSn: {:>6.4} {:>6.4}%",
+                     termion::cursor::Goto(1,5 as u16),
                      src_wfe_rms, onaxis_pssn, pssn_spatial_uniformity);
         }
 
@@ -198,71 +308,142 @@ fn main() {
     //    probe.sensor.detector().reset();
 
     let u: f32 = 1.5 * 0.715e-6 * 48.0 / 25.5;
-    println!("U={}", 3600.0 * u.to_degrees());
+    //println!("U={}", 3600.0 * u.to_degrees());
 
+    println!(
+        "{}{}OPD locked",
+        termion::cursor::Goto(1,4),
+        termion::clear::CurrentLine
+    );
     {
         //print!("Plant sending GMT state ...");
-        telescope_channel.iter().for_each(|x| x.0.send(state.clone()).unwrap());
+        telescope_channel
+            .iter()
+            .for_each(|x| x.0.send(state.clone()).unwrap());
         science_channel.0.send(state.clone()).unwrap();
         //println!("OK");
         let mut _opd = opd.lock().unwrap();
-        /*
         *_opd = domeseeing
             .next()
             .unwrap()
             .iter()
             .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
             .collect();
-        */
-        *_opd = vec![0f32;769*769];
+//        *_opd = vec![0f32; 769 * 769];
     }
-    obs.lock().unwrap().next();
-
+    println!(
+        "{}OPD released",
+        termion::cursor::Goto(1,4)
+    );
+    println!(
+        "{}{}OBS locked",
+        termion::cursor::Goto(1,3),
+        termion::clear::CurrentLine
+    );
+    {
+        obs.lock().unwrap().next();
+    }
+    println!(
+        "{}OBS released",
+        termion::cursor::Goto(1,3)
+    );
+ 
     let now = Instant::now();
     loop {
         //print!("Plant receiving centroids ...");
-        let centroids: Vec<Option<Vec<f32>>> = probe_channel.iter().map(|x| x.1.recv().unwrap()).collect();
+        let centroids: Vec<Option<Vec<f32>>> =
+            probe_channel.iter().map(|x| x.1.recv().unwrap()).collect();
         //println!("OK");
         if centroids.iter().all(|x| x.is_some()) {
-            println!("Some data!");
+            //println!("Some data!");
             let mut cat_centroids: Vec<f32> = Vec::new();
-            centroids.iter().for_each( |x| cat_centroids.append(&mut x.clone().unwrap()));
+            centroids
+                .iter()
+                .for_each(|x| cat_centroids.append(&mut x.clone().unwrap()));
             let slopes = Array::from_shape_vec((cat_centroids.len(), 1), cat_centroids).unwrap();
             let m2_tt = m.dot(&slopes) * u * 1e6;
-            println!("M2 TT:\n{:+3.2}", m2_tt.into_shape((7, 2)).unwrap());
+            println!(
+                "{}M2 TT:",
+                termion::cursor::Goto(1, 40)
+            );
+            println!(
+                "{}{:+3.2}",
+                termion::cursor::Goto(1, 41),
+                m2_tt.into_shape((7, 2)).unwrap()
+            );
         }
 
         //println!("Plant locking obs");
+        //print!("Plant sending GMT state ...");
+        println!(
+            "{}{}OPD locked",
+            termion::cursor::Goto(1,4),
+            termion::clear::CurrentLine
+        );
         {
-            //print!("Plant sending GMT state ...");
-            {
-                telescope_channel.iter().for_each(|x| x.0.send(state.clone()).unwrap());
-                science_channel.0.send(state.clone()).unwrap();
-                let mut _opd = opd.lock().unwrap();
-                /*
-                *_opd = domeseeing
-                    .next()
-                    .unwrap()
-                    .iter()
-                    .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
-                    .collect();
-                */
-                *_opd = vec![0f32;769*769];
-            }
-            //println!("OK");
+            telescope_channel
+                .iter()
+                .for_each(|x| x.0.send(state.clone()).unwrap());
+            science_channel.0.send(state.clone()).unwrap();
+            let mut _opd = opd.lock().unwrap();
+            *_opd = domeseeing
+                .next()
+                .unwrap()
+                .iter()
+                .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
+                .collect();
+//            *_opd = vec![0f32; 769 * 769];
+        }
+        //println!("OK");
+        println!(
+            "{}OPD released",
+            termion::cursor::Goto(1,4)
+        );
+        println!(
+            "{}{}OBS locked",
+            termion::cursor::Goto(1,3),
+            termion::clear::CurrentLine
+        );
+        {
             let mut _obs_ = obs.lock().unwrap();
-            println!("Plant: {} #{:03}", _obs_.utc.datetime(), _obs_.step,);
+            println!(
+                "{}Plant: {} #{:03}",
+                termion::cursor::Goto(1, 2),
+                _obs_.utc.datetime(),
+                _obs_.step,
+            );
             if _obs_.next().is_none() {
-                println!("Breaking!");
-                probe_channel.iter().for_each(|x| {x.1.recv().unwrap();});
+                println!(
+                    "{}Plant: {} #{:03}",
+                    termion::cursor::Goto(1, 2),
+                    _obs_.utc.datetime(),
+                    _obs_.step,
+                );
+                //println!("Breaking!");
+                println!(
+                    "{}OBS released",
+                    termion::cursor::Goto(1,3)
+                );
+                probe_channel.iter().for_each(|x| {
+                    x.1.recv().unwrap();
+                });
                 break;
             }
         }
+        println!(
+            "{}OBS released",
+            termion::cursor::Goto(1,3)
+        );
         //println!("Plant releasing obs");
     }
-    println!("ELAPSED TIME: {}s", now.elapsed().as_secs());
+    println!(
+        "{}ELAPSED TIME: {}s",
+        termion::cursor::Goto(1, 39),
+        now.elapsed().as_secs()
+    );
 
     for handle in handles {
         handle.join().unwrap();
     }
+    println!("{}", termion::cursor::Goto(1, 50));
 }

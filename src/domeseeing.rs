@@ -47,14 +47,14 @@ impl DomeSeeing {
             "Baseline2020/b2019_{}z_{}az_{}_{}ms/OPDData_OPD_Data_",
             self.zenith, self.azimuth, self.enclosure, self.wind_speed
         );
-        println!("Scanning {}*.npz:", prefix);
+        //println!("Scanning {}*.npz:", prefix);
         let o = self.s3.list_objects(&self.bucket, prefix);
         self.keys = o
             .map(|x| x.unwrap().key().to_owned())
             .filter(|x| x.ends_with(".npz"))
             .collect();
         let n = self.keys.len();
-        println!(" * # of keys: {}", n);
+        //println!(" * # of keys: {}", n);
         let f = |s: &str| -> f64 {
             s.trim_end_matches(".npz")
                 .split("/")
@@ -67,7 +67,7 @@ impl DomeSeeing {
                 .unwrap()
         };
         self.time = self.keys.iter().map(|x| f(&x) - f(&self.keys[0])).collect();
-        println!(" * time range: [{};{}]", self.time[0], self.time[n - 1]);
+        //println!(" * time range: [{};{}]", self.time[0], self.time[n - 1]);
         self
     }
     pub fn load_at(&self, t: f64) -> Vec<f64> {
@@ -95,7 +95,7 @@ impl DomeSeeing {
         opd.to_vec()
     }
     pub fn load(&self, key: &str) -> Vec<f64> {
-        print!("Loading  {}", key);
+        //print!("Loading  {}", key);
         let now = Instant::now();
         let object = Object::from_key(&self.bucket, key.to_owned());
         let mut body = Vec::new();
@@ -107,7 +107,7 @@ impl DomeSeeing {
         let r = Cursor::new(body);
         let mut npz = NpzReader::new(r).unwrap();
         let opd: Array1<f64> = npz.by_name("opd.npy").unwrap();
-        println!(" in {}ms", now.elapsed().as_millis());
+        //println!(" in {}ms", now.elapsed().as_millis());
         opd.to_vec()
     }
 }

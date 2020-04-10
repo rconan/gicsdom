@@ -3,6 +3,7 @@ pub mod probe {
     use crate::astrotools;
     use crate::ceo;
     use crossbeam_channel::{Receiver, Sender};
+    use termion;
 
     #[derive(Clone)]
     pub struct GmtState {
@@ -177,7 +178,7 @@ pub mod probe {
         }
         pub fn init(&mut self, observation: &astrotools::Observation) {
             let (z, a) = self.probe_coordinates.local_polar(observation);
-            println!("({},{})", z.to_degrees() * 60., a.to_degrees());
+            //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.build(
                 vec![z as f32],
                 vec![a as f32],
@@ -186,7 +187,7 @@ pub mod probe {
             let resolution = self.sensor.detector().resolution() as usize;
             self.detector_frame = vec![0f32; resolution * resolution];
             let data_units = Some(self.sensor.pixel_scale());
-            println!("pixel size: {:}", data_units.unwrap().to_degrees() * 3600.);
+            //println!("pixel size: {:}", data_units.unwrap().to_degrees() * 3600.);
             let data_units = Some(1f64); // TODO: fix units issue
             self.sensor_data0.build(
                 self.sensor.lenslet_array().n_side_lenslet as u32,
@@ -207,6 +208,7 @@ pub mod probe {
             let n_valid_lenslet = self
                 .sensor_data0
                 .set_valid_lenslets(Some(intensity_threshold), None);
+            /*
             println!(
                 "# valid lenslet: {} ({:.0}%)",
                 n_valid_lenslet,
@@ -214,6 +216,7 @@ pub mod probe {
                     / (self.sensor.lenslet_array().n_side_lenslet
                         * self.sensor.lenslet_array().n_side_lenslet) as f64
             );
+            */
             self.sensor.detector().reset();
         }
         pub fn update(
@@ -232,11 +235,13 @@ pub mod probe {
         pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> &mut Self {
             self.sensor.through(phase);
             let n_frame = self.sensor.detector().n_frame();
-            println!("WFE RMS: {:.0}nm ; frame #{:0.4}",self.sensor.guide_star().wfe_rms_10e(-9)[0],n_frame);
+            //println!("{}WFE RMS: {:.0}nm ; frame #{:0.4}",
+            //         termion::cursor::Goto(1,9),
+            //         self.sensor.guide_star().wfe_rms_10e(-9)[0],n_frame);
             //print!("Probe sending centroids ...");
             if n_frame == self.exposure {
                 let exposure = self.sampling_time * self.exposure as f64;
-                print!("exposure: {}s", exposure);
+                //print!("exposure: {}s", exposure);
                 let noise = Some(self.sensor.noise());
                 self.sensor.detector().readout(exposure, noise);
                 self.sensor_data
