@@ -19,6 +19,13 @@ pub mod probe {
         }
     }
 
+    #[derive(Clone)]
+    pub struct Message {
+        pub obs: astrotools::Observation,
+        pub state: GmtState,
+        pub opd: Option<Vec<f32>>
+    }
+
     pub trait Sensor {
         fn build(&mut self, zenith: Vec<f32>, azimuth: Vec<f32>, magnitude: Vec<f32>);
         fn through(&mut self, opd: Option<&mut ceo::CuFloat>) -> &mut Self;
@@ -141,7 +148,7 @@ pub mod probe {
     }
 
     pub struct Probe<'a, S: Sensor> {
-        probe_coordinates: astrotools::SkyCoordinates,
+        pub coordinates: astrotools::SkyCoordinates,
         guide_star_magnitude: f64,
         pub sensor: &'a mut S,
         exposure: u32,
@@ -150,21 +157,21 @@ pub mod probe {
         pub sensor_data: ceo::Centroiding,
         sampling_time: f64,
         sender: Sender<Option<Vec<f32>>>,
-        receiver: Receiver<GmtState>,
+        receiver: Option<Receiver<Message>>,
     }
     impl<'a, S> Probe<'a, S>
     where
         S: Sensor,
     {
         pub fn new(
-            probe_coordinates: astrotools::SkyCoordinates,
+            coordinates: astrotools::SkyCoordinates,
             guide_star_magnitude: f64,
             sensor: &'a mut S,
             exposure: u32,
-            channel: (Sender<Option<Vec<f32>>>, Receiver<GmtState>),
+            channel: (Sender<Option<Vec<f32>>>, Option<Receiver<Message>>),
         ) -> Probe<S> {
             Probe {
-                probe_coordinates,
+                coordinates,
                 guide_star_magnitude,
                 sensor,
                 exposure,
@@ -177,7 +184,7 @@ pub mod probe {
             }
         }
         pub fn init(&mut self, observation: &astrotools::Observation) {
-            let (z, a) = self.probe_coordinates.local_polar(observation);
+            let (z, a) = self.coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.build(
                 vec![z as f32],
@@ -200,7 +207,7 @@ pub mod probe {
             self.sensor.guide_star().set_fwhm(3.16);
             self.sampling_time = observation.sampling_time;
         }
-        pub fn calibrate_sensor(&mut self, intensity_threshold: f64) {
+        pub fn calibrate_sensor(&mut self, intensity_threshold: f64) -> u32 {
             self.sensor.gmt().reset();
             self.sensor.detector().reset();
             self.sensor.through(None);
@@ -218,19 +225,21 @@ pub mod probe {
             );
             */
             self.sensor.detector().reset();
+            n_valid_lenslet
         }
         pub fn update(
             &mut self,
             observation: &astrotools::Observation,
-        ) -> &mut Self {
-            let (z, a) = self.probe_coordinates.local_polar(observation);
+            state: &GmtState
+        ) -> (f64,f64) {
+            let (z, a) = self.coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
             self.sensor.guide_star().update(vec![z], vec![a]);
             //print!("Probe receiving GMT state ...");
-            let state = self.receiver.recv().unwrap();
+            //let msg = self.receiver.recv().unwrap();
             //println!("OK");
             self.sensor.gmt().update(Some(&state.m1_rbm), Some(&state.m2_rbm));
-            self
+            (z,a)
         }
         pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> &mut Self {
             self.sensor.through(phase);
