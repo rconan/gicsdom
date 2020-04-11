@@ -1,8 +1,20 @@
-use std::{f32, mem};
+use std::mem;
 
-use super::ceo_bindings::{imaging};
+use super::ceo_bindings::{dev2host, imaging};
 use super::Propagation;
 use super::Source;
+
+#[derive(Copy, Clone)]
+pub struct LensletArray {
+    pub n_side_lenslet: i32,
+    pub lenslet_size: f64,
+}
+#[derive(Copy, Clone)]
+pub struct NoiseDataSheet {
+    pub rms_read_out_noise: f64,
+    pub n_background_photon: f64,
+    pub noise_factor: f64,
+}
 
 pub struct Imaging {
     _c_: imaging,
@@ -32,6 +44,49 @@ impl Imaging {
                 n_sensor,
             );
         }
+        self
+    }
+    pub fn __ceo__(&self) -> &imaging {
+        &self._c_
+    }
+    pub fn frame_transfer(&mut self, frame: &mut Vec<f32>) -> &mut Self {
+        unsafe {
+            dev2host(
+                frame.as_mut_ptr(),
+                self._c_.d__frame,
+                self.resolution() * self.resolution() * self._c_.N_SOURCE,
+            );
+        }
+        self
+    }
+    pub fn reset(&mut self) -> &mut Self {
+        unsafe {
+            self._c_.reset();
+        }
+        self
+    }
+    pub fn resolution(&self) -> i32 {
+        self._c_.N_PX_CAMERA * self._c_.N_SIDE_LENSLET
+    }
+    pub fn n_frame(&self) -> u32 {
+        self._c_.N_FRAME as u32
+    }
+    pub fn readout(
+        &mut self,
+        exposure: f64,
+        detector_noise_properties: Option<NoiseDataSheet>,
+    ) -> &mut Self {
+        detector_noise_properties.map_or_else(
+            || (),
+            |p| unsafe {
+                self._c_.readout1(
+                    exposure as f32,
+                    p.rms_read_out_noise as f32,
+                    p.n_background_photon as f32,
+                    p.noise_factor as f32,
+                );
+            },
+        );
         self
     }
 }

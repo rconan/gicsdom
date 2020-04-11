@@ -1,24 +1,62 @@
 use std::{f32, mem};
 
 pub mod atmosphere;
+pub mod centroiding;
 pub mod ceo_bindings;
 pub mod gmt;
 pub mod imaging;
 pub mod shackhartmann;
 pub mod source;
+pub mod calibrations;
 
 pub use self::atmosphere::Atmosphere;
-pub use self::gmt::Gmt;
-pub use self::gmt::GmtState;
+pub use self::centroiding::Centroiding;
+pub use self::gmt::{Gmt, GmtState};
 pub use self::imaging::Imaging;
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use ceo_bindings::{pssn, set_device};
+pub use self::calibrations::Calibration;
+pub use ceo_bindings::{pssn, set_device, gpu_float, gpu_double};
 
 pub fn set_gpu(id: i32) {
     unsafe {
         set_device(id);
+    }
+}
+
+pub struct CuFloat {
+    _c_: gpu_float
+}
+impl CuFloat {
+    pub fn new() -> CuFloat {
+        CuFloat {
+            _c_: unsafe { mem::zeroed() },
+        }
+    }
+    pub fn malloc(&mut self, len: i32) -> &mut Self {
+        unsafe {
+            self._c_.setup1(len);
+            self._c_.dev_malloc();
+        }
+        self
+    }
+    pub fn up(&mut self, host_data: &mut Vec<f32>) -> &mut Self {
+        unsafe {
+            self._c_.host_data = host_data.as_mut_ptr();
+            self._c_.host2dev();
+        }
+        self
+    }
+    pub fn as_mut_ptr(&mut self) -> *mut f32 {
+        self._c_.dev_data
+    }
+}
+impl Drop for CuFloat {
+    fn drop(&mut self) {
+        unsafe {
+            self._c_.free_dev()
+        }
     }
 }
 

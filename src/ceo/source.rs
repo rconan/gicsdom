@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{source, vector};
+use super::{Centroiding, CuFloat};
 
 pub struct Source {
     pub _c_: source,
@@ -62,6 +63,9 @@ impl Source {
         }
         self
     }
+    pub fn wavelength(&mut self) -> f64 {
+        unsafe { self._c_.wavelength() as f64 }
+    }
     pub fn set_fwhm(&mut self, value: f64) {
         self._c_.fwhm = value as f32;
     }
@@ -91,7 +95,7 @@ impl Source {
             .collect()
     }
     pub fn segments_gradients(&mut self) -> Vec<Vec<f32>> {
-        let mut sxy: Vec<Vec<f32>> = vec![vec![0.;7 * self.size as usize]; 2];
+        let mut sxy: Vec<Vec<f32>> = vec![vec![0.; 7 * self.size as usize]; 2];
         unsafe {
             self._c_.wavefront.segments_gradient_averageFast(
                 sxy[0].as_mut_ptr(),
@@ -101,6 +105,26 @@ impl Source {
             );
         }
         sxy
+    }
+    pub fn lenslet_gradients(&mut self, n_lenslet: i32, lenslet_size: f64, data: &mut Centroiding) {
+        unsafe {
+            if data.n_valid_lenslet < data.n_lenslet_total {
+                self._c_.wavefront.finite_difference1(
+                    data.__mut_ceo__().0.d__cx,
+                    data.__mut_ceo__().0.d__cy,
+                    n_lenslet,
+                    lenslet_size as f32,
+                    data.__mut_ceo__().1,
+                );
+            } else {
+                self._c_.wavefront.finite_difference(
+                    data.__mut_ceo__().0.d__cx,
+                    data.__mut_ceo__().0.d__cy,
+                    n_lenslet,
+                    lenslet_size as f32,
+                );
+            }
+        }
     }
     pub fn reset(&mut self) {
         unsafe {
@@ -116,6 +140,12 @@ impl Source {
                 zenith.len() as i32,
             );
         }
+    }
+    pub fn add(&mut self, phase: &mut CuFloat) -> &mut Self {
+        unsafe {
+            self._c_.wavefront.add_phase(1.0,phase.as_mut_ptr());
+        }
+        self
     }
 }
 impl Drop for Source {

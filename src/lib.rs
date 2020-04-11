@@ -1,36 +1,9 @@
-extern crate hifitime;
-
-use crate::ceo::Propagation;
-use indicatif::{ProgressBar, ProgressStyle};
-use ndarray::Array2;
-use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
-use std::f32;
-use std::f64;
-use std::time::Instant;
-
 pub mod ceo;
 pub mod astrotools;
 pub mod agws;
+pub mod domeseeing;
 
-use astrotools::Observation;
-
-const DEG2RAD: f64 = f64::consts::PI / 180.0;
-const RAD2ARCMIN: f64 = 180. * 60. / f64::consts::PI;
-const GMT_LAT: f64 = -29.049;
-const GMT_LONG: f64 = -70.682;
-
-pub trait AngleConversion {
-    fn deg2rad(self) -> f64;
-    fn rad2deg(self) -> f64;
-}
-impl AngleConversion for f64 {
-    fn deg2rad(self) -> f64 {
-        self * DEG2RAD
-    }
-    fn rad2deg(self) -> f64 {
-        self / DEG2RAD
-    }
-}
+pub use domeseeing::DomeSeeing;
 
 pub struct Rotation {
     pub o: f64,

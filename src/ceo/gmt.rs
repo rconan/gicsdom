@@ -10,7 +10,6 @@ use super::Source;
 pub struct GmtState {
     pub rbm: Array2<f32>,
     pub bm: Array2<f32>,
-
 }
 pub struct Gmt {
     _c_m1_modes: modes,
@@ -60,7 +59,7 @@ impl Gmt {
             a: vec![0.],
         }
     }
-    pub fn build(&mut self,m1_n_mode: u64, m2_n_mode: Option<u64>) -> &mut Gmt {
+    pub fn build(&mut self, m1_n_mode: u64, m2_n_mode: Option<u64>) -> &mut Gmt {
         let mode_type = CString::new("bending modes").unwrap();
         self.m1_n_mode = m1_n_mode;
         self.m2_n_mode = match m2_n_mode {
@@ -122,6 +121,18 @@ impl Gmt {
     pub fn set_m1_modes(&mut self, a: &mut Vec<f64>) {
         unsafe {
             self._c_m1_modes.update(a.as_mut_ptr());
+        }
+    }
+    pub fn update(&mut self, m1_rbm: Option<&Vec<Vec<f64>>>, m2_rbm: Option<&Vec<Vec<f64>>>) {
+        if m1_rbm.is_some() {
+            for (k, rbm) in m1_rbm.unwrap().iter().enumerate() {
+                self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
+            }
+        }
+        if m2_rbm.is_some() {
+            for (k, rbm) in m2_rbm.unwrap().iter().enumerate() {
+                self.set_m2_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
+            }
         }
     }
     /*

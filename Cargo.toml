@@ -15,11 +15,15 @@ ndarray-npy = { version = "0.5"}
 indicatif = { version= "0.14" }
 crossbeam-utils = {version="0.7.2"}
 crossbeam-channel = {version="0.4"}
-hifitime = "1"
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
 console = {version="0.9.2"}
 serde_json = "1.0"
+rusoto_core = "0.43.0"
+rusoto_s3 = "0.43.0"
+s3-sync = "0.1.0"
+ensure = "0.3.1"
+termion = "1.5.5"
 
 [dev-dependencies]
 criterion = "0.3"
