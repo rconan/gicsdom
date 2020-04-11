@@ -117,7 +117,35 @@ fn ceo_shack_hartmann_with_atmosphere_integrated(c: &mut Criterion) {
     );
 }
 
+fn ceo_shack_hartmann_with_atmosphere_integrated_1(c: &mut Criterion) {
+    let mut gmt = ceo::Gmt::new(0,None);
+    gmt.build();
+    let mut wfs = ceo::ShackHartmann::new(1,48,16,25.5/48.0);
+    wfs.build(8,Some(24),None);
+    let mut src = wfs.new_guide_stars();
+    src.build("V",vec![0.0f32],vec![0.0f32],vec![0.0f32]);
+    let mut atm = ceo::Atmosphere::new();
+    let mut atmosphere_file =
+        format!("{}", "/home/ubuntu/DATA/phase_screens/gmtAtmosphereL030_1579821046");
+    atm.load_from_json(&atmosphere_file).unwrap();
+
+
+    let mut group = c.benchmark_group("CEO SH WFS ATM INT.");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(6));
+
+    group.bench_function("SH48_ATM", |b| b.iter(|| {
+        src.through(&mut gmt)
+            .xpupil()
+            .through(&mut atm)
+
+    })
+    );
+
+
+}
+
 
 criterion_group!(benches,
-                 ceo_atmosphere_get_screen);
+                 ceo_shack_hartmann_with_atmosphere_integrated_1);
 criterion_main!(benches);
