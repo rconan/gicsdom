@@ -3,7 +3,6 @@ pub mod probe {
     use crate::astrotools;
     use crate::ceo;
     use crossbeam_channel::{Receiver, Sender};
-    use termion;
 
     #[derive(Clone)]
     pub struct GmtState {
