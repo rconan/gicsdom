@@ -1,4 +1,5 @@
 use std::{f32, mem};
+use std::f64;
 
 pub mod atmosphere;
 pub mod centroiding;
@@ -12,12 +13,25 @@ pub mod calibrations;
 pub use self::atmosphere::Atmosphere;
 pub use self::centroiding::Centroiding;
 pub use self::gmt::{Gmt, GmtState};
-pub use self::imaging::Imaging;
+pub use self::imaging::{Imaging,LensletArray};
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
 pub use self::calibrations::Calibration;
 pub use ceo_bindings::{pssn, set_device, gpu_float, gpu_double};
+
+pub trait Conversion {
+    fn to_arcsec(self) -> f64;
+    fn to_mas(self) -> f64;
+}
+impl Conversion for f64 {
+    fn to_arcsec(self) -> f64 {
+        self * 180.0 * 3600.0 / std::f64::consts::PI
+    }
+    fn to_mas(self) -> f64 {
+        1e3*self.to_arcsec()
+    }
+}
 
 pub fn set_gpu(id: i32) {
     unsafe {
