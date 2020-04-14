@@ -2,7 +2,7 @@ pub mod probe {
 
     use crate::astrotools;
     use crate::ceo;
-    use crate::ceo::calibrations::{Mirror, RigidBodyMotion};
+    use crate::ceo::calibrations::{Mirror, Segment};
     use crate::ceo::LensletArray;
     use ceo::Conversion;
     use crossbeam_channel::{Receiver, Sender};
@@ -12,12 +12,14 @@ pub mod probe {
     #[derive(Clone)]
     pub struct GmtState {
         pub m1_rbm: Vec<Vec<f64>>,
+        pub m1_mode: Vec<Vec<f64>>,
         pub m2_rbm: Vec<Vec<f64>>,
     }
     impl GmtState {
-        pub fn new() -> GmtState {
+        pub fn new(m1_n_mode: Option<usize>) -> GmtState {
             GmtState {
                 m1_rbm: vec![vec![0.; 6]; 7],
+                m1_mode: vec![vec![0.; m1_n_mode.or(Some(1)).unwrap()];7],
                 m2_rbm: vec![vec![0.; 6]; 7],
             }
         }
@@ -26,7 +28,7 @@ pub mod probe {
         pub fn fill_from_array(
             &mut self,
             mirrors: Vec<Mirror>,
-            segments: Vec<Vec<RigidBodyMotion>>,
+            segments: Vec<Vec<Segment>>,
             data: &Array2<f32>,
         ) -> &mut Self {
             let mut l = 0;
@@ -37,6 +39,10 @@ pub mod probe {
                             match mirror {
                                 Mirror::M1 => {
                                     self.m1_rbm[sid][a] = data[[l, 0]] as f64;
+                                    l += 1;
+                                }
+                                Mirror::M1MODES => {
+                                    self.m1_mode[sid][a] = data[[l, 0]] as f64;
                                     l += 1;
                                 }
                                 Mirror::M2 => {
@@ -53,7 +59,7 @@ pub mod probe {
         pub fn acc_from_array(
             &mut self,
             mirrors: Vec<Mirror>,
-            segments: Vec<Vec<RigidBodyMotion>>,
+            segments: Vec<Vec<Segment>>,
             data: &Array2<f32>,
         ) -> &mut Self {
             let mut l = 0;
@@ -64,6 +70,10 @@ pub mod probe {
                             match mirror {
                                 Mirror::M1 => {
                                     self.m1_rbm[sid][a] += data[[l, 0]] as f64;
+                                    l += 1;
+                                }
+                                Mirror::M1MODES => {
+                                    self.m1_mode[sid][a] += data[[l, 0]] as f64;
                                     l += 1;
                                 }
                                 Mirror::M2 => {
@@ -82,13 +92,13 @@ pub mod probe {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(
                 f,
-                "M1 |Txyz[nm],Rxyz[mas]| {:>14} M2 |Txyz[nm],Rxyz[mas]|\n{}",
-                "",
+                "M1 |Txyz[nm],Rxyz[mas]| {:>14} M2 |Txyz[nm],Rxyz[mas]| {:>12} M1 BM [10e-9]\n{}",
+                "","",
                 (0..7)
                     .into_iter()
                     .map(|k| {
                         format!(
-                            "|{},{}| |{},{}|",
+                            "|{},{}| |{},{}| |{} ...|",
                             self.m1_rbm[k][..3]
                                 .iter()
                                 .map(|x| format!("{:>+5.0}", x * 1e9))
@@ -107,6 +117,12 @@ pub mod probe {
                             self.m2_rbm[k][3..]
                                 .iter()
                                 .map(|x| format!("{:>+5.0}", x.to_mas()))
+                                .collect::<Vec<String>>()
+                                .join(","),
+                            self.m1_mode[k].
+                                iter()
+                                .map(|x| format!("{:>+5.0}", x * 1e9))
+                                .take(10)
                                 .collect::<Vec<String>>()
                                 .join(","),
                         )
@@ -137,7 +153,7 @@ pub mod probe {
 
     pub struct SH48 {
         pub gmt: ceo::Gmt,
-        m1_n_mode: u64,
+        m1_n_mode: usize,
         pub sensor: ceo::Imaging,
         pub optics: LensletArray,
         pub n_px_lenslet: i32,
@@ -248,8 +264,6 @@ pub mod probe {
         pub sensor_data0: ceo::Centroiding,
         pub sensor_data: ceo::Centroiding,
         sampling_time: f64,
-        sender: Sender<Option<Vec<f32>>>,
-        receiver: Option<Receiver<Message>>,
     }
     impl<'a, S> Probe<'a, S>
     where
@@ -260,7 +274,6 @@ pub mod probe {
             guide_star_magnitude: f64,
             sensor: &'a mut S,
             exposure: u32,
-            channel: (Sender<Option<Vec<f32>>>, Option<Receiver<Message>>),
         ) -> Probe<S> {
             Probe {
                 coordinates,
@@ -271,8 +284,6 @@ pub mod probe {
                 sensor_data0: ceo::Centroiding::new(),
                 sensor_data: ceo::Centroiding::new(),
                 sampling_time: 0.0,
-                sender: channel.0,
-                receiver: channel.1,
             }
         }
         pub fn init(&mut self, observation: &astrotools::Observation) {
@@ -326,13 +337,12 @@ pub mod probe {
         ) -> (f64, f64) {
             let (z, a) = self.coordinates.local_polar(observation);
             //println!("({},{})", z.to_degrees() * 60., a.to_degrees());
-            self.sensor.guide_star().update(vec![z], vec![a]);
-            //print!("Probe receiving GMT state ...");
-            //let msg = self.receiver.recv().unwrap();
-            //println!("OK");
-            self.sensor
-                .gmt()
-                .update(Some(&state.m1_rbm), Some(&state.m2_rbm));
+            //self.sensor.guide_star().update(vec![z], vec![a]);
+            self.sensor.gmt().update(
+                Some(&state.m1_rbm),
+                Some(&state.m2_rbm),
+                Some(&state.m1_mode),
+            );
             (z, a)
         }
         pub fn through(&mut self, phase: Option<&mut ceo::CuFloat>) -> Option<Vec<f32>> {
@@ -350,14 +360,14 @@ pub mod probe {
                 self.sensor_data
                     .process(self.sensor.detector(), Some(&self.sensor_data0));
                 self.sensor.detector().reset();
-                Some(self
-                    .sensor_data
-                    .grab()
-                    .valids(Some(&self.sensor_data0.valid_lenslets)))
+                Some(
+                    self.sensor_data
+                        .grab()
+                        .valids(Some(&self.sensor_data0.valid_lenslets)),
+                )
             } else {
                 None
             }
-
         }
     }
 }

@@ -2,10 +2,13 @@ use gicsdom::agws::probe::{GmtState, Message};
 use gicsdom::agws::probe::{Sensor, SH48};
 use gicsdom::ceo;
 use gicsdom::ceo::Conversion;
+use ndarray;
 use ndarray::{Array, Array2, ShapeBuilder};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::ops::Range;
 use std::time::Instant;
+use gicsdom::astrotools;
+use gicsdom::agws;
 
 fn main() {
     let mut sh48 = SH48::new();
@@ -21,50 +24,84 @@ fn main() {
         cog.set_valid_lenslets(Some(0.9), None)
     );
 
+    let mut cog1 = ceo::Centroiding::new();
+    cog1.build(sh48.optics.n_side_lenslet as u32, None);
+    sh48.through(None);
+    cog1.process(&sh48.sensor, Some(&cog));
+    let centroids = cog1.grab().valids(Some(&cog.valid_lenslets));
+    println!("centroids sum: {}", centroids.iter().sum::<f32>());
+
     print!("Calibrating ");
     let m1_n_mode = 17;
     let now = Instant::now();
-    let mut m2_calib = ceo::Calibration::new(sh48.optics, None);
-    let mirrors = vec![ceo::calibrations::Mirror::M1,ceo::calibrations::Mirror::M2];
+    let mut rbm_calib = ceo::Calibration::new(sh48.optics, None);
+    let mut bm_calib = ceo::Calibration::new(sh48.optics, None);
+
+    let mirrors = vec![ceo::calibrations::Mirror::M2];
     let rbms = (0..7)
         .into_iter()
         .map(|k| {
             if k == 6 {
                 vec![
-                  //  ceo::calibrations::RigidBodyMotion::Txyz(1e-6, None),
-                    ceo::calibrations::RigidBodyMotion::Rxyz(1e-6, Some(0..2)),
+                    //  ceo::calibrations::Segment::Txyz(1e-6, None),
+                    ceo::calibrations::Segment::Rxyz(1e-6, Some(0..2)),
                 ]
             } else {
                 vec![
-                   // ceo::calibrations::RigidBodyMotion::Txyz(1e-6, None),
-                    ceo::calibrations::RigidBodyMotion::Rxyz(1e-6, Some(0..2)),
+                    // ceo::calibrations::Segment::Txyz(1e-6, None),
+                    ceo::calibrations::Segment::Rxyz(1e-6, Some(0..2)),
                 ]
             }
         })
-        .collect::<Vec<Vec<ceo::calibrations::RigidBodyMotion>>>();
-    let calibration = m2_calib
-        .build(&cog.valid_lenslets, Some(m1_n_mode), None)
+        .collect::<Vec<Vec<ceo::calibrations::Segment>>>();
+
+    //let mirrors = vec![ceo::calibrations::Mirror::M1MODES];
+    let modes = vec![vec![ceo::calibrations::Segment::Modes(1e-6, 0..17)]; 7];
+
+    let rbm_calibration = rbm_calib
+        .build(0., 0., &cog.valid_lenslets, Some(m1_n_mode), None)
         .calibrate(mirrors.clone(), rbms.clone());
+    let bm_calibration = bm_calib
+        .build(0., 0., &cog.valid_lenslets, Some(m1_n_mode), None)
+        .calibrate(vec![ceo::calibrations::Mirror::M1MODES], modes.clone());
     println!(" in {}s", now.elapsed().as_millis());
     println!(
-        "Calibration matrix: [{};{}]",
-        m2_calib.n_data, m2_calib.n_mode
+        "Calibration RBM matrix: [{};{}]",
+        rbm_calib.n_data, rbm_calib.n_mode
     );
-    println!(" calibration sum: {}", calibration.iter().sum::<f32>());
-    let m = ceo::calibrations::pseudo_inverse(vec![calibration], m2_calib.n_mode as usize, None);
+    println!(
+        "Calibration BM matrix: [{};{}]",
+        bm_calib.n_data, bm_calib.n_mode
+    );
+    //let calibration = vec![rbm_calibration, bm_calibration].into_iter().flatten().collect::<Vec<f32>>();
+    //let n_mode = vec![rbm_calib.n_mode,bm_calib.n_mode].iter().sum::<u32>();
+    //println!(" calibration sum: {}", calibration.iter().sum::<f32>());
+    let m = ceo::calibrations::pseudo_inverse(
+        vec![rbm_calibration, bm_calibration],
+        vec![rbm_calib.n_mode, bm_calib.n_mode],
+        None,Some(1)
+    );
 
     let mut m2_rbm: Vec<Vec<f64>> = vec![vec![0.; 6]; 7];
     let a = 1e-6;
     println!("a:{:.0}mas", a.to_mas());
-    /*
+
+
     m2_rbm[0][3] = a;
     m2_rbm[0][4] = a;
     m2_rbm[2][3] = a;
     m2_rbm[4][4] = a;
-    */
-    m2_rbm[0][3] = a;
-    m2_rbm[0][4] = a;
-    sh48.gmt.update(None, Some(&m2_rbm));
+    m2_rbm[6][3] = a;
+    m2_rbm[6][4] = a;
+
+    //    sh48.gmt.update(None, Some(&m2_rbm), None);
+
+    let mut m1_mode = vec![vec![0f64; 17]; 7];
+    m1_mode[0][0] = 100e-9;
+    m1_mode[2][8] = -30e-9;
+    m1_mode[4][9] = 60e-9;
+    sh48.gmt.update(None, Some(&m2_rbm), Some(&m1_mode));
+
     sh48.guide_star
         .through(&mut sh48.gmt)
         .xpupil()
@@ -74,15 +111,54 @@ fn main() {
             &mut cog,
         );
     let centroids = cog.grab().valids(None);
+    println!("centroids sum: {}", centroids.iter().sum::<f32>());
     let slopes = Array::from_shape_vec((centroids.len(), 1), centroids).unwrap();
-    let m2_tt = m.dot(&slopes);
+    let coms = m.dot(&slopes);
+    println! {"{}",coms.sum()*1e9};
 
-    let mut state = GmtState::new();
-    println!("{}", state.fill_from_array(mirrors, rbms, &m2_tt));
+    let mut state = GmtState::new(Some(17));
+    state.fill_from_array(mirrors.clone(), rbms.clone(), &coms);
+    let q = coms.slice(ndarray::s![14..,..]).to_owned();
+    state.fill_from_array(vec![ceo::calibrations::Mirror::M1MODES], modes.clone(),
+                          &q);
+    println!(
+        "{}",state
+    );
     /*
-        println!(
-        "M2 RBM:\n{:.0}",
-        1e6*m2_tt.into_shape((m2_calib.n_mode as usize / 2, 2)).unwrap()
-        );
-    */
+       println!(
+       "M2 RBM:\n{:.0}",
+       1e6*m2_tt.into_shape((m2_calib.n_mode as usize / 2, 2)).unwrap()
+       );
+     */
+    let mut sh48 = agws::probe::SH48::new();
+    let optics = sh48.optics;
+    let mut probe = agws::probe::Probe::new(
+        astrotools::SkyCoordinates::new(0.0,0.0),
+        0.0,
+        &mut sh48,
+        1u32);
+    let mut obs = astrotools::Observation::from_date_utc(
+        astrotools::GMT_LAT,
+        astrotools::GMT_LONG,
+        astrotools::Time::from_date_utc(2010,1,1,0,0,0),
+        astrotools::SkyCoordinates::new(0.0,0.0),
+        1.0,
+        1.0,
+    );
+    probe.init(&obs);
+    let n_valid_lenslet = probe.calibrate_sensor(0.9);
+
+    let m1_n_mode = 17;
+    let now = Instant::now();
+    let mut m2_tt = ceo::Calibration::new(optics, None);
+    let calibration = m2_tt
+        .build(
+            0.0,
+            0.0,
+            &probe.sensor_data0.valid_lenslets,
+            Some(17),
+            None,
+        )
+        .calibrate(mirrors, rbms.clone());
+
 }
