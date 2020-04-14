@@ -16,12 +16,13 @@ pub struct Gmt {
     _c_m2_modes: zernikeS,
     _c_m1: gmt_m1,
     _c_m2: gmt_m2,
-    pub m1_n_mode: u64,
-    pub m2_n_mode: u64,
-    a: Vec<f64>,
+    pub m1_n_mode: usize,
+    pub m2_n_mode: usize,
+    a1: Vec<f64>,
+    a2: Vec<f64>,
 }
 impl Gmt {
-    pub fn test(m1_n_mode: u64, m2_n_mode: Option<u64>) -> Gmt {
+    pub fn test(m1_n_mode: usize, m2_n_mode: Option<usize>) -> Gmt {
         let mode_type = CString::new("bending modes").unwrap();
         let mut this: Gmt = Gmt {
             _c_m1_modes: unsafe { mem::zeroed() },
@@ -33,17 +34,18 @@ impl Gmt {
                 Some(m2_n_mode) => m2_n_mode,
                 None => 0,
             },
-            a: vec![0.0],
+            a1: vec![],
+            a2: vec![],
         };
         if this.m2_n_mode > 0 {
-            this.a = vec![0.0; this.m2_n_mode as usize];
+            this.a2 = vec![0.0; this.m2_n_mode as usize];
         }
         unsafe {
             this._c_m1_modes
                 .setup(mode_type.into_raw(), 7, this.m1_n_mode as i32);
             this._c_m1.setup1(&mut this._c_m1_modes);
             this._c_m2_modes
-                .setup1(this.m2_n_mode as i32, this.a.as_mut_ptr(), 7);
+                .setup1(this.m2_n_mode as i32, this.a2.as_mut_ptr(), 7);
             this._c_m2.setup2(&mut this._c_m2_modes);
         }
         this
@@ -56,25 +58,29 @@ impl Gmt {
             _c_m2: unsafe { mem::zeroed() },
             m1_n_mode: 0,
             m2_n_mode: 0,
-            a: vec![0.],
+            a1: vec![0.],
+            a2: vec![0.],
         }
     }
-    pub fn build(&mut self, m1_n_mode: u64, m2_n_mode: Option<u64>) -> &mut Gmt {
+    pub fn build(&mut self, m1_n_mode: usize, m2_n_mode: Option<usize>) -> &mut Gmt {
         let mode_type = CString::new("bending modes").unwrap();
         self.m1_n_mode = m1_n_mode;
         self.m2_n_mode = match m2_n_mode {
             Some(m2_n_mode) => m2_n_mode,
             None => 0,
         };
+        if self.m1_n_mode > 0 {
+            self.a1 = vec![0.0; 7*self.m1_n_mode as usize];
+        }
         if self.m2_n_mode > 0 {
-            self.a = vec![0.0; self.m2_n_mode as usize];
+            self.a2 = vec![0.0; self.m2_n_mode as usize];
         }
         unsafe {
             self._c_m1_modes
                 .setup(mode_type.into_raw(), 7, self.m1_n_mode as i32);
             self._c_m1.setup1(&mut self._c_m1_modes);
             self._c_m2_modes
-                .setup1(self.m2_n_mode as i32, self.a.as_mut_ptr(), 7);
+                .setup1(self.m2_n_mode as i32, self.a2.as_mut_ptr(), 7);
             self._c_m2.setup2(&mut self._c_m2_modes);
         }
         self
@@ -123,7 +129,12 @@ impl Gmt {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
-    pub fn update(&mut self, m1_rbm: Option<&Vec<Vec<f64>>>, m2_rbm: Option<&Vec<Vec<f64>>>) {
+    pub fn update(
+        &mut self,
+        m1_rbm: Option<&Vec<Vec<f64>>>,
+        m2_rbm: Option<&Vec<Vec<f64>>>,
+        m1_mode: Option<&Vec<Vec<f64>>>,
+    ) {
         if m1_rbm.is_some() {
             for (k, rbm) in m1_rbm.unwrap().iter().enumerate() {
                 self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
@@ -133,6 +144,15 @@ impl Gmt {
             for (k, rbm) in m2_rbm.unwrap().iter().enumerate() {
                 self.set_m2_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
             }
+        }
+        if m1_mode.is_some() {
+            let mut m = m1_mode
+                .unwrap()
+                .clone()
+                .into_iter()
+                .flatten()
+                .collect::<Vec<f64>>();
+            self.set_m1_modes(&mut m);
         }
     }
     /*
