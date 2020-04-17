@@ -206,6 +206,7 @@ pub mod probe {
             );
             self.guide_star
                 .build(&self.guide_star_band, zenith, azimuth, magnitude);
+            self.sensor.set_pixel_scale(&mut self.guide_star);
         }
         fn through(&mut self, opd: Option<&mut ceo::CuFloat>) -> &mut Self {
             if opd.is_none() {

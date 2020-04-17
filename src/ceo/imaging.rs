@@ -18,11 +18,13 @@ pub struct NoiseDataSheet {
 
 pub struct Imaging {
     _c_: imaging,
+    dft_osf: i32,
 }
 impl Imaging {
     pub fn new() -> Imaging {
         Imaging {
             _c_: unsafe { mem::zeroed() },
+            dft_osf: 1,
         }
     }
     pub fn build(
@@ -44,6 +46,7 @@ impl Imaging {
                 n_sensor,
             );
         }
+        self.dft_osf = dft_osf;
         self
     }
     pub fn __ceo__(&self) -> &imaging {
@@ -87,6 +90,21 @@ impl Imaging {
                 );
             },
         );
+        self
+    }
+    pub fn set_pixel_scale(&mut self, src: &mut Source) -> &mut Self {
+        unsafe {
+            self._c_.pixel_scale = (src.wavelength() / src.pupil_size) as f32
+                * (self._c_.N_SIDE_LENSLET * self._c_.BIN_IMAGE / self.dft_osf) as f32;
+        }
+        self
+    }
+    pub fn set_pointing(&mut self, mut zen: Vec<f32>, mut azi: Vec<f32>) -> &mut Self {
+        unsafe {
+            self._c_.absolute_pointing = 1;
+            self._c_
+                .set_pointing_direction(zen.as_mut_ptr(), azi.as_mut_ptr());
+        }
         self
     }
 }

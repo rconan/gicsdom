@@ -76,10 +76,14 @@ fn main() {
     //let calibration = vec![rbm_calibration, bm_calibration].into_iter().flatten().collect::<Vec<f32>>();
     //let n_mode = vec![rbm_calib.n_mode,bm_calib.n_mode].iter().sum::<u32>();
     //println!(" calibration sum: {}", calibration.iter().sum::<f32>());
-    let m = ceo::calibrations::pseudo_inverse(
+    let mut d = ceo::calibrations::composite(
         vec![rbm_calibration, bm_calibration],
         vec![rbm_calib.n_mode, bm_calib.n_mode],
-        None,Some(1)
+        Some(1)
+    );
+    let m = ceo::calibrations::pseudo_inverse(
+        &mut d,
+        None
     );
 
     let mut m2_rbm: Vec<Vec<f64>> = vec![vec![0.; 6]; 7];
@@ -130,35 +134,5 @@ fn main() {
        1e6*m2_tt.into_shape((m2_calib.n_mode as usize / 2, 2)).unwrap()
        );
      */
-    let mut sh48 = agws::probe::SH48::new();
-    let optics = sh48.optics;
-    let mut probe = agws::probe::Probe::new(
-        astrotools::SkyCoordinates::new(0.0,0.0),
-        0.0,
-        &mut sh48,
-        1u32);
-    let mut obs = astrotools::Observation::from_date_utc(
-        astrotools::GMT_LAT,
-        astrotools::GMT_LONG,
-        astrotools::Time::from_date_utc(2010,1,1,0,0,0),
-        astrotools::SkyCoordinates::new(0.0,0.0),
-        1.0,
-        1.0,
-    );
-    probe.init(&obs);
-    let n_valid_lenslet = probe.calibrate_sensor(0.9);
-
-    let m1_n_mode = 17;
-    let now = Instant::now();
-    let mut m2_tt = ceo::Calibration::new(optics, None);
-    let calibration = m2_tt
-        .build(
-            0.0,
-            0.0,
-            &probe.sensor_data0.valid_lenslets,
-            Some(17),
-            None,
-        )
-        .calibrate(mirrors, rbms.clone());
 
 }
