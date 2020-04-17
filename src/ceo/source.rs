@@ -143,7 +143,7 @@ impl Source {
     }
     pub fn add(&mut self, phase: &mut CuFloat) -> &mut Self {
         unsafe {
-            self._c_.wavefront.add_phase(1.0,phase.as_mut_ptr());
+            self._c_.wavefront.add_phase(1.0, phase.as_mut_ptr());
         }
         self
     }

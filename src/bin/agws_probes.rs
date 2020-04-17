@@ -6,20 +6,22 @@ use gicsdom::agws::probe::{GmtState, Message};
 use gicsdom::astrotools;
 use gicsdom::ceo;
 use gicsdom::ceo::calibrations::{Mirror, Segment};
+use gicsdom::ceo::Conversion;
 use gicsdom::DomeSeeing;
 use ndarray::Array;
 use serde::Deserialize;
 //use std::ops::Range;
 //use std::sync::{Arc, Mutex};
+use ndarray::{stack, Axis};
 use std::thread;
 use std::time::Instant;
 use std::{f32, f64};
 use termion;
-use ndarray::{stack, Array2, ArrayView, Axis, Ix2, ShapeBuilder};
 
-const M1_N_MODE: usize = 17;
+const M1_N_MODE: usize = 27;
 const N_PROBE: usize = 3;
-const WITH_DOME_SEEING: bool = true;
+const WITH_DOME_SEEING: bool = false;
+const WITH_BM: bool = false;
 const SIM_DURATION_MN: f64 = 10f64;
 
 #[derive(Default, Debug, Deserialize)]
@@ -131,22 +133,23 @@ fn main() {
     //    println!("OBS: {}", obs.borrow().utc.datetime());
 
     let mut domeseeing = DomeSeeing::new(0, 0, "cd", 12, Some(1.0 / sampling_time));
-    domeseeing.list();
-
-    let mirrors = vec![Mirror::M1,Mirror::M2];
+    if WITH_DOME_SEEING {
+        domeseeing.list();
+    }
+    let mirrors = vec![Mirror::M2];
     //    let rbms = vec![Segment::Rxyz(1e-6, Some(0..2))];
     let rbms = (0..7)
         .into_iter()
         .map(|k| {
             if k == 6 {
                 vec![
-                    Segment::Txyz(1e-6, Some(0..2)),
+                    //Segment::Txyz(1e-6, Some(0..2)),
                     Segment::Rxyz(1e-6, Some(0..2)),
                 ]
             } else {
                 vec![
-                    Segment::Txyz(1e-6, None),
-                    Segment::Rxyz(1e-6, None),
+                    //Segment::Txyz(1e-6, None),
+                    Segment::Rxyz(1e-6, Some(0..2)),
                 ]
             }
         })
@@ -155,7 +158,7 @@ fn main() {
         * rbms
             .iter()
             .fold(0, |a, x| a + x.iter().fold(0, |a, x| a + x.n_mode()));
-    let n_threshold = Some(36);
+    let n_threshold = None; //Some(36);
 
     // AGWS <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     let mut handles = vec![];
@@ -183,13 +186,15 @@ fn main() {
 
             println!(
                 "{}Probe initialization",
-                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16));
+                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16)
+            );
             let msg = _telescope_channel_.1.recv().unwrap();
             probe.init(&msg.obs);
             //        probe.init(&obs.borrow());
             println!(
                 "{}Sensor calibration",
-                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16));
+                termion::cursor::Goto(1, (10 * (k + 1) + 2) as u16)
+            );
             let n_valid_lenslet = probe.calibrate_sensor(0.9);
             println!(
                 "{}Sensor calibrated: valid lenset: {} ({:.0}%)",
@@ -223,36 +228,46 @@ fn main() {
             );
             _probe_channel_.0.send(Some(calibration)).unwrap();
 
-            println!(
-                "{}BM interaction matrix ... ",
-                termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16)
-            );
-            let msg = _telescope_channel_.1.recv().unwrap();
-            let now = Instant::now();
-            let mut bm_calib = ceo::Calibration::new(optics, None);
-            let bm_calibration = bm_calib
-                .build(
-                    z as f32,
-                    a as f32,
-                    &probe.sensor_data0.valid_lenslets,
-                    Some(M1_N_MODE),
-                    None,
-                )
-                .calibrate(vec![ceo::calibrations::Mirror::M1MODES],
-                           vec![vec![ceo::calibrations::Segment::Modes(1e-6, 0..M1_N_MODE)]; 7]);
-            println!(
-                "{}BM interaction matrix computed in {}ms",
-                termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16),
-                now.elapsed().as_millis()
-            );
-            _probe_channel_.0.send(Some(bm_calibration)).unwrap();
-
+            if WITH_BM {
+                println!(
+                    "{}BM interaction matrix ... ",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16)
+                );
+                _telescope_channel_.1.recv().unwrap();
+                let now = Instant::now();
+                let mut bm_calib = ceo::Calibration::new(optics, None);
+                let bm_calibration = bm_calib
+                    .build(
+                        z as f32,
+                        a as f32,
+                        &probe.sensor_data0.valid_lenslets,
+                        Some(M1_N_MODE),
+                        None,
+                    )
+                    .calibrate(
+                        vec![ceo::calibrations::Mirror::M1MODES],
+                        vec![vec![ceo::calibrations::Segment::Modes(1e-6, 0..M1_N_MODE)]; 7],
+                    );
+                println!(
+                    "{}BM interaction matrix computed in {}ms",
+                    termion::cursor::Goto(1, (10 * (k + 1) + 4) as u16),
+                    now.elapsed().as_millis()
+                );
+                _probe_channel_.0.send(Some(bm_calibration)).unwrap();
+            }
             // Calibration ----------------
 
             let mut gopd = ceo::CuFloat::new();
-            gopd.malloc(769 * 769);
-
+            if WITH_DOME_SEEING {
+                gopd.malloc(769 * 769);
+            }
             probe.sensor.detector().reset();
+
+            //let (z, a) = probe.coordinates.local_polar(&msg.obs);
+            //let z = z + 0.5f64.from_arcsec();
+            //            let l = sh48.guide_star.pupil_size;
+            //            probe.sensor.detector().set_pixel_scale(,sh48.guide_star.pupil_size);
+            //            probe.sensor.detector().set_pointing(vec![z as f32],vec![a as f32]);
 
             loop {
                 println!(
@@ -293,13 +308,23 @@ fn main() {
                     termion::color::Bg(termion::color::Red),
                     termion::style::Reset
                 );
-                gopd.up(&mut msg.opd.unwrap());
-                let c = probe.through(None);//Some(&mut gopd));
+                let c = if WITH_DOME_SEEING {
+                    gopd.up(&mut msg.opd.unwrap());
+                    probe.through(Some(&mut gopd))
+                } else {
+                    probe.through(None)
+                };
                 if c.is_some() {
+                    let q = c.clone().unwrap();
+                    let n = q.len() / 2;
+                    let u: f32 = (1.5 * 0.715e-6 * 48.0 / 25.5).to_mas() as f32;
+                    let mean_cx = q[..n].iter().sum::<f32>() / (n as f32);
+                    let mean_cy = q[n..].iter().sum::<f32>() / (n as f32);
                     println!(
-                        "{}Centroids: sum={:0}",
+                        "{}Centroids: mean=[{:+.3},{:+.3}]mas",
                         termion::cursor::Goto(0, (10 * (k + 1) + 4) as u16),
-                        c.clone().unwrap().into_iter().sum::<f32>()
+                        mean_cx,
+                        mean_cy
                     );
                 }
                 _probe_channel_.0.send(c).unwrap();
@@ -363,7 +388,11 @@ fn main() {
                 break;
             }
 
-            gmt.update(Some(&msg.state.m1_rbm), Some(&msg.state.m2_rbm), Some(&msg.state.m1_mode));
+            gmt.update(
+                Some(&msg.state.m1_rbm),
+                Some(&msg.state.m2_rbm),
+                Some(&msg.state.m1_mode),
+            );
             let src_wfe_rms = src.through(&mut gmt).xpupil().wfe_rms_10e(-9)[0];
             src_pssn.peek(&mut src);
             let onaxis_pssn = src_pssn.estimates[0];
@@ -405,7 +434,7 @@ fn main() {
     telescope_channel
         .iter()
         .for_each(|x| x.0.send(msg.clone()).unwrap());
-//    science_channel.0.send(msg.clone()).unwrap();
+    //    science_channel.0.send(msg.clone()).unwrap();
 
     let calibration: Vec<Vec<f32>> = probe_channel
         .iter()
@@ -415,44 +444,52 @@ fn main() {
         .iter()
         .map(|x| x.len() / n_mode)
         .collect::<Vec<usize>>();
-    let rbm_d = ceo::calibrations::composite(calibration, vec![n_mode;N_PROBE], Some(0) );
-    println!("RBM D: {:?}",rbm_d.shape());
+    //    science_channel.0.send(msg.clone()).unwrap();
+    let mut d = match WITH_BM {
+        true => {
+            let rbm_d = ceo::calibrations::composite(calibration, vec![n_mode; N_PROBE], Some(0));
+            telescope_channel
+                .iter()
+                .for_each(|x| x.0.send(msg.clone()).unwrap());
+            let bm_calibration: Vec<Vec<f32>> = probe_channel
+                .iter()
+                .map(|x| x.1.recv().unwrap().unwrap())
+                .collect();
+            let bm_d =
+                ceo::calibrations::composite(bm_calibration, vec![M1_N_MODE * 7; N_PROBE], Some(0));
+            stack(Axis(1), &[rbm_d.view(), bm_d.view()]).unwrap()
+        }
+        false => ceo::calibrations::composite(calibration, vec![n_mode; N_PROBE], Some(0)),
+    };
     println!(
-        "{} Interaction matrix: [{:?};{}]",
+        "{} Interaction matrix: [{:?};{}] ; Computing pseudo-inverse ...",
         termion::cursor::Goto(1, 3),
         n_data,
-        n_mode
+        n_mode + M1_N_MODE * 7
     );
-    telescope_channel
-        .iter()
-        .for_each(|x| x.0.send(msg.clone()).unwrap());
-    //    science_channel.0.send(msg.clone()).unwrap();
+    let now = Instant::now();
+    let m = ceo::calibrations::pseudo_inverse(&mut d, n_threshold);
+    println!(
+        "{} Interaction matrix: [{:?};{}] ; Computed pseudo-inverse in {}ms ; {} eigen modes filtered",
+        termion::cursor::Goto(1, 3),
+        n_data,
+        n_mode + M1_N_MODE*7,
+        now.elapsed().as_millis(),
+        n_threshold.or(Some(0)).unwrap()
+    );
 
-    let bm_calibration: Vec<Vec<f32>> = probe_channel
-        .iter()
-        .map(|x| x.1.recv().unwrap().unwrap())
-        .collect();
-    let bm_n_data = bm_calibration
-        .iter()
-        .map(|x| x.len() / n_mode)
-        .collect::<Vec<usize>>();
-    let bm_d = ceo::calibrations::composite(bm_calibration, vec![M1_N_MODE*7;N_PROBE], Some(0) );
-    println!("BM D: {:?}",bm_d.shape());
-    let mut d = stack(Axis(1), &[rbm_d.view(),bm_d.view()]).unwrap();
-    let m = ceo::calibrations::pseudo_inverse(&mut d, vec![n_mode;N_PROBE], n_threshold, None);
     // Calibration ----------------
-/*
     state0.m2_rbm[0][3] = 1e-6;
     state0.m2_rbm[0][4] = 1e-6;
     state0.m2_rbm[2][3] = 1e-6;
     state0.m2_rbm[4][4] = 1e-6;
-    state0.m2_rbm[0][3] = 1e-6;
-    state0.m2_rbm[0][4] = 1e-6;
-
-    state0.m1_mode[0][0] = 100e-9;
-    state0.m1_mode[2][8] = -30e-9;
-    state0.m1_mode[4][9] = 60e-9;
-*/
+    state0.m2_rbm[6][3] = 1e-6;
+    state0.m2_rbm[6][4] = -2e-6;
+    /*
+        state0.m1_mode[0][0] = 100e-9;
+        state0.m1_mode[2][8] = -30e-9;
+        state0.m1_mode[4][9] = 60e-9;
+    */
     println!("{}Sending", termion::cursor::Goto(1, 2));
     let msg = Message {
         obs: obs.clone(),
@@ -509,17 +546,28 @@ fn main() {
             //let n_data: Vec<usize> = centroids.iter().map(|x| x.clone().unwrap().len()).collect();
             //println!("{}{:?}", termion::cursor::Goto(50, 5), n_data);
             //println!("Some data!");
+            /*
             let mut cat_centroids: Vec<f32> = Vec::new();
             centroids
                 .iter()
                 .for_each(|x| cat_centroids.append(&mut x.clone().unwrap()));
+            */
+            let cat_centroids = centroids
+                .iter()
+                .map(|x| x.as_ref().unwrap().clone())
+                .flatten()
+                .collect::<Vec<f32>>();
             let slopes = Array::from_shape_vec((cat_centroids.len(), 1), cat_centroids).unwrap();
             let m2_tt = (-gain * u) * m.dot(&slopes);
             state.acc_from_array(mirrors.clone(), rbms.clone(), &m2_tt);
-            let q = m2_tt.slice(ndarray::s![n_mode..,..]).to_owned();
-            state.acc_from_array(vec![ceo::calibrations::Mirror::M1MODES],
-                                 vec![vec![ceo::calibrations::Segment::Modes(1e-6, 0..17)]; 7],
-                                  &q);
+            if WITH_BM {
+                let q = m2_tt.slice(ndarray::s![n_mode.., ..]).to_owned();
+                state.acc_from_array(
+                    vec![ceo::calibrations::Mirror::M1MODES],
+                    vec![vec![ceo::calibrations::Segment::Modes(1e-6, 0..17)]; 7],
+                    &q,
+                );
+            }
             println!("{}{}", termion::cursor::Goto(1, 40), state);
             /*
             println!(
@@ -597,5 +645,4 @@ fn main() {
         handle.join().unwrap();
     }
     println!("{}", termion::cursor::Goto(1, 50));
-
 }

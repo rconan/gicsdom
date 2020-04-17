@@ -219,9 +219,7 @@ pub fn composite(    calibration: Vec<Vec<f32>>,
 }
 pub fn pseudo_inverse(
     d: &mut Array2<f32>,
-    n_mode_vec: Vec<usize>,
     sig_n_thresholded: Option<usize>,
-    composite_axis: Option<usize>,
 ) -> Array2<f32> {
     /*
     let mut a_view: Vec<ArrayView<f32, Ix2>> = Vec::new();

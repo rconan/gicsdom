@@ -1,35 +1,51 @@
-use std::{f32, mem};
 use std::f64;
+use std::{f32, mem};
 
 pub mod atmosphere;
+pub mod calibrations;
 pub mod centroiding;
 pub mod ceo_bindings;
 pub mod gmt;
 pub mod imaging;
 pub mod shackhartmann;
 pub mod source;
-pub mod calibrations;
 
 pub use self::atmosphere::Atmosphere;
+pub use self::calibrations::Calibration;
 pub use self::centroiding::Centroiding;
 pub use self::gmt::{Gmt, GmtState};
-pub use self::imaging::{Imaging,LensletArray};
+pub use self::imaging::{Imaging, LensletArray};
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use self::calibrations::Calibration;
-pub use ceo_bindings::{pssn, set_device, gpu_float, gpu_double};
+pub use ceo_bindings::{gpu_double, gpu_float, pssn, set_device};
 
 pub trait Conversion {
+    fn from_arcmin(self) -> f64;
+    fn from_arcsec(self) -> f64;
+    fn from_mas(self) -> f64;
+    fn to_arcmin(self) -> f64;
     fn to_arcsec(self) -> f64;
     fn to_mas(self) -> f64;
 }
 impl Conversion for f64 {
+    fn from_arcmin(self) -> f64 {
+        self * std::f64::consts::PI / (180.0 * 60.0)
+    }
+    fn from_arcsec(self) -> f64 {
+        self.from_arcmin() / 60.
+    }
+    fn from_mas(self) -> f64 {
+        self.from_arcsec() * 1e-3
+    }
+    fn to_arcmin(self) -> f64 {
+        self * 180.0 * 60.0 / std::f64::consts::PI
+    }
     fn to_arcsec(self) -> f64 {
-        self * 180.0 * 3600.0 / std::f64::consts::PI
+        60.0 * self.to_arcmin()
     }
     fn to_mas(self) -> f64 {
-        1e3*self.to_arcsec()
+        1e3 * self.to_arcsec()
     }
 }
 
@@ -40,7 +56,7 @@ pub fn set_gpu(id: i32) {
 }
 
 pub struct CuFloat {
-    _c_: gpu_float
+    _c_: gpu_float,
 }
 impl CuFloat {
     pub fn new() -> CuFloat {
@@ -68,9 +84,7 @@ impl CuFloat {
 }
 impl Drop for CuFloat {
     fn drop(&mut self) {
-        unsafe {
-            self._c_.free_dev()
-        }
+        unsafe { self._c_.free_dev() }
     }
 }
 
