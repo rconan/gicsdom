@@ -3,19 +3,27 @@ use std::mem;
 use super::ceo_bindings::{centroiding, dev2host, host2dev_char, mask};
 use super::Imaging;
 
+/// Wrapper for CEO centroiding
 pub struct Centroiding {
     _c_: centroiding,
     _c_mask_: mask,
+    /// The total number of lenslets
     pub n_lenslet_total: u32,
+    /// The number of centroids
     pub n_centroids: u32,
+    /// The centroid units, default: 1 (pixel)
     pub units: f32,
     flux: Vec<f32>,
+    /// The valid lenslet mask
     pub valid_lenslets: Vec<i8>,
+    /// The number of valid lenslet
     pub n_valid_lenslet: u32,
+    /// The centroids
     pub centroids: Vec<f32>,
 }
 
 impl Centroiding {
+    /// Creates a new `Centroiding`
     pub fn new() -> Centroiding {
         Centroiding {
             _c_: unsafe { mem::zeroed() },
@@ -29,6 +37,10 @@ impl Centroiding {
             centroids: vec![],
         }
     }
+    /// Sets the `Centroiding` parameters:
+    ///
+    /// * `n_lenslet` - the size of the square lenslet array
+    /// * `data_units` - the centroids units
     pub fn build(&mut self, n_lenslet: u32, data_units: Option<f64>) -> &mut Self {
         self.n_lenslet_total = n_lenslet * n_lenslet;
         self.n_centroids = 2 * self.n_lenslet_total;
@@ -42,6 +54,7 @@ impl Centroiding {
         self.units = data_units.or(Some(1f64)).unwrap() as f32;
         self
     }
+    /// Computes the `centroids` from the `sensor` image; optionally, a `Centroiding` `reference` may be provided that offsets the `centroids` and sets the `valid_lenslets`
     pub fn process(&mut self, sensor: &Imaging, reference: Option<&Centroiding>) -> &mut Self {
         if reference.is_none() {
             unsafe {
@@ -89,6 +102,7 @@ impl Centroiding {
         }
         self
     }
+    /// grabs the `centroids` from the GPU
     pub fn grab(&mut self) -> &mut Self {
         unsafe {
             dev2host(
@@ -99,6 +113,7 @@ impl Centroiding {
         }
         self
     }
+    /// returns the valid `centroids` i.e. the `centroids` that corresponds to a non-zero entry in the `valid_lenslets` mask; if `some_valid_lenslet` is given, then it supersedes any preset `valid_lenset`
     pub fn valids(&self, some_valid_lenslets: Option<&Vec<i8>>) -> Vec<f32> {
         let valid_lenslets = some_valid_lenslets.or(Some(&self.valid_lenslets)).unwrap();
         assert_eq!(self.n_lenslet_total, valid_lenslets.len() as u32);
@@ -114,6 +129,7 @@ impl Centroiding {
         }
         return valid_centroids;
     }
+    /// returns the flux of each lenslet
     pub fn lenslet_flux(&mut self) -> &Vec<f32> {
         unsafe {
             dev2host(
@@ -124,9 +140,11 @@ impl Centroiding {
         }
         &self.flux
     }
+    /// returns the sum of the flux of all the lenslets
     pub fn integrated_flux(&mut self) -> f32 {
         self.lenslet_flux().iter().sum()
     }
+    /// Computes the valid lenslets and return the number of valid lenslets; the valid lenslets are computed based on the maximum flux threshold or a given valid lenslets mask
     pub fn set_valid_lenslets(
         &mut self,
         some_flux_threshold: Option<f64>,
@@ -168,6 +186,7 @@ impl Centroiding {
     }
 }
 impl Drop for Centroiding {
+    /// Frees CEO memory before dropping `Centroiding`
     fn drop(&mut self) {
         unsafe {
             self._c_.cleanup();
