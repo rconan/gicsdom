@@ -249,22 +249,15 @@ mod tests {
         let mut gmt = Gmt::new();
         gmt.build(1, None);
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
-        let rt = vec![vec![ 0f64, 0f64, 0f64, 1e-6, 0f64, 0f64];7];
-        gmt.update(Some(&rt),None,None);
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
+        gmt.update(Some(&rt), None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
-        let delta = seg_tts[0]
-            .iter()
-            .zip(seg_tts0[0].iter())
-            .map(|x| (x.0 - x.1).powi(2))
-            .zip(
-                seg_tts[1]
-                    .iter()
-                    .zip(seg_tts0[1].iter())
-                    .map(|x| (x.0 - x.1).powi(2)),
-            )
-            .map(|x| 1e6 * (x.1 + x.0).sqrt())
-            .collect::<Vec<f32>>();
-        assert!(delta.iter().all(|x| (x - 2.0).abs() < 0.1));
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 2.0).abs() < 1e-1));
     }
 
     #[test]
@@ -274,22 +267,15 @@ mod tests {
         let mut gmt = Gmt::new();
         gmt.build(1, None);
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
-        let rt = vec![vec![ 0f64, 0f64, 0f64, 0f64, 1e-6, 0f64];7];
-        gmt.update(Some(&rt),None,None);
+        let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
+        gmt.update(Some(&rt), None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
-        let delta = seg_tts[0]
-            .iter()
-            .zip(seg_tts0[0].iter())
-            .map(|x| (x.0 - x.1).powi(2))
-            .zip(
-                seg_tts[1]
-                    .iter()
-                    .zip(seg_tts0[1].iter())
-                    .map(|x| (x.0 - x.1).powi(2)),
-            )
-            .map(|x| 1e6 * (x.1 + x.0).sqrt())
-            .collect::<Vec<f32>>();
-        assert!(delta.iter().all(|x| (x - 2.0).abs() < 0.1));
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 2.0).abs() < 1e-1));
     }
 
     #[test]
@@ -299,21 +285,14 @@ mod tests {
         let mut gmt = Gmt::new();
         gmt.build(1, None);
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
-        let rt = vec![vec![ 0f64, 0f64, 0f64, 1e-6, 0f64, 0f64];7];
-        gmt.update(None,Some(&rt),None);
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
-        let delta = seg_tts[0]
-            .iter()
-            .zip(seg_tts0[0].iter())
-            .map(|x| (x.0 - x.1).powi(2))
-            .zip(
-                seg_tts[1]
-                    .iter()
-                    .zip(seg_tts0[1].iter())
-                    .map(|x| (x.0 - x.1).powi(2)),
-            )
-            .map(|x| 1e6 * (x.1 + x.0).sqrt())
-            .collect::<Vec<f32>>();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
         assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-3));
     }
 
@@ -324,21 +303,14 @@ mod tests {
         let mut gmt = Gmt::new();
         gmt.build(1, None);
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
-        let rt = vec![vec![ 0f64, 0f64, 0f64, 0f64, 1e-6, 0f64];7];
-        gmt.update(None,Some(&rt),None);
+        let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
-        let delta = seg_tts[0]
-            .iter()
-            .zip(seg_tts0[0].iter())
-            .map(|x| (x.0 - x.1).powi(2))
-            .zip(
-                seg_tts[1]
-                    .iter()
-                    .zip(seg_tts0[1].iter())
-                    .map(|x| (x.0 - x.1).powi(2)),
-            )
-            .map(|x| 1e6 * (x.1 + x.0).sqrt())
-            .collect::<Vec<f32>>();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
         assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-2));
     }
 }
