@@ -1,4 +1,4 @@
-use super::{Centroiding, Gmt, LensletArray, Source, Imaging};
+use super::{Centroiding, Gmt, Imaging, LensletArray, Source};
 use ndarray::{stack, Array, Array2, ArrayView, Axis, Ix2, ShapeBuilder};
 use ndarray_linalg::svddc::{SVDDCInplace, UVTFlag};
 use std::ops::Range;
@@ -242,7 +242,6 @@ impl Drop for Calibration {
     }
 }
 
-
 /// reshapes vectors in matrices and stack the matrices together:
 ///
 /// * `calibration` - `Vec` of vectors to reshape
@@ -313,58 +312,56 @@ mod tests {
     fn gmt_calib_m2tt() {
         let pupil_size = 25.5f64;
         let n_lenslet = 48i32;
-        let lenslet_size = pupil_size/n_lenslet as f64;
+        let lenslet_size = pupil_size / n_lenslet as f64;
         let mut gmt = Gmt::new();
-        gmt.build(1, None);
-        let mut src = Source::new(1, pupil_size, n_lenslet*16+1);
-        src.build("V", vec![0.0], vec![0.0], vec![0.0] );
+        gmt.build(0, None);
+        let mut src = Source::new(1, pupil_size, n_lenslet * 16 + 1);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
         src.set_fwhm(4.0);
-        let mut sensor = Imaging::new();
-        sensor.build(1, n_lenslet as i32, 16, 2, 24, 3);
-        let mut cog0 = Centroiding::new();
-        cog0.build(n_lenslet as u32, None);
 
-        src.through(&mut gmt).xpupil().through(&mut sensor);
-        cog0.process(&sensor, None).set_valid_lenslets(Some(0.9), None );
-        src.lenslet_gradients(
-            n_lenslet,
-            lenslet_size,
-            &mut cog0,
-        );
-        let s0 = cog0.grab().valids(None);
-        assert!(!s0.iter().any(|x| x.is_nan()));
-
-        let lenslets = LensletArray { n_side_lenslet: n_lenslet, lenslet_size: lenslet_size };
-        let mut calib = Calibration::new(lenslets, None);
-        calib.build(0.0, 0.0, &cog0.valid_lenslets, Some(1), None);
-        let mirror = vec![Mirror::M2];
-        let segments = vec![vec![Segment::Rxyz(1e-6,Some(0..2))];7];
-        let calibration = calib.calibrate(mirror,segments);
-
-        let mut d = composite(vec![calibration], vec![14], Some(0) );
-//        println!("{:?}",d.shape());
-        let m = pseudo_inverse(&mut d, None);
+        src.through(&mut gmt).xpupil();
 
         let mut cog = Centroiding::new();
-        cog.build(n_lenslet as u32, None);
-        cog.set_valid_lenslets(None, Some(cog0.valid_lenslets.clone()) );
+        cog.build(n_lenslet as u32, None)
+            .set_valid_lenslets(None, Some(src.masklet(n_lenslet as usize, 0.9)));
+        src.lenslet_gradients(n_lenslet, lenslet_size, &mut cog);
+        let s0 = cog.grab().valids(None);
+        assert!(!s0.iter().any(|x| x.is_nan()));
+
+        let lenslets = LensletArray {
+            n_side_lenslet: n_lenslet,
+            lenslet_size: lenslet_size,
+        };
+        let mut calib = Calibration::new(lenslets, None);
+        calib.build(0.0, 0.0, &cog.valid_lenslets, Some(0), None);
+        let mirror = vec![Mirror::M2];
+        let segments = vec![vec![Segment::Rxyz(1e-6, Some(0..2))]; 7];
+        let calibration = calib.calibrate(mirror, segments);
+
+        let mut d = composite(vec![calibration], vec![14], Some(0));
+        //        println!("{:?}",d.shape());
+        let m = pseudo_inverse(&mut d, None);
 
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 1e-6, 0f64]; 7];
         gmt.update(None, Some(&rt), None);
-        src.through(&mut gmt).xpupil().lenslet_gradients(
-            n_lenslet,
-            lenslet_size,
-            &mut cog,
-        );
+        src.through(&mut gmt)
+            .xpupil()
+            .lenslet_gradients(n_lenslet, lenslet_size, &mut cog);
         let s = cog.grab().valids(None);
-//        println!("{:?}",src.segment_piston_10e(-9));
+        //        println!("{:?}",src.segment_piston_10e(-9));
         assert!(!src.phase().iter().any(|x| x.is_nan()));
 
-        let ds = s.iter().zip(s0.iter()).map(|x| x.0-x.1).collect::<Vec<f32>>();
+        let ds = s
+            .iter()
+            .zip(s0.iter())
+            .map(|x| x.0 - x.1)
+            .collect::<Vec<f32>>();
         let slopes = Array::from_shape_vec((ds.len(), 1), ds).unwrap();
         let m2_tt = 1e6 * m.dot(&slopes);
-//        println!("{:?}",m2_tt.into_shape((7,2)).unwrap());
-        assert!(m2_tt.iter().all(|x|(x-1.0).abs()<1e-3),
-                format!("{:?}",m2_tt.into_shape((7,2)).unwrap()));
+        //        println!("{:?}",m2_tt.into_shape((7,2)).unwrap());
+        assert!(
+            m2_tt.iter().all(|x| (x - 1.0).abs() < 1e-3),
+            format!("{:?}", m2_tt.into_shape((7, 2)).unwrap())
+        );
     }
 }
