@@ -799,6 +799,14 @@ extern "C" {
     pub fn dev2host(host_data: *mut f32, dev_data: *mut f32, N: ::std::os::raw::c_int);
 }
 extern "C" {
+    #[link_name = "\u{1}_Z12dev2host_intPiS_i"]
+    pub fn dev2host_int(
+        host_data: *mut ::std::os::raw::c_int,
+        dev_data: *mut ::std::os::raw::c_int,
+        N: ::std::os::raw::c_int,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z8host2devPfS_i"]
     pub fn host2dev(dev_data: *mut f32, host_data: *mut f32, N: ::std::os::raw::c_int);
 }

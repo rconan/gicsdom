@@ -16,6 +16,7 @@ fn main() {
         .whitelist_function("host2dev_char")
         .whitelist_function("host2dev")
         .whitelist_function("dev2host")
+        .whitelist_function("dev2host_int")
         .whitelist_type("source")
         .whitelist_type("pssn")
         .whitelist_type("imaging")
