@@ -256,6 +256,7 @@ impl Source {
         }
         self
     }
+    /// Returns the wavefront phase [m] in the exit pupil of the telescope
     pub fn phase(&mut self) -> &Vec<f32> {
         unsafe {
             dev2host(
@@ -265,6 +266,45 @@ impl Source {
             );
         }
         &self._phase
+    }
+    /// Returns the wavefront amplitude in the exit pupil of the telescope
+    pub fn amplitude(&mut self) -> Vec<f32> {
+        let n = self._c_.wavefront.N_PX;
+        let mut a = vec![0f32; n as usize];
+        unsafe {
+            dev2host(a.as_mut_ptr(), self._c_.wavefront.amplitude, n);
+        }
+        a
+    }
+    /// Returns the flux integrated in `n_let`X`n_let` bins
+    pub fn fluxlet(&mut self, n_let: usize) -> Vec<f32> {
+        let m = (self.pupil_sampling as usize - 1) / n_let;
+        assert_eq!(m * n_let + 1, self.pupil_sampling as usize);
+        let n = self.pupil_sampling as usize;
+        let a = self.amplitude();
+        let mut f = vec![0f32; (n_let * n_let) as usize];
+        for i_let in 0..n_let {
+            let ui = (m * i_let) as usize;
+            for j_let in 0..n_let {
+                let uj = (m * j_let) as usize;
+                let mut s = 0f32;
+                for i in 0..m as usize + 1 {
+                    for j in 0..m as usize + 1 {
+                        let k = ui + i + n * (uj + j);
+                        s += a[k];
+                    }
+                }
+                f[i_let + n_let * j_let] = s;
+            }
+        }
+        f
+    }
+    /// Returns a binary mask where the flux integrated in `n_let`X`n_let` bins is greater or equal to the maximum integrated flux X `flux_threshold`
+    pub fn masklet(&mut self, n_let: usize, flux_threshold: f32) -> Vec<i8> {
+        let f = self.fluxlet(n_let);
+        let f_max = f.iter().cloned().fold(-f32::INFINITY, f32::max);
+        let t = flux_threshold * f_max;
+        f.iter().map(|x| if *x >= t { 1i8 } else { 0i8 }).collect()
     }
     /// Propagates a `Source` through a `system` that implements the `Propagation` trait
     pub fn through<T: Propagation>(&mut self, system: &mut T) -> &mut Self {
@@ -295,7 +335,52 @@ mod tests {
         let rt = vec![vec![0f64, 0f64, 1e-6, 0f64, 0f64, 0f64]; 7];
         gmt.update(None, Some(&rt), None);
         let p = src.through(&mut gmt).xpupil().segment_piston_10e(-9);
-        let dp = p.iter().zip(p0.iter()).map(|x| x.0-x.1).collect::<Vec<f32>>();
+        let dp = p
+            .iter()
+            .zip(p0.iter())
+            .map(|x| x.0 - x.1)
+            .collect::<Vec<f32>>();
         println!("{:?}", dp);
+    }
+
+    #[test]
+    fn source_fluxlet() {
+        let n_let = 48usize;
+        let mut src = Source::new(1, 25.5, n_let as i32 * 16 + 1);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let f = src.through(&mut gmt).xpupil().fluxlet(n_let);
+        for i in 0..n_let {
+            for j in 0..n_let {
+                let k = i + n_let * j;
+                print!("{:3.0},", f[k])
+            }
+            println!("");
+        }
+        let f_max = f.iter().cloned().fold(-f32::INFINITY, f32::max);
+        println!("Flux max: {}", f_max);
+        let t = 0.9;
+        let nv = f
+            .iter()
+            .cloned()
+            .filter(|x| x >= &(t * f_max))
+            .collect::<Vec<f32>>()
+            .len();
+        println!("# of valid let: {}", nv);
+        assert_eq!(nv, 1144);
+    }
+
+    #[test]
+    fn source_masklet() {
+        let n_let = 48usize;
+        let mut src = Source::new(1, 25.5, n_let as i32 * 16 + 1);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let m = src.through(&mut gmt).xpupil().masklet(n_let, 0.9);
+        let nv = m.iter().fold(0u32, |a, x| a + *x as u32);
+        println!("# of valid let: {}", nv);
+        assert_eq!(nv, 1144);
     }
 }
