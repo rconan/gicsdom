@@ -4,7 +4,7 @@ use std::{f32, mem};
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector, zernikeS};
 use super::Propagation;
-use super::Source;
+use super::{Centroiding, Imaging, Source};
 
 #[derive(Clone, Debug)]
 pub struct GmtState {
@@ -30,10 +30,12 @@ pub struct Gmt {
     _c_m2_modes: zernikeS,
     _c_m1: gmt_m1,
     _c_m2: gmt_m2,
-    /// M1 number of modes per segment
+    /// M1 number of bending modes per segment
     pub m1_n_mode: usize,
-    /// M2 number of modes per segment
+    /// M2 number of bending modes per segment
     pub m2_n_mode: usize,
+    /// M2 largest Zernike radial order per segment
+    pub m2_max_n: usize,
     a1: Vec<f64>,
     a2: Vec<f64>,
 }
@@ -46,7 +48,8 @@ impl Gmt {
             _c_m1: unsafe { mem::zeroed() },
             _c_m2: unsafe { mem::zeroed() },
             m1_n_mode: 0,
-            m2_n_mode: 0,
+            m2_n_mode: 1,
+            m2_max_n: 0,
             a1: vec![0.],
             a2: vec![0.],
         }
@@ -54,26 +57,25 @@ impl Gmt {
     /// Sets the `Gmt` parameters:
     ///
     /// * `m1_n_mode` - the number of of modes on each M1 segment
-    /// * `m2_n_mode` - the number of of modes on each M2 segment
-    pub fn build(&mut self, m1_n_mode: usize, m2_n_mode: Option<usize>) -> &mut Gmt {
+    /// * `m2_max_n` - M2 largest Zernike radial order per segment
+    pub fn build(&mut self, m1_n_mode: usize, m2_max_n: Option<usize>) -> &mut Gmt {
         let mode_type = CString::new("bending modes").unwrap();
         self.m1_n_mode = m1_n_mode;
-        self.m2_n_mode = match m2_n_mode {
-            Some(m2_n_mode) => m2_n_mode,
+        self.m2_max_n = match m2_max_n {
+            Some(m2_max_n) => m2_max_n,
             None => 0,
         };
+        self.m2_n_mode = (self.m2_max_n + 1) * (self.m2_max_n + 2) / 2;
         if self.m1_n_mode > 0 {
             self.a1 = vec![0.0; 7 * self.m1_n_mode as usize];
         }
-        if self.m2_n_mode > 0 {
-            self.a2 = vec![0.0; self.m2_n_mode as usize];
-        }
+        self.a2 = vec![0.0; 7 * self.m2_n_mode as usize];
         unsafe {
             self._c_m1_modes
                 .setup(mode_type.into_raw(), 7, self.m1_n_mode as i32);
             self._c_m1.setup1(&mut self._c_m1_modes);
             self._c_m2_modes
-                .setup1(self.m2_n_mode as i32, self.a2.as_mut_ptr(), 7);
+                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
             self._c_m2.setup2(&mut self._c_m2_modes);
         }
         self
@@ -312,5 +314,56 @@ mod tests {
                 .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
         }
         assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-2));
+    }
+
+    #[test]
+    fn gmt_lenslet_gradients() {
+        let pupil_size = 25.5f64;
+        let n_lenslet = 48i32;
+        let lenslet_size = pupil_size / n_lenslet as f64;
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let mut src = Source::new(1, pupil_size, n_lenslet * 16 + 1);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        src.set_fwhm(4.0);
+        let mut sensor = Imaging::new();
+        sensor.build(1, n_lenslet as i32, 16, 2, 24, 3);
+        let mut cog0 = Centroiding::new();
+        cog0.build(n_lenslet as u32, None);
+
+        src.through(&mut gmt).xpupil().through(&mut sensor);
+        cog0.process(&sensor, None)
+            .set_valid_lenslets(Some(0.9), None);
+        src.lenslet_gradients(n_lenslet, lenslet_size, &mut cog0);
+        let s0 = cog0.grab().valids(None);
+        if s0.iter().any(|x| x.is_nan()) {
+            let n = (n_lenslet * n_lenslet) as usize;
+            for k in 0..n {
+                if k % n_lenslet as usize == 0 {
+                    println!("");
+                }
+                if cog0.centroids[k].is_nan() || cog0.centroids[k + n].is_nan() {
+                    print!("X");
+                } else {
+                    print!("o");
+                }
+            }
+        }
+        let s0_any_nan = s0.iter().any(|x| x.is_nan());
+        assert!(!s0_any_nan);
+
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 1e-6, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
+
+        let mut cog = Centroiding::new();
+        cog.build(n_lenslet as u32, None);
+        cog.set_valid_lenslets(None, Some(cog0.valid_lenslets.clone()));
+        src.through(&mut gmt)
+            .xpupil()
+            .lenslet_gradients(n_lenslet, lenslet_size, &mut cog);
+
+        let s = cog.grab().valids(None);
+        let s_any_nan = s.iter().any(|x| x.is_nan());
+        assert!(!s_any_nan);
     }
 }
