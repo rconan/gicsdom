@@ -124,16 +124,16 @@ impl Calibration {
     /// * `azi` - `Source` azimuth angle [rd]
     /// * `valid_lenslets` - the valid lenslets mask
     /// * `m1_n_mode` - the number of M1 modes or `None`
-    /// * `m2_n_mode` - the number of M2 modes or `None`
+    /// * `m2_max_n` -  M2 largest Zernike radial order per segment
     pub fn build(
         &mut self,
         zen: f32,
         azi: f32,
         valid_lenslets: &Vec<i8>,
         m1_n_mode: Option<usize>,
-        m2_n_mode: Option<usize>,
+        m2_max_n: Option<usize>,
     ) -> &mut Self {
-        self.gmt.build(m1_n_mode.unwrap(), m2_n_mode);
+        self.gmt.build(m1_n_mode.unwrap(), m2_max_n);
         self.m1_mode = vec![vec![0.; m1_n_mode.or(Some(1)).unwrap()]; 7];
         self.src.build("R+I", vec![zen], vec![azi], vec![0f32]);
         self.cog.build(self.n_side_lenslet as u32, None);
