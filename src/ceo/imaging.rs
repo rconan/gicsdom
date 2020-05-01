@@ -19,19 +19,20 @@ pub struct NoiseDataSheet {
     pub rms_read_out_noise: f64,
     /// Number of background photons
     pub n_background_photon: f64,
-    /// Noise factor
+    /// Noise excess factor
     pub noise_factor: f64,
 }
 impl NoiseDataSheet {
-    fn rms_read_out_noise(rms_read_out_noise: f64) -> Self {
+    /// Creates a new `NoiseDataSheet` with `rms_read_out_noise` and the default values for the other arguments
+    pub fn read_out_noise(rms_read_out_noise: f64) -> Self {
         NoiseDataSheet {
             rms_read_out_noise,
-            n_background_photon: 0f64,
-            noise_factor: 1f64,
+            ..Default::default()
         }
     }
 }
 impl Default for NoiseDataSheet {
+    /// Creates a new `NoiseDataSheet` with `rms_read_out_noise`=0, `n_background_photon`=0 and `noise_factor`=1
     fn default() -> Self {
         NoiseDataSheet {
             rms_read_out_noise: 0f64,
@@ -137,20 +138,24 @@ impl Imaging {
     }
     /// Sets the pixel scale
     pub fn set_pixel_scale(&mut self, src: &mut Source) -> &mut Self {
-        unsafe {
-            self._c_.pixel_scale = (src.wavelength() / src.pupil_size) as f32
-                * (self._c_.N_SIDE_LENSLET * self._c_.BIN_IMAGE / self.dft_osf) as f32;
-        }
+        self._c_.pixel_scale = (src.wavelength() / src.pupil_size / self.dft_osf as f64) as f32
+            * (self._c_.N_SIDE_LENSLET * self._c_.BIN_IMAGE) as f32;
         self
     }
     /// Returns the detector pixel scale
     pub fn pixel_scale(&mut self, src: &mut Source) -> f32 {
-        (src.wavelength() / src.pupil_size) as f32
-            * (self._c_.N_SIDE_LENSLET * self._c_.BIN_IMAGE / self.dft_osf) as f32
+        (src.wavelength() / src.pupil_size / self.dft_osf as f64) as f32
+            * (self._c_.N_SIDE_LENSLET * self._c_.BIN_IMAGE) as f32
     }
     /// Sets the detector pointing direction
-    pub fn set_pointing(&mut self, mut zen: Vec<f32>, mut azi: Vec<f32>) -> &mut Self {
+    pub fn set_pointing(
+        &mut self,
+        mut zen: Vec<f32>,
+        mut azi: Vec<f32>,
+        pixel_scale: f64,
+    ) -> &mut Self {
         unsafe {
+            self._c_.pixel_scale = pixel_scale as f32;
             self._c_.absolute_pointing = 1;
             self._c_
                 .set_pointing_direction(zen.as_mut_ptr(), azi.as_mut_ptr());
@@ -286,7 +291,7 @@ mod tests {
 
         sensor
             .reset()
-            .readout(1f64, Some(NoiseDataSheet::rms_read_out_noise(1f64)));
+            .readout(1f64, Some(NoiseDataSheet::read_out_noise(1f64)));
         let n = sensor.resolution().pow(2);
         let mut frame = vec![0f32; n as usize];
         sensor.frame_transfer(&mut frame);
@@ -311,15 +316,14 @@ mod tests {
         let mut sensor = Imaging::new();
         sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 128, 1);
         let p = src.wavelength() / pupil_size / 2f64;
-        println!("Pixel scale: {}mas", p.to_mas());
+        println!("Pixel scale: {:.3e}mas", p.to_mas());
 
         let mut cog0 = Centroiding::new();
         cog0.build(n_side_lenslet as u32, None);
         src.through(&mut gmt).xpupil().through(&mut sensor);
-        let nv = cog0
-            .process(&sensor, None)
-            .set_valid_lenslets(Some(0.9), None);
-        println!("Valid lenslet #: {}", nv);
+        cog0.process(&sensor, None);
+        println!("s: {:?}", cog0.grab().centroids);
+
         let mut frame = vec![0f32; sensor.resolution().pow(2) as usize];
         sensor.frame_transfer(&mut frame);
         let f0 = frame.iter().sum::<f32>();
@@ -327,18 +331,17 @@ mod tests {
         let mut cog = Centroiding::new();
         cog.build(n_side_lenslet as u32, Some(p));
 
-        sensor.set_pixel_scale(&mut src);
-        sensor.set_pointing(vec![p as f32*10.0], vec![0.0]);
+        let z = p as f32 * 10.0;
+        sensor.set_pointing(vec![z], vec![0.0], p);
         src.through(&mut gmt).xpupil().through(sensor.reset());
         sensor.frame_transfer(&mut frame);
         let f = frame.iter().sum::<f32>();
         println!("Flux ratio: {}", f / f0);
 
-        let s = cog
-            .process(&sensor, Some(&cog0))
-            .grab()
-            .valids(Some(&cog0.valid_lenslets));
-        println!("s: {:?}", s);
+        cog.process(&sensor, Some(&cog0));
+        let s = &cog.grab().centroids;
+        println!("s: [{},{}]", (s[0] as f64).to_mas(), (s[1] as f64).to_mas());
+        assert!(((z+s[0]) as f64).to_mas()<1f64);
     }
 
     #[test]
