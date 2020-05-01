@@ -29,6 +29,7 @@ pub struct Source {
     pub pupil_sampling: i32,
     pub _wfe_rms: Vec<f32>,
     pub _phase: Vec<f32>,
+    pub magnitude: Vec<f32>
 }
 impl Source {
     /// Creates and empty `Source`
@@ -40,6 +41,7 @@ impl Source {
             pupil_sampling: 0,
             _wfe_rms: vec![],
             _phase: vec![],
+            magnitude: vec![]
         }
     }
     /// Creates a new `Source` with the arguments:
@@ -54,6 +56,7 @@ impl Source {
             pupil_sampling,
             _wfe_rms: vec![0.0; size as usize],
             _phase: vec![0.0; (pupil_sampling * pupil_sampling * size) as usize],
+            magnitude: vec![0.0; size as usize],
         }
     }
     pub fn from(args: (i32, f64, i32)) -> Source {
@@ -81,6 +84,7 @@ impl Source {
                 y: 0.0,
                 z: 25.0,
             };
+            self.magnitude.copy_from_slice(magnitude.as_slice());
             self._c_.setup7(
                 band.into_raw(),
                 magnitude.as_mut_ptr(),
@@ -310,6 +314,10 @@ impl Source {
     pub fn through<T: Propagation>(&mut self, system: &mut T) -> &mut Self {
         system.propagate(self);
         self
+    }
+    /// Returns the number of photon [m^-2.s^-1]
+    pub fn n_photon(&mut self) -> Vec<f32> {
+        self.magnitude.clone().iter().map(|m| unsafe { self._c_.n_photon1(*m) }).collect()
     }
 }
 impl Drop for Source {
