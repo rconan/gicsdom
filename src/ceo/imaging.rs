@@ -2,7 +2,7 @@ use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host, imaging};
 use super::Propagation;
-use super::{Centroiding, Gmt, Source,Conversion};
+use super::{Centroiding, Conversion, Gmt, Source};
 
 #[derive(Copy, Clone)]
 /// A square lenslet array
@@ -180,6 +180,7 @@ impl Propagation for Imaging {
 }
 
 #[cfg(test)]
+/// Imaging tests
 mod tests {
     use super::*;
 
@@ -223,9 +224,11 @@ mod tests {
         let mut gmt = Gmt::new();
         gmt.build(0, None);
         let mut src = Source::new(1, pupil_size, pupil_sampling);
-        src.build("V", vec![0f32], vec![0f32], vec![18f32]);
+        src.build("V", vec![0f32], vec![0f32], vec![16f32]);
+        let fwhm_px = 8f64;
+        src.set_fwhm(fwhm_px);
         let mut sensor = Imaging::new();
-        sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 2*n_px_lenslet, 1);
+        sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 2 * n_px_lenslet, 1);
         let p = sensor.pixel_scale(&mut src) as f64;
 
         let mut cog0 = Centroiding::new();
@@ -234,21 +237,21 @@ mod tests {
         let nv = cog0
             .process(&sensor, None)
             .set_valid_lenslets(Some(0.9), None);
-        println!("Valid lenslet #: {}",nv);
+        println!("Valid lenslet #: {}", nv);
 
         let mut cog = Centroiding::new();
         cog.build(n_side_lenslet as u32, Some(p));
         src.through(&mut gmt).xpupil().through(&mut sensor);
-        src.through(&mut gmt).xpupil().through(&mut sensor);
-        sensor.readout(1f64, Some(NoiseDataSheet::default()) );
+        sensor.readout(1f64, Some(NoiseDataSheet::default()));
         let s = cog
             .process(&sensor, Some(&cog0))
             .grab()
             .valids(Some(&cog0.valid_lenslets));
-        println!("Pixel scale: {}mas",p.to_mas());
-        let m = s.iter().sum::<f32>() / nv as f32;
-        let v = s.iter().map(|x| (x - m).powi(2)).sum::<f32>() / nv as f32;
-        println!("Centroid rms error: {}",(v.sqrt() as f64).to_mas());
+        println!("Valid slopes #: {}", s.len());
+        println!("Pixel scale: {}mas", p.to_mas());
+        let m = s.iter().sum::<f32>() / s.len() as f32;
+        let v = s.iter().map(|x| (x - m).powi(2)).sum::<f32>() / s.len() as f32;
+        println!("Centroid rms error: {}", (v.sqrt() as f64).to_mas());
 
         let fluxlet = cog
             .lenslet_flux()
@@ -256,13 +259,21 @@ mod tests {
             .cloned()
             .fold(-f32::INFINITY, f32::max);
         let fluxlet_expected = src.n_photon()[0] * lenslet_size * lenslet_size;
-        println!("flux ratio: {}",fluxlet/fluxlet_expected);
-        let fwhm = 1.03*src.wavelength()/lenslet_size as f64;
-        println!("FWHM: {}mas",fwhm.to_mas());
-        let v_expected = fwhm.powi(2)/(2f64*2f64.ln()*fluxlet_expected as f64);
-        println!("Expected centroid rms error: {}",v_expected.sqrt().to_mas());
+        println!("expected flux: {}", fluxlet_expected);
+        println!("flux ratio: {}", fluxlet / fluxlet_expected);
+        //let fwhm = 1.03*src.wavelength()/lenslet_size as f64;
+        let fwhm = p * fwhm_px;
+        //println!("FWHM: {}mas",fwhm.to_mas());
+        println!("FWHM: {}mas", fwhm.to_mas());
+        //let v_expected = fwhm.powi(2)/(2f64*2f64.ln()*fluxlet_expected as f64);
+        let v_expected = fwhm.powi(2) / (8f64 * 2f64.ln() * fluxlet_expected as f64);
+        //println!("Expected centroid rms error: {}",v_expected.sqrt().to_mas());
+        println!(
+            "Expected centroid rms error: {}",
+            v_expected.sqrt().to_mas()
+        );
 
-        assert!((v as f64-v_expected).abs()/v_expected<1e-1);
+        assert!((v.sqrt() as f64 - v_expected.sqrt()).abs() < 1f64);
     }
 
     #[test]
@@ -292,15 +303,15 @@ mod tests {
         let n_side_lenslet = 1;
         let n_px_lenslet = 511;
         let pupil_sampling = n_side_lenslet * n_px_lenslet + 1;
-//        let lenslet_size = (pupil_size / n_side_lenslet as f64) as f32;
+        //        let lenslet_size = (pupil_size / n_side_lenslet as f64) as f32;
         let mut gmt = Gmt::new();
         gmt.build(0, None);
         let mut src = Source::new(1, pupil_size, pupil_sampling);
         src.build("V", vec![0f32], vec![0f32], vec![18f32]);
         let mut sensor = Imaging::new();
         sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 128, 1);
-        let p = src.wavelength()/pupil_size/2f64;
-        println!("Pixel scale: {}mas",p.to_mas());
+        let p = src.wavelength() / pupil_size / 2f64;
+        println!("Pixel scale: {}mas", p.to_mas());
 
         let mut cog0 = Centroiding::new();
         cog0.build(n_side_lenslet as u32, None);
@@ -308,21 +319,26 @@ mod tests {
         let nv = cog0
             .process(&sensor, None)
             .set_valid_lenslets(Some(0.9), None);
-        println!("Valid lenslet #: {}",nv);
+        println!("Valid lenslet #: {}", nv);
+        let mut frame = vec![0f32; sensor.resolution().pow(2) as usize];
+        sensor.frame_transfer(&mut frame);
+        let f0 = frame.iter().sum::<f32>();
 
         let mut cog = Centroiding::new();
         cog.build(n_side_lenslet as u32, Some(p));
 
         sensor.set_pixel_scale(&mut src);
-        sensor.set_pointing(vec![1e-9], vec![0.0]);
-        src.through(&mut gmt).xpupil().through(&mut sensor);
+        sensor.set_pointing(vec![p as f32*10.0], vec![0.0]);
+        src.through(&mut gmt).xpupil().through(sensor.reset());
+        sensor.frame_transfer(&mut frame);
+        let f = frame.iter().sum::<f32>();
+        println!("Flux ratio: {}", f / f0);
 
         let s = cog
             .process(&sensor, Some(&cog0))
             .grab()
             .valids(Some(&cog0.valid_lenslets));
-        println!("s: {:?}",s);
-
+        println!("s: {:?}", s);
     }
 
     #[test]
@@ -339,30 +355,30 @@ mod tests {
         let mut sensor = Imaging::new();
         sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 128, 1);
 
-        let mut frame = vec![0f32;sensor.resolution().pow(2) as usize];
+        let mut frame = vec![0f32; sensor.resolution().pow(2) as usize];
         src.through(&mut gmt).xpupil().through(&mut sensor);
         sensor.frame_transfer(&mut frame);
-        let f0 =  frame.iter().sum::<f32>();
+        let f0 = frame.iter().sum::<f32>();
 
         src.through(&mut gmt).xpupil().through(&mut sensor);
         sensor.frame_transfer(&mut frame);
-        let f =  frame.iter().sum::<f32>();
-        println!("Flux ratio: {}",f/f0);
-        assert_eq!((f/f0)as usize, 2);
+        let f = frame.iter().sum::<f32>();
+        println!("Flux ratio: {}", f / f0);
+        assert_eq!((f / f0) as usize, 2);
 
         src.through(&mut gmt).xpupil().through(sensor.reset());
         sensor.frame_transfer(&mut frame);
-        let f =  frame.iter().sum::<f32>();
-        println!("Flux ratio: {}",f/f0);
-        assert_eq!((f/f0)as usize, 1);
+        let f = frame.iter().sum::<f32>();
+        println!("Flux ratio: {}", f / f0);
+        assert_eq!((f / f0) as usize, 1);
 
         sensor.reset();
         for _ in 0..10 {
             src.through(&mut gmt).xpupil().through(&mut sensor);
         }
         sensor.frame_transfer(&mut frame);
-        let f =  frame.iter().sum::<f32>();
-        println!("Flux ratio: {}",(f/f0) as usize);
-        assert_eq!((f/f0)as usize, 10);
+        let f = frame.iter().sum::<f32>();
+        println!("Flux ratio: {}", (f / f0) as usize);
+        assert_eq!((f / f0) as usize, 10);
     }
 }
