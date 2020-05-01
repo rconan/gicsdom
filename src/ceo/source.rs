@@ -319,6 +319,10 @@ impl Source {
     pub fn n_photon(&mut self) -> Vec<f32> {
         self.magnitude.clone().iter().map(|m| unsafe { self._c_.n_photon1(*m) }).collect()
     }
+    /// Returns the light collecting area
+    pub fn light_collecting_area(&self) -> f32 {
+        self._c_.rays.V.area
+    }
 }
 impl Drop for Source {
     /// Frees CEO memory before dropping `Source`
