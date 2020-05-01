@@ -15,18 +15,25 @@ pub struct LensletArray {
 #[derive(Copy, Clone)]
 /// Detector noise specifications
 pub struct NoiseDataSheet {
-    /// Read-out noise rms
+    /// Read-out noise rms (# of photo-electron per pixel)
     pub rms_read_out_noise: f64,
-    /// Number of background photons
+    /// Number of background photons per frame
     pub n_background_photon: f64,
     /// Noise excess factor
     pub noise_factor: f64,
 }
 impl NoiseDataSheet {
     /// Creates a new `NoiseDataSheet` with `rms_read_out_noise` and the default values for the other arguments
-    pub fn read_out_noise(rms_read_out_noise: f64) -> Self {
+    pub fn read_out(rms_read_out_noise: f64) -> Self {
         NoiseDataSheet {
             rms_read_out_noise,
+            ..Default::default()
+        }
+    }
+    /// Creates a new `NoiseDataSheet` with `n_background_photon` and the default values for the other arguments
+    pub fn background(n_background_photon: f64) -> Self {
+        NoiseDataSheet {
+            n_background_photon,
             ..Default::default()
         }
     }
@@ -213,6 +220,7 @@ mod tests {
             .iter()
             .cloned()
             .fold(-f32::INFINITY, f32::max);
+        println!("Light collecting area: {}",src.light_collecting_area());
         println!("Sensor lenslet flux: {}", fluxlet);
         let fluxlet_expected = src.n_photon()[0] * lenslet_size * lenslet_size;
         println!("Lenslet expected flux: {}", fluxlet_expected);
@@ -291,7 +299,7 @@ mod tests {
 
         sensor
             .reset()
-            .readout(1f64, Some(NoiseDataSheet::read_out_noise(1f64)));
+            .readout(1f64, Some(NoiseDataSheet::read_out(1f64)));
         let n = sensor.resolution().pow(2);
         let mut frame = vec![0f32; n as usize];
         sensor.frame_transfer(&mut frame);
@@ -302,6 +310,28 @@ mod tests {
         assert!((1f32 - v.sqrt()).abs() < 1e-2);
     }
 
+    #[test]
+    fn imaging_noise_background() {
+        let n_side_lenslet = 40;
+        let n_px_lenslet = 16;
+
+        let mut sensor = Imaging::new();
+        sensor.build(1, n_side_lenslet, n_px_lenslet, 2, 2 * n_px_lenslet, 1);
+
+        let n = sensor.resolution().pow(2);
+        let nbg_px = 1000f64;
+        sensor
+            .reset()
+            .readout(1f64, Some(NoiseDataSheet::background(n as f64*nbg_px)));
+        let mut frame = vec![0f32; n as usize];
+        sensor.frame_transfer(&mut frame);
+
+        let m = frame.iter().sum::<f32>() / n as f32;
+        let v = frame.iter().map(|x| (x - m).powi(2)).sum::<f32>() / n as f32;
+        println!("background photon: [{},{}]", m, v);
+        assert!((m as f64-nbg_px).abs()/nbg_px<1e-2);
+        assert!((v as f64-nbg_px).abs()/nbg_px<2e-2);
+    }
     #[test]
     fn imaging_pointing() {
         let pupil_size = 25.5f64;
