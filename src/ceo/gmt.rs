@@ -80,6 +80,33 @@ impl Gmt {
         }
         self
     }
+    pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self{
+        let m1_mode_type = CString::new(mode_type).unwrap();
+        self.m1_n_mode = m1_n_mode;
+        if self.m1_n_mode > 0 {
+            self.a1 = vec![0.0; 7 * self.m1_n_mode as usize];
+        }
+        unsafe {
+            self._c_m1_modes
+                .setup(m1_mode_type.into_raw(), 7, self.m1_n_mode as i32);
+            self._c_m1.setup1(&mut self._c_m1_modes);
+        }
+        self
+    }
+    pub fn build_m2(&mut self, m2_max_n: Option<usize>) -> &mut Self {
+        self.m2_max_n = match m2_max_n {
+            Some(m2_max_n) => m2_max_n,
+            None => 0,
+        };
+        self.m2_n_mode = (self.m2_max_n + 1) * (self.m2_max_n + 2) / 2;
+        self.a2 = vec![0.0; 7 * self.m2_n_mode as usize];
+        unsafe {
+            self._c_m2_modes
+                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
+            self._c_m2.setup2(&mut self._c_m2_modes);
+        }
+        self
+    }
     /// Resets M1 and M2 to their aligned states
     pub fn reset(&mut self) -> &mut Self {
         let mut a: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
