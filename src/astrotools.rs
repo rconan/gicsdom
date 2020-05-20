@@ -64,6 +64,32 @@ impl Time {
             fs: 0.0,
         }
     }
+    /// Converts a date and a time in UTC ISO 8601 standard to a `Time`
+    pub fn from_iso_8601(datetime: &str) -> Self {
+        let ymd = datetime
+            .rsplit("T")
+            .last()
+            .unwrap()
+            .split('-')
+            .map(|x| x.parse::<f64>().unwrap())
+            .collect::<Vec<f64>>();
+        let hms = datetime
+            .split("T")
+            .last()
+            .unwrap()
+            .split(':')
+            .map(|x| x.parse::<f64>().unwrap())
+            .collect::<Vec<f64>>();
+        Self::from_date_utc_fs(
+            ymd[0] as i32,
+            ymd[1] as u8,
+            ymd[2] as u8,
+            hms[0] as u8,
+            hms[1] as u8,
+            hms[2].trunc() as u8,
+            hms[2].fract() as f64,
+        )
+    }
     /// Returns the date and time as a `String` following ISO 8601 standard
     pub fn datetime(&self) -> String {
         format!(
@@ -170,7 +196,7 @@ pub struct Observation {
     /// observation duration [s]
     pub duration: f64,
     /// observation number of step since the beginning of the observation; step=[0,duration/sampling_time-1]
-    pub step: u32,
+    pub step: usize,
     /// a flag raised when the observation is complete i.e. step=duration/sampling_time-1
     pub ended: bool,
 }
@@ -227,9 +253,15 @@ impl Observation {
     pub fn lst(&self) -> f64 {
         self.utc.local_sidereal_time(self.longitude.to_degrees())
     }
+    pub fn altaz(&self) -> (f64,f64) {
+        self.object.altaz(self)
+    }
+    pub fn altaz_deg(&self) -> (f64,f64) {
+        self.object.altaz_deg(self)
+    }
 }
 impl Iterator for Observation {
-    type Item = u32;
+    type Item = usize;
     /// Increments `step` and adds `sampling_time` seconds to `utc`
     fn next(&mut self) -> Option<Self::Item> {
         self.step += 1;
