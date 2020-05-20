@@ -4,52 +4,43 @@ use std::{f32, mem};
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector, zernikeS};
 use super::Propagation;
-use super::Source;
+use super::{Centroiding, Imaging, Source};
 
 #[derive(Clone, Debug)]
 pub struct GmtState {
     pub rbm: Array2<f32>,
     pub bm: Array2<f32>,
 }
+
+/// Wrapper for CEO gmt_m1 and gmt_m2
+///
+/// # Examples
+///
+/// ```
+/// use gicsdom::ceo;
+/// let mut src = ceo::Source::new(1,25.5,401);
+/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
+/// let mut gmt = ceo::Gmt::new();
+/// gmt.build(27,None);
+/// src.through(&mut gmt).xpupil();
+/// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
+/// ```
 pub struct Gmt {
     _c_m1_modes: modes,
     _c_m2_modes: zernikeS,
     _c_m1: gmt_m1,
     _c_m2: gmt_m2,
+    /// M1 number of bending modes per segment
     pub m1_n_mode: usize,
+    /// M2 number of bending modes per segment
     pub m2_n_mode: usize,
+    /// M2 largest Zernike radial order per segment
+    pub m2_max_n: usize,
     a1: Vec<f64>,
     a2: Vec<f64>,
 }
 impl Gmt {
-    pub fn test(m1_n_mode: usize, m2_n_mode: Option<usize>) -> Gmt {
-        let mode_type = CString::new("bending modes").unwrap();
-        let mut this: Gmt = Gmt {
-            _c_m1_modes: unsafe { mem::zeroed() },
-            _c_m2_modes: unsafe { mem::zeroed() },
-            _c_m1: unsafe { mem::zeroed() },
-            _c_m2: unsafe { mem::zeroed() },
-            m1_n_mode,
-            m2_n_mode: match m2_n_mode {
-                Some(m2_n_mode) => m2_n_mode,
-                None => 0,
-            },
-            a1: vec![],
-            a2: vec![],
-        };
-        if this.m2_n_mode > 0 {
-            this.a2 = vec![0.0; this.m2_n_mode as usize];
-        }
-        unsafe {
-            this._c_m1_modes
-                .setup(mode_type.into_raw(), 7, this.m1_n_mode as i32);
-            this._c_m1.setup1(&mut this._c_m1_modes);
-            this._c_m2_modes
-                .setup1(this.m2_n_mode as i32, this.a2.as_mut_ptr(), 7);
-            this._c_m2.setup2(&mut this._c_m2_modes);
-        }
-        this
-    }
+    /// Creates a new `Gmt`
     pub fn new() -> Gmt {
         Gmt {
             _c_m1_modes: unsafe { mem::zeroed() },
@@ -57,34 +48,73 @@ impl Gmt {
             _c_m1: unsafe { mem::zeroed() },
             _c_m2: unsafe { mem::zeroed() },
             m1_n_mode: 0,
-            m2_n_mode: 0,
+            m2_n_mode: 1,
+            m2_max_n: 0,
             a1: vec![0.],
             a2: vec![0.],
         }
     }
-    pub fn build(&mut self, m1_n_mode: usize, m2_n_mode: Option<usize>) -> &mut Gmt {
+    /// Sets the `Gmt` parameters:
+    ///
+    /// * `m1_n_mode` - the number of of modes on each M1 segment
+    /// * `m2_max_n` - M2 largest Zernike radial order per segment
+    pub fn build(&mut self, m1_n_mode: usize, m2_max_n: Option<usize>) -> &mut Gmt {
         let mode_type = CString::new("bending modes").unwrap();
         self.m1_n_mode = m1_n_mode;
-        self.m2_n_mode = match m2_n_mode {
-            Some(m2_n_mode) => m2_n_mode,
+        self.m2_max_n = match m2_max_n {
+            Some(m2_max_n) => m2_max_n,
             None => 0,
         };
+        self.m2_n_mode = (self.m2_max_n + 1) * (self.m2_max_n + 2) / 2;
         if self.m1_n_mode > 0 {
-            self.a1 = vec![0.0; 7*self.m1_n_mode as usize];
+            self.a1 = vec![0.0; 7 * self.m1_n_mode as usize];
         }
-        if self.m2_n_mode > 0 {
-            self.a2 = vec![0.0; self.m2_n_mode as usize];
-        }
+        self.a2 = vec![0.0; 7 * self.m2_n_mode as usize];
         unsafe {
             self._c_m1_modes
                 .setup(mode_type.into_raw(), 7, self.m1_n_mode as i32);
             self._c_m1.setup1(&mut self._c_m1_modes);
             self._c_m2_modes
-                .setup1(self.m2_n_mode as i32, self.a2.as_mut_ptr(), 7);
+                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
             self._c_m2.setup2(&mut self._c_m2_modes);
         }
         self
     }
+    /// Sets the `Gmt` M1 parameters:
+    ///
+    /// * `mode_type` - the type of modes: "bending modes", "KarhunenLoeve", ...
+    /// * `m1_n_mode` - the number of of modes on each M1 segment
+    pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self{
+        let m1_mode_type = CString::new(mode_type).unwrap();
+        self.m1_n_mode = m1_n_mode;
+        if self.m1_n_mode > 0 {
+            self.a1 = vec![0.0; 7 * self.m1_n_mode as usize];
+        }
+        unsafe {
+            self._c_m1_modes
+                .setup(m1_mode_type.into_raw(), 7, self.m1_n_mode as i32);
+            self._c_m1.setup1(&mut self._c_m1_modes);
+        }
+        self
+    }
+    /// Sets the `Gmt` M2 parameters:
+    ///
+    /// * `m2_max_n` - M2 largest Zernike radial order per segment
+    pub fn build_m2(&mut self, m2_max_n: Option<usize>) -> &mut Self {
+        self.m2_max_n = match m2_max_n {
+            Some(m2_max_n) => m2_max_n,
+            None => 0,
+        };
+        self.m2_n_mode = (self.m2_max_n + 1) * (self.m2_max_n + 2) / 2;
+        self.a2 = vec![0.0; 7 * self.m2_n_mode as usize];
+        unsafe {
+            self._c_m2_modes
+                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
+            self._c_m2.setup2(&mut self._c_m2_modes);
+        }
+        self
+    }
+    /// Resets M1 and M2 to their aligned states
     pub fn reset(&mut self) -> &mut Self {
         let mut a: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
         unsafe {
@@ -94,7 +124,13 @@ impl Gmt {
         }
         self
     }
+    /// Sets M1 segment rigid body motion with:
+    ///
+    /// * `sid` - the segment ID number in the range [1,7]
+    /// * `t_xyz` - the 3 translations Tx, Ty and Tz
+    /// * `r_xyz` - the 3 rotations Rx, Ry and Rz
     pub fn set_m1_segment_state(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
+        assert!(sid > 0 && sid < 8, "Segment ID must be in the range [1,7]!");
         let t_xyz = vector {
             x: t_xyz[0],
             y: t_xyz[1],
@@ -109,6 +145,11 @@ impl Gmt {
             self._c_m1.update(t_xyz, r_xyz, sid);
         }
     }
+    /// Sets M2 segment rigid body motion with:
+    ///
+    /// * `sid` - the segment ID number in the range [1,7]
+    /// * `t_xyz` - the 3 translations Tx, Ty and Tz
+    /// * `r_xyz` - the 3 rotations Rx, Ry and Rz
     pub fn set_m2_segment_state(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
         let t_xyz = vector {
             x: t_xyz[0],
@@ -124,11 +165,13 @@ impl Gmt {
             self._c_m2.update(t_xyz, r_xyz, sid);
         }
     }
+    /// Sets M1 modal coefficients
     pub fn set_m1_modes(&mut self, a: &mut Vec<f64>) {
         unsafe {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
+    /// Updates M1 and M1 rigid body motion and M1 model coefficients
     pub fn update(
         &mut self,
         m1_rbm: Option<&Vec<Vec<f64>>>,
@@ -192,6 +235,7 @@ impl Gmt {
     */
 }
 impl Drop for Gmt {
+    /// Frees CEO memory before dropping `Gmt`
     fn drop(&mut self) {
         unsafe {
             self._c_m1_modes.cleanup();
@@ -202,6 +246,7 @@ impl Drop for Gmt {
     }
 }
 impl Propagation for Gmt {
+    /// Ray traces a `Source` through `Gmt`, ray tracing stops at the exit pupil
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             src._c_.reset_rays();
@@ -216,5 +261,143 @@ impl Propagation for Gmt {
     }
     fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.propagate(src)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gmt_optical_alignment() {
+        let mut src = Source::new(1, 25.5, 1001);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        src.through(&mut gmt).xpupil();
+        assert!(src.wfe_rms_10e(-9)[0] < 1.0);
+    }
+
+    #[test]
+    fn gmt_m1_rx_optical_sensitity() {
+        let mut src = Source::new(1, 25.5, 1001);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
+        gmt.update(Some(&rt), None, None);
+        let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 2.0).abs() < 1e-1));
+    }
+
+    #[test]
+    fn gmt_m1_ry_optical_sensitity() {
+        let mut src = Source::new(1, 25.5, 1001);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
+        let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
+        gmt.update(Some(&rt), None, None);
+        let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 2.0).abs() < 1e-1));
+    }
+
+    #[test]
+    fn gmt_m2_rx_optical_sensitity() {
+        let mut src = Source::new(1, 25.5, 1001);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
+        let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-3));
+    }
+
+    #[test]
+    fn gmt_m2_ry_optical_sensitity() {
+        let mut src = Source::new(1, 25.5, 1001);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
+        let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
+        let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
+        let mut delta: Vec<f32> = Vec::with_capacity(7);
+        for k in 0..7 {
+            delta
+                .push(1e6 * (seg_tts[0][k] - seg_tts0[0][k]).hypot(seg_tts[1][k] - seg_tts0[1][k]));
+        }
+        assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-2));
+    }
+
+    #[test]
+    fn gmt_lenslet_gradients() {
+        let pupil_size = 25.5f64;
+        let n_lenslet = 48i32;
+        let lenslet_size = pupil_size / n_lenslet as f64;
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let mut src = Source::new(1, pupil_size, n_lenslet * 16 + 1);
+        src.build("V", vec![0.0], vec![0.0], vec![0.0]);
+        src.set_fwhm(4.0);
+        let mut sensor = Imaging::new();
+        sensor.build(1, n_lenslet as i32, 16, 2, 24, 3);
+        let mut cog0 = Centroiding::new();
+        cog0.build(n_lenslet as u32, None);
+
+        src.through(&mut gmt).xpupil().through(&mut sensor);
+        cog0.process(&sensor, None)
+            .set_valid_lenslets(Some(0.9), None);
+        src.lenslet_gradients(n_lenslet, lenslet_size, &mut cog0);
+        let s0 = cog0.grab().valids(None);
+        if s0.iter().any(|x| x.is_nan()) {
+            let n = (n_lenslet * n_lenslet) as usize;
+            for k in 0..n {
+                if k % n_lenslet as usize == 0 {
+                    println!("");
+                }
+                if cog0.centroids[k].is_nan() || cog0.centroids[k + n].is_nan() {
+                    print!("X");
+                } else {
+                    print!("o");
+                }
+            }
+        }
+        let s0_any_nan = s0.iter().any(|x| x.is_nan());
+        assert!(!s0_any_nan);
+
+        let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 1e-6, 0f64]; 7];
+        gmt.update(None, Some(&rt), None);
+
+        let mut cog = Centroiding::new();
+        cog.build(n_lenslet as u32, None);
+        cog.set_valid_lenslets(None, Some(cog0.valid_lenslets.clone()));
+        src.through(&mut gmt)
+            .xpupil()
+            .lenslet_gradients(n_lenslet, lenslet_size, &mut cog);
+
+        let s = cog.grab().valids(None);
+        let s_any_nan = s.iter().any(|x| x.is_nan());
+        assert!(!s_any_nan);
     }
 }
