@@ -80,6 +80,10 @@ impl Gmt {
         }
         self
     }
+    /// Sets the `Gmt` M1 parameters:
+    ///
+    /// * `mode_type` - the type of modes: "bending modes", "KarhunenLoeve", ...
+    /// * `m1_n_mode` - the number of of modes on each M1 segment
     pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self{
         let m1_mode_type = CString::new(mode_type).unwrap();
         self.m1_n_mode = m1_n_mode;
@@ -93,6 +97,9 @@ impl Gmt {
         }
         self
     }
+    /// Sets the `Gmt` M2 parameters:
+    ///
+    /// * `m2_max_n` - M2 largest Zernike radial order per segment
     pub fn build_m2(&mut self, m2_max_n: Option<usize>) -> &mut Self {
         self.m2_max_n = match m2_max_n {
             Some(m2_max_n) => m2_max_n,
