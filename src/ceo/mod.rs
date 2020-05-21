@@ -165,6 +165,11 @@ impl PSSn {
             / pssn_values.iter().sum::<f32>()
     }
 }
+impl Drop for PSSn {
+    fn drop(&mut self) {
+        unsafe { self._c_.cleanup(); }
+    }
+}
 impl fmt::Display for PSSn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
