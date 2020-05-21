@@ -253,7 +253,7 @@ impl Propagation for Gmt {
             let rays: &mut bundle = &mut src._c_.rays;
             self._c_m2.blocking(rays);
             self._c_m1.trace(rays);
-            //gs.rays.gmt_truss_onaxis();
+            rays.gmt_truss_onaxis();
             self._c_m2.trace(rays);
             rays.to_sphere1(-5.830, 2.197173);
         }
