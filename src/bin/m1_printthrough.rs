@@ -95,6 +95,7 @@ fn m1_local_gravity() {
 }
 
 fn pssn_temporal_stability(
+    star_color: &str,
     field: &StarField,
     sampling_time: f64,
 ) -> Result<(f32, f32, f32), String> {
@@ -114,14 +115,14 @@ fn pssn_temporal_stability(
         .map(|x| x.azimuth.to_radians() as f32)
         .collect::<Vec<f32>>();
     let mag = vec![0f32; science_field.len()];
-    src.build("Vs", zen, azi, mag);
+    src.build(star_color, zen, azi, mag);
 
     let mut gmt = Gmt::new();
     gmt.build_m1("M1_printthrough", 3).build_m2(None);
     src.through(&mut gmt).xpupil();
     //println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
 
-    let mut pssn = PSSn::new(0.15, 25.0);
+    let mut pssn = PSSn::new();
     pssn.build(&mut src);
 
     //println!("{}", field.datetime);
@@ -143,8 +144,8 @@ fn pssn_temporal_stability(
         sampling_time,
         duration,
     );
-    let (alt, az) = obs.altaz();
     /*
+    let (alt, az) = obs.altaz();
     println!(
         " == {} - [{:.3},{:.3}]",
         obs.utc.datetime(),
@@ -153,14 +154,14 @@ fn pssn_temporal_stability(
     );
     */
     pssn.reset(&mut src);
-    let psu = pssn.spatial_uniformity();
+    //let psu = pssn.spatial_uniformity();
     //println!("PSSn: {} - PSU: {:.3}%", pssn, psu);
 
     let mut sorted_field_pssn: Vec<Vec<f32>> = vec![Vec::with_capacity(8); 21];
     let mut psu: Vec<f32> = Vec::with_capacity(8);
 
     while let Some(_) = obs.next() {
-        let (alt, az) = obs.altaz();
+        let (alt, _) = obs.altaz();
         let alt_deg = alt.to_degrees();
         if alt_deg > 89.5 || alt_deg < 30.0 {
             return Err("Elevation out of allowed range [30,89.5]!".to_string());
@@ -221,36 +222,44 @@ fn main() {
 
     let now = Instant::now();
 
+    let star_color = "Vs";
     let sampling_time = 10_f64;
+    let n_gpu = 1 as usize;
+    let to_csv = false;
+    let n_thread = 1;
+
     let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(32)
+        .num_threads(n_thread)
         .build()
         .unwrap();
     //let star_field_id = 0;
-  
-    //star_field.truncate(8);
+
+    star_field.truncate(1);
     let results = pool.install(|| {
         star_field
             .par_iter()
             .map(|field| {
                 let thread_id = pool.current_thread_index().unwrap();
                 //        println!("Thread ID#{}",thread_id);
-                set_gpu((thread_id % 4) as i32);
-                pssn_temporal_stability(&field, sampling_time)
+                set_gpu((thread_id % n_gpu) as i32);
+                pssn_temporal_stability(star_color,&field, sampling_time)
             })
-            .collect::<Vec<Result<(f32, f32, f32), String>>>()
+            .collect::<Vec<_>>()
     });
-//    println!("{:?}", results);
 
     println!("ET: {}s", now.elapsed().as_secs());
 
-    let mut wtr = Writer::from_path("KPP_M1_Printthrough.csv").unwrap();
-    wtr.write_record(&["index","oa","psu","pts"]); 
-    for (r,f) in results.iter().zip(star_field) {
-        match r {
-            Ok((pssn, psu, pts)) => wtr.serialize((f.index,pssn,psu,pts)).unwrap(),
-            Err(e) => println!("Star field #{} out of elevation range!",f.index),
+    if to_csv {
+        let mut wtr = Writer::from_path("KPP_M1_Printthrough.csv").unwrap();
+        wtr.write_record(&["index", "oa", "psu", "pts"]).unwrap();
+        for (r, f) in results.iter().zip(star_field) {
+            match r {
+                Ok((pssn, psu, pts)) => wtr.serialize((f.index, pssn, psu, pts)).unwrap(),
+                Err(e) => println!("Star field #{}: {}", f.index, e),
+            }
         }
+        wtr.flush().unwrap();
+    } else {
+        println!("{:?}", results);
     }
-    wtr.flush().unwrap();
 }
