@@ -112,26 +112,29 @@ impl Drop for CuFloat {
 ///
 pub struct PSSn {
     _c_: pssn,
-    r_not: f64,
-    l_not: f64,
+    r0_at_zenith: f32,
+    oscale: f32,
+    zenith_angle: f32,
     /// PSSn estimates
     pub estimates: Vec<f32>,
 }
 impl PSSn {
     /// Creates a new `PSSm`
-    pub fn new(r_not: f64, l_not: f64) -> PSSn {
+    pub fn new() -> PSSn {
         PSSn {
             _c_: unsafe { mem::zeroed() },
-            r_not,
-            l_not,
+            r0_at_zenith: 0.16,
+            oscale: 25.0,
+            zenith_angle: 30_f32.to_radians(),
             estimates: vec![],
         }
     }
     /// Initializes PSSn atmosphere and telescope transfer function from a `Source` object
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
+        let r0 =
+            (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32);
         unsafe {
-            self._c_
-                .setup(&mut src._c_, self.r_not as f32, self.l_not as f32);
+            self._c_.setup(&mut src._c_, r0, self.oscale);
         }
         self.estimates = vec![0.0; self._c_.N as usize];
         self
@@ -166,8 +169,11 @@ impl PSSn {
     }
 }
 impl Drop for PSSn {
+    /// Frees CEO memory before dropping `PSSn`
     fn drop(&mut self) {
-        unsafe { self._c_.cleanup(); }
+        unsafe {
+            self._c_.cleanup();
+        }
     }
 }
 impl fmt::Display for PSSn {
