@@ -30,6 +30,9 @@ struct GmtAtmosphere {
 
 pub struct Atmosphere {
     _c_: atmosphere,
+    pub r0_at_zenith: f64,
+    pub oscale: f64,
+    pub zenith_angle: f64,
     pub secs: f64,
     filename: String,
     k_duration: i32,
@@ -39,6 +42,9 @@ impl Atmosphere {
     pub fn new() -> Atmosphere {
         Atmosphere {
             _c_: unsafe { mem::zeroed() },
+            r0_at_zenith: 0.16,
+            oscale: 25.5,
+            zenith_angle: 0.0,
             secs: 0.0,
             filename: String::new(),
             k_duration: 0,
