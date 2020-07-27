@@ -198,6 +198,27 @@ impl Gmt {
             self.set_m1_modes(&mut m);
         }
     }
+    pub fn update42(
+        &mut self,
+        m1_rbm: Option<&Vec<f64>>,
+        m2_rbm: Option<&Vec<f64>>,
+        m1_mode: Option<&Vec<f64>>,
+    ) {
+        if m1_rbm.is_some() {
+            for (k, rbm) in m1_rbm.unwrap().chunks(6).enumerate() {
+                self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
+            }
+        }
+        if m2_rbm.is_some() {
+            for (k, rbm) in m2_rbm.unwrap().chunks(6).enumerate() {
+                self.set_m2_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
+            }
+        }
+        if m1_mode.is_some() {
+            let mut m = m1_mode.unwrap().clone();
+            self.set_m1_modes(&mut m);
+        }
+    }
     /*
     pub fn update(&mut self, gstate: &GmtState) {
         let mut t_xyz = vec![0.0; 3];
