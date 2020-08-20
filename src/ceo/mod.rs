@@ -19,15 +19,15 @@ pub use self::source::Propagation;
 pub use self::source::Source;
 pub use ceo_bindings::{gpu_double, gpu_float, pssn, set_device};
 
-pub trait Conversion {
-    fn from_arcmin(self) -> f64;
-    fn from_arcsec(self) -> f64;
-    fn from_mas(self) -> f64;
-    fn to_arcmin(self) -> f64;
-    fn to_arcsec(self) -> f64;
-    fn to_mas(self) -> f64;
+pub trait Conversion<T> {
+    fn from_arcmin(self) -> T;
+    fn from_arcsec(self) -> T;
+    fn from_mas(self) -> T;
+    fn to_arcmin(self) -> T;
+    fn to_arcsec(self) -> T;
+    fn to_mas(self) -> T;
 }
-impl Conversion for f64 {
+impl Conversion<f64> for f64 {
     /// Converts angle in arcminute to radian
     fn from_arcmin(self) -> f64 {
         self.to_radians() / 60.
@@ -50,6 +50,32 @@ impl Conversion for f64 {
     }
     /// Converts angle in radian to mill-arcsecond
     fn to_mas(self) -> f64 {
+        1e3 * self.to_arcsec()
+    }
+}
+impl Conversion<f32> for f32 {
+    /// Converts angle in arcminute to radian
+    fn from_arcmin(self) -> f32 {
+        self.to_radians() / 60.
+    }
+    /// Converts angle in arcsecond to radian
+    fn from_arcsec(self) -> f32 {
+        self.from_arcmin() / 60.
+    }
+    /// Converts angle in milli-arcsecond to radian
+    fn from_mas(self) -> f32 {
+        self.from_arcsec() * 1e-3
+    }
+    /// Converts angle in radian to arcminute
+    fn to_arcmin(self) -> f32 {
+        60.0 * self.to_degrees()
+    }
+    /// Converts angle in radian to arcsecond
+    fn to_arcsec(self) -> f32 {
+        60.0 * self.to_arcmin()
+    }
+    /// Converts angle in radian to mill-arcsecond
+    fn to_mas(self) -> f32 {
         1e3 * self.to_arcsec()
     }
 }
@@ -105,7 +131,7 @@ impl Drop for CuFloat {
 /// gmt.build(27,None);
 /// src.through(&mut gmt).xpupil();
 /// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
-/// let mut pssn = ceo::PSSn::new(0.15,25.0);
+/// let mut pssn = ceo::PSSn::new();
 /// pssn.build(&mut src);
 /// println!("PSSn: {:?}",pssn.reset(&mut src).estimates);
 /// ```
@@ -119,7 +145,7 @@ pub struct PSSn {
     pub estimates: Vec<f32>,
 }
 impl PSSn {
-    /// Creates a new `PSSm`
+    /// Creates a new `PSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
     pub fn new() -> PSSn {
         PSSn {
             _c_: unsafe { mem::zeroed() },
@@ -177,6 +203,109 @@ impl Drop for PSSn {
     }
 }
 impl fmt::Display for PSSn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{}]",
+            self.estimates
+                .iter()
+                .map(|x| format!("{:.4}", x))
+                .collect::<Vec<String>>()
+                .as_slice()
+                .join(",")
+        )
+    }
+}
+// NEW PSSN
+pub struct TelescopeError;
+pub struct AtmosphereTelescopeError;
+pub struct NewPSSn<S> {
+    _c_: pssn,
+    r0_at_zenith: f32,
+    oscale: f32,
+    zenith_angle: f32,
+    /// NewPSSn estimates
+    pub estimates: Vec<f32>,
+    mode: std::marker::PhantomData<S>
+}
+impl<S> NewPSSn<S> {
+    /// Creates a new `NewPSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
+    pub fn new() -> NewPSSn<S> {
+        NewPSSn {
+            _c_: unsafe { mem::zeroed() },
+            r0_at_zenith: 0.16,
+            oscale: 25.0,
+            zenith_angle: 30_f32.to_radians(),
+            estimates: vec![],
+            mode: std::marker::PhantomData
+        }
+    }
+    /// Initializes NewPSSn atmosphere and telescope transfer function from a `Source` object
+    pub fn build(&mut self, src: &mut Source) -> &mut Self {
+        let r0 =
+            (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32);
+        unsafe {
+            self._c_.setup(&mut src._c_, r0, self.oscale);
+        }
+        self.estimates = vec![0.0; self._c_.N as usize];
+        self
+    }
+    /// Integrates the `Source` optical transfer function
+    pub fn accumulate(&mut self, src: &mut Source) {
+        unsafe {
+            self._c_.otf(&mut src._c_);
+        }
+    }
+    /// Computes `NewPSSn` spatial uniformity
+    pub fn spatial_uniformity(&mut self) -> f32 {
+        let mut pssn_values = self.estimates.clone();
+        pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        100. * ((pssn_values.len() as f32)
+            * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
+            / pssn_values.iter().sum::<f32>()
+    }
+}
+impl NewPSSn<TelescopeError> {
+    /// Estimates the `NewPSSn` values and resets the `Source` optical transfer function to its initial value
+    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
+        self.peek(src);
+        self._c_.N_O = 0;
+        self
+    }
+    /// Estimates the `NewPSSn` values
+    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
+        unsafe {
+            self._c_.otf(&mut src._c_);
+            self._c_.eval1(self.estimates.as_mut_ptr())
+        }
+        self
+    }
+}
+impl NewPSSn<AtmosphereTelescopeError> {
+    /// Estimates the `NewPSSn` values and resets the `Source` optical transfer function to its initial value
+    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
+        self.peek(src);
+        self._c_.N_O = 0;
+        self
+    }
+    /// Estimates the `NewPSSn` values
+    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
+        unsafe {
+            self._c_.otf(&mut src._c_);
+            self._c_.oeval1(self.estimates.as_mut_ptr())
+        }
+        self
+    }
+}
+impl<S> Drop for NewPSSn<S> {
+    /// Frees CEO memory before dropping `NewPSSn`
+    fn drop(&mut self) {
+        unsafe {
+            self._c_.cleanup();
+        }
+    }
+}
+impl<S> fmt::Display for NewPSSn<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
