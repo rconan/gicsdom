@@ -136,102 +136,22 @@ impl Drop for CuFloat {
 /// println!("PSSn: {:?}",pssn.reset(&mut src).estimates);
 /// ```
 ///
-pub struct PSSn {
-    _c_: pssn,
-    r0_at_zenith: f32,
-    oscale: f32,
-    zenith_angle: f32,
-    /// PSSn estimates
-    pub estimates: Vec<f32>,
-}
-impl PSSn {
-    /// Creates a new `PSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
-    pub fn new() -> PSSn {
-        PSSn {
-            _c_: unsafe { mem::zeroed() },
-            r0_at_zenith: 0.16,
-            oscale: 25.0,
-            zenith_angle: 30_f32.to_radians(),
-            estimates: vec![],
-        }
-    }
-    /// Initializes PSSn atmosphere and telescope transfer function from a `Source` object
-    pub fn build(&mut self, src: &mut Source) -> &mut Self {
-        let r0 =
-            (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32);
-        unsafe {
-            self._c_.setup(&mut src._c_, r0, self.oscale);
-        }
-        self.estimates = vec![0.0; self._c_.N as usize];
-        self
-    }
-    /// Estimates the `PSSn` values and resets the `Source` optical transfer function to its initial value
-    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
-        self.peek(src);
-        self._c_.N_O = 0;
-        self
-    }
-    /// Estimates the `PSSn` values
-    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
-        unsafe {
-            self._c_.otf(&mut src._c_);
-            self._c_.eval1(self.estimates.as_mut_ptr())
-        }
-        self
-    }
-    /// Integrates the `Source` optical transfer function
-    pub fn accumulate(&mut self, src: &mut Source) {
-        unsafe {
-            self._c_.otf(&mut src._c_);
-        }
-    }
-    /// Computes `PSSn` spatial uniformity
-    pub fn spatial_uniformity(&mut self) -> f32 {
-        let mut pssn_values = self.estimates.clone();
-        pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        100. * ((pssn_values.len() as f32)
-            * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
-            / pssn_values.iter().sum::<f32>()
-    }
-}
-impl Drop for PSSn {
-    /// Frees CEO memory before dropping `PSSn`
-    fn drop(&mut self) {
-        unsafe {
-            self._c_.cleanup();
-        }
-    }
-}
-impl fmt::Display for PSSn {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            self.estimates
-                .iter()
-                .map(|x| format!("{:.4}", x))
-                .collect::<Vec<String>>()
-                .as_slice()
-                .join(",")
-        )
-    }
-}
 // NEW PSSN
 pub struct TelescopeError;
 pub struct AtmosphereTelescopeError;
-pub struct NewPSSn<S> {
+pub struct GPSSn<S> {
     _c_: pssn,
     r0_at_zenith: f32,
     oscale: f32,
     zenith_angle: f32,
-    /// NewPSSn estimates
+    /// GPSSn estimates
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>
 }
-impl<S> NewPSSn<S> {
-    /// Creates a new `NewPSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
-    pub fn new() -> NewPSSn<S> {
-        NewPSSn {
+impl<S> GPSSn<S> {
+    /// Creates a new `GPSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
+    pub fn new() -> GPSSn<S> {
+        GPSSn {
             _c_: unsafe { mem::zeroed() },
             r0_at_zenith: 0.16,
             oscale: 25.0,
@@ -240,7 +160,7 @@ impl<S> NewPSSn<S> {
             mode: std::marker::PhantomData
         }
     }
-    /// Initializes NewPSSn atmosphere and telescope transfer function from a `Source` object
+    /// Initializes GPSSn atmosphere and telescope transfer function from a `Source` object
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
         let r0 =
             (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32);
@@ -256,7 +176,7 @@ impl<S> NewPSSn<S> {
             self._c_.otf(&mut src._c_);
         }
     }
-    /// Computes `NewPSSn` spatial uniformity
+    /// Computes `GPSSn` spatial uniformity
     pub fn spatial_uniformity(&mut self) -> f32 {
         let mut pssn_values = self.estimates.clone();
         pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -265,14 +185,14 @@ impl<S> NewPSSn<S> {
             / pssn_values.iter().sum::<f32>()
     }
 }
-impl NewPSSn<TelescopeError> {
-    /// Estimates the `NewPSSn` values and resets the `Source` optical transfer function to its initial value
+impl GPSSn<TelescopeError> {
+    /// Estimates the `GPSSn` values and resets the `Source` optical transfer function to its initial value
     pub fn reset(&mut self, src: &mut Source) -> &mut Self {
         self.peek(src);
         self._c_.N_O = 0;
         self
     }
-    /// Estimates the `NewPSSn` values
+    /// Estimates the `GPSSn` values
     pub fn peek(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             self._c_.otf(&mut src._c_);
@@ -281,14 +201,14 @@ impl NewPSSn<TelescopeError> {
         self
     }
 }
-impl NewPSSn<AtmosphereTelescopeError> {
-    /// Estimates the `NewPSSn` values and resets the `Source` optical transfer function to its initial value
+impl GPSSn<AtmosphereTelescopeError> {
+    /// Estimates the `GPSSn` values and resets the `Source` optical transfer function to its initial value
     pub fn reset(&mut self, src: &mut Source) -> &mut Self {
         self.peek(src);
         self._c_.N_O = 0;
         self
     }
-    /// Estimates the `NewPSSn` values
+    /// Estimates the `GPSSn` values
     pub fn peek(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
             self._c_.otf(&mut src._c_);
@@ -297,15 +217,15 @@ impl NewPSSn<AtmosphereTelescopeError> {
         self
     }
 }
-impl<S> Drop for NewPSSn<S> {
-    /// Frees CEO memory before dropping `NewPSSn`
+impl<S> Drop for GPSSn<S> {
+    /// Frees CEO memory before dropping `GPSSn`
     fn drop(&mut self) {
         unsafe {
             self._c_.cleanup();
         }
     }
 }
-impl<S> fmt::Display for NewPSSn<S> {
+impl<S> fmt::Display for GPSSn<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -319,3 +239,5 @@ impl<S> fmt::Display for NewPSSn<S> {
         )
     }
 }
+
+pub type PSSn = GPSSn<TelescopeError>;
