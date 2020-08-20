@@ -1459,6 +1459,18 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_ZN6bundle10setup_freeEddiPdS0_6vector"]
+    pub fn bundle_setup_free1(
+        this: *mut bundle,
+        zenith: f64,
+        azimuth: f64,
+        _N_RAY_: ::std::os::raw::c_int,
+        x: *mut f64,
+        y: *mut f64,
+        origin: vector,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_ZN6bundle7cleanupEv"]
     pub fn bundle_cleanup(this: *mut bundle);
 }
@@ -1533,6 +1545,10 @@ extern "C" {
     #[link_name = "\u{1}_ZN6bundle16gmt_truss_onaxisEv"]
     pub fn bundle_gmt_truss_onaxis(this: *mut bundle);
 }
+extern "C" {
+    #[link_name = "\u{1}_ZN6bundle13gmt_m2_baffleEv"]
+    pub fn bundle_gmt_m2_baffle(this: *mut bundle);
+}
 impl bundle {
     #[inline]
     pub unsafe fn setup(
@@ -1575,6 +1591,18 @@ impl bundle {
         origin: vector,
     ) {
         bundle_setup_free(self, _N_RAY_, x, y, origin)
+    }
+    #[inline]
+    pub unsafe fn setup_free1(
+        &mut self,
+        zenith: f64,
+        azimuth: f64,
+        _N_RAY_: ::std::os::raw::c_int,
+        x: *mut f64,
+        y: *mut f64,
+        origin: vector,
+    ) {
+        bundle_setup_free1(self, zenith, azimuth, _N_RAY_, x, y, origin)
     }
     #[inline]
     pub unsafe fn cleanup(&mut self) {
@@ -1650,6 +1678,10 @@ impl bundle {
     #[inline]
     pub unsafe fn gmt_truss_onaxis(&mut self) {
         bundle_gmt_truss_onaxis(self)
+    }
+    #[inline]
+    pub unsafe fn gmt_m2_baffle(&mut self) {
+        bundle_gmt_m2_baffle(self)
     }
 }
 #[repr(C)]
@@ -2993,8 +3025,16 @@ extern "C" {
     pub fn pssn_eval(this: *mut pssn) -> f32;
 }
 extern "C" {
+    #[link_name = "\u{1}_ZN4pssn5oevalEv"]
+    pub fn pssn_oeval(this: *mut pssn) -> f32;
+}
+extern "C" {
     #[link_name = "\u{1}_ZN4pssn4evalEPf"]
     pub fn pssn_eval1(this: *mut pssn, results: *mut f32);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN4pssn5oevalEPf"]
+    pub fn pssn_oeval1(this: *mut pssn, results: *mut f32);
 }
 impl pssn {
     #[inline]
@@ -3022,8 +3062,16 @@ impl pssn {
         pssn_eval(self)
     }
     #[inline]
+    pub unsafe fn oeval(&mut self) -> f32 {
+        pssn_oeval(self)
+    }
+    #[inline]
     pub unsafe fn eval1(&mut self, results: *mut f32) {
         pssn_eval1(self, results)
+    }
+    #[inline]
+    pub unsafe fn oeval1(&mut self, results: *mut f32) {
+        pssn_oeval1(self, results)
     }
 }
 #[repr(C)]
@@ -7407,8 +7455,10 @@ pub struct atmosphere {
     pub N_DURATION: ::std::os::raw::c_int,
     pub LOCAL_RAND_SEED: ::std::os::raw::c_int,
     pub ID: ::std::os::raw::c_int,
+    pub EPH: f32,
     pub d__phase_screen_LAYER: *mut f32,
     pub N_PHASE_LAYER: ::std::os::raw::c_ulong,
+    pub mmap_size: usize,
     pub zeta1: *mut f32,
     pub eta1: *mut f32,
     pub zeta2: *mut f32,
@@ -7423,7 +7473,7 @@ pub struct atmosphere {
 fn bindgen_test_layout_atmosphere() {
     assert_eq!(
         ::std::mem::size_of::<atmosphere>(),
-        216usize,
+        224usize,
         concat!("Size of: ", stringify!(atmosphere))
     );
     assert_eq!(
@@ -7582,6 +7632,16 @@ fn bindgen_test_layout_atmosphere() {
         )
     );
     assert_eq!(
+        unsafe { &(*(::std::ptr::null::<atmosphere>())).EPH as *const _ as usize },
+        68usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(atmosphere),
+            "::",
+            stringify!(EPH)
+        )
+    );
+    assert_eq!(
         unsafe {
             &(*(::std::ptr::null::<atmosphere>())).d__phase_screen_LAYER as *const _ as usize
         },
@@ -7604,8 +7664,18 @@ fn bindgen_test_layout_atmosphere() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<atmosphere>())).zeta1 as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<atmosphere>())).mmap_size as *const _ as usize },
         88usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(atmosphere),
+            "::",
+            stringify!(mmap_size)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<atmosphere>())).zeta1 as *const _ as usize },
+        96usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7615,7 +7685,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).eta1 as *const _ as usize },
-        96usize,
+        104usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7625,7 +7695,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).zeta2 as *const _ as usize },
-        104usize,
+        112usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7635,7 +7705,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).eta2 as *const _ as usize },
-        112usize,
+        120usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7645,7 +7715,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).devStates as *const _ as usize },
-        120usize,
+        128usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7655,7 +7725,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).turbulence as *const _ as usize },
-        128usize,
+        136usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7665,7 +7735,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).d__turbulence as *const _ as usize },
-        192usize,
+        200usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7675,7 +7745,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).layers as *const _ as usize },
-        200usize,
+        208usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7685,7 +7755,7 @@ fn bindgen_test_layout_atmosphere() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<atmosphere>())).d__layers as *const _ as usize },
-        208usize,
+        216usize,
         concat!(
             "Offset of field: ",
             stringify!(atmosphere),
@@ -7819,6 +7889,10 @@ extern "C" {
     pub fn atmosphere_gmt_set_id(this: *mut atmosphere, _ID_: ::std::os::raw::c_int);
 }
 extern "C" {
+    #[link_name = "\u{1}_ZN10atmosphere11gmt_set_ephEf"]
+    pub fn atmosphere_gmt_set_eph(this: *mut atmosphere, _EPH_: f32);
+}
+extern "C" {
     #[link_name = "\u{1}_ZN10atmosphere7cleanupEv"]
     pub fn atmosphere_cleanup(this: *mut atmosphere);
 }
@@ -7833,14 +7907,6 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_ZN10atmosphere23save_layer_phasescreensEPKci"]
     pub fn atmosphere_save_layer_phasescreens(
-        this: *mut atmosphere,
-        fullpath_to_phasescreens: *const ::std::os::raw::c_char,
-        _N_DURATION: ::std::os::raw::c_int,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_ZN10atmosphere32save_duration_layer_phasescreensEPKci"]
-    pub fn atmosphere_save_duration_layer_phasescreens(
         this: *mut atmosphere,
         fullpath_to_phasescreens: *const ::std::os::raw::c_char,
         _N_DURATION: ::std::os::raw::c_int,
@@ -8069,27 +8135,6 @@ extern "C" {
         tau: f32,
     );
 }
-extern "C" {
-    #[link_name = "\u{1}_ZN10atmosphere11ray_tracingEP6sourcefififi"]
-    pub fn atmosphere_ray_tracing(
-        this: *mut atmosphere,
-        src: *mut source,
-        delta_x: f32,
-        N_X: ::std::os::raw::c_int,
-        delta_y: f32,
-        N_Y: ::std::os::raw::c_int,
-        tau: f32,
-        k_DURATION: ::std::os::raw::c_int,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_ZN10atmosphere16duration_loadingEPKci"]
-    pub fn atmosphere_duration_loading(
-        this: *mut atmosphere,
-        fullpath_to_phasescreens: *const ::std::os::raw::c_char,
-        k_DURATION: ::std::os::raw::c_int,
-    );
-}
 impl atmosphere {
     #[inline]
     pub unsafe fn setup(
@@ -8278,6 +8323,10 @@ impl atmosphere {
         atmosphere_gmt_set_id(self, _ID_)
     }
     #[inline]
+    pub unsafe fn gmt_set_eph(&mut self, _EPH_: f32) {
+        atmosphere_gmt_set_eph(self, _EPH_)
+    }
+    #[inline]
     pub unsafe fn cleanup(&mut self) {
         atmosphere_cleanup(self)
     }
@@ -8296,14 +8345,6 @@ impl atmosphere {
         _N_DURATION: ::std::os::raw::c_int,
     ) {
         atmosphere_save_layer_phasescreens(self, fullpath_to_phasescreens, _N_DURATION)
-    }
-    #[inline]
-    pub unsafe fn save_duration_layer_phasescreens(
-        &mut self,
-        fullpath_to_phasescreens: *const ::std::os::raw::c_char,
-        _N_DURATION: ::std::os::raw::c_int,
-    ) {
-        atmosphere_save_duration_layer_phasescreens(self, fullpath_to_phasescreens, _N_DURATION)
     }
     #[inline]
     pub unsafe fn get_phase_screen(
@@ -8535,26 +8576,5 @@ impl atmosphere {
         tau: f32,
     ) {
         atmosphere_rayTracing1(self, src, delta_x, N_X, delta_y, N_Y, tau)
-    }
-    #[inline]
-    pub unsafe fn ray_tracing(
-        &mut self,
-        src: *mut source,
-        delta_x: f32,
-        N_X: ::std::os::raw::c_int,
-        delta_y: f32,
-        N_Y: ::std::os::raw::c_int,
-        tau: f32,
-        k_DURATION: ::std::os::raw::c_int,
-    ) {
-        atmosphere_ray_tracing(self, src, delta_x, N_X, delta_y, N_Y, tau, k_DURATION)
-    }
-    #[inline]
-    pub unsafe fn duration_loading(
-        &mut self,
-        fullpath_to_phasescreens: *const ::std::os::raw::c_char,
-        k_DURATION: ::std::os::raw::c_int,
-    ) {
-        atmosphere_duration_loading(self, fullpath_to_phasescreens, k_DURATION)
     }
 }
