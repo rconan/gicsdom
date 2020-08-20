@@ -74,6 +74,7 @@ impl Atmosphere {
         }
         self
     }
+   
     pub fn raytrace_build(
         &mut self,
         r_not: f32,
@@ -112,6 +113,7 @@ impl Atmosphere {
         }
         self
     }
+    /*
     pub fn load_from_json(&mut self, json_file: &str) -> Result<&mut Self, Box<dyn Error>> {
         let mut filename = json_file.to_string();
         filename.push_str(".json");
@@ -143,11 +145,18 @@ impl Atmosphere {
         }
         Ok(self)
     }
+    */
     pub fn set_r0(&mut self, new_r0: f64) {
         self._c_.r0 = new_r0 as f32;
     }
+    pub fn reset(&mut self) {
+        unsafe {
+            self._c_.reset();
+        }
+    }
 }
 impl Propagation for Atmosphere {
+    
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
         unsafe {
             let n_xy = src.pupil_sampling;
@@ -156,6 +165,7 @@ impl Propagation for Atmosphere {
                 self._c_
                     .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             } else {
+                /*
                 let k_duration = (secs / self._c_.layers_duration as f64) as i32;
                 if k_duration > self.k_duration {
                     let ps_path = CString::new(format!("{}", self.filename)).unwrap();
@@ -173,6 +183,7 @@ impl Propagation for Atmosphere {
                     secs as f32,
                     self.k_duration,
                 );
+                */
             }
         }
         self
