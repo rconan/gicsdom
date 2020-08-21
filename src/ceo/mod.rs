@@ -141,12 +141,12 @@ pub struct TelescopeError;
 pub struct AtmosphereTelescopeError;
 pub struct GPSSn<S> {
     _c_: pssn,
-    r0_at_zenith: f32,
-    oscale: f32,
-    zenith_angle: f32,
+    pub r0_at_zenith: f32,
+    pub oscale: f32,
+    pub zenith_angle: f32,
     /// GPSSn estimates
     pub estimates: Vec<f32>,
-    mode: std::marker::PhantomData<S>
+    mode: std::marker::PhantomData<S>,
 }
 impl<S> GPSSn<S> {
     /// Creates a new `GPSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
@@ -157,15 +157,13 @@ impl<S> GPSSn<S> {
             oscale: 25.0,
             zenith_angle: 30_f32.to_radians(),
             estimates: vec![],
-            mode: std::marker::PhantomData
+            mode: std::marker::PhantomData,
         }
     }
     /// Initializes GPSSn atmosphere and telescope transfer function from a `Source` object
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
-        let r0 =
-            (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32);
         unsafe {
-            self._c_.setup(&mut src._c_, r0, self.oscale);
+            self._c_.setup(&mut src._c_, self.r0(), self.oscale);
         }
         self.estimates = vec![0.0; self._c_.N as usize];
         self
@@ -183,6 +181,9 @@ impl<S> GPSSn<S> {
         100. * ((pssn_values.len() as f32)
             * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
             / pssn_values.iter().sum::<f32>()
+    }
+    pub fn r0(&self) -> f32 {
+        (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
 }
 impl GPSSn<TelescopeError> {
