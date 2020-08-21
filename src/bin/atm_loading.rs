@@ -20,6 +20,7 @@ fn main() {
                 "{}",
                 "/home/ubuntu/DATA/phase_screens/gmtAtmosphereL030_1579821046"
             );
+            /*
             let now = Instant::now();
             atm.load_from_json(&atmosphere_file).unwrap();
             println!("Loading in {}s", now.elapsed().as_secs());
@@ -32,7 +33,7 @@ fn main() {
                 wfe_rms.push(src.wfe_rms_10e(-9)[0]);
             }
             println!("Loading in {}s", now.elapsed().as_secs());
-            println!("WFE RMS [{:?}]nm",wfe_rms);
+            println!("WFE RMS [{:?}]nm",wfe_rms);*/
         }));
     }
 

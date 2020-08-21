@@ -20,9 +20,9 @@ use termion;
 
 const M1_N_MODE: usize = 27;
 const N_PROBE: usize = 3;
-const WITH_DOME_SEEING: bool = false;
+const WITH_DOME_SEEING: bool = true;
 const WITH_BM: bool = false;
-const SIM_DURATION_MN: f64 = 10f64;
+const SIM_DURATION_MN: f64 = 15f64;
 
 #[derive(Default, Debug, Deserialize)]
 //#[serde(rename_all = "PascalCase")]
@@ -104,7 +104,7 @@ fn main() {
      * the guide star magnitude
      */
 
-    let sampling_time = 1.0;
+    let sampling_time = 0.2;
     let duration = SIM_DURATION_MN * 60.0;
     let n_step = (duration / sampling_time) as usize;
     let sh48_integration = (30.0 / sampling_time) as u32;
@@ -168,6 +168,7 @@ fn main() {
         let _mirrors_ = mirrors.clone();
         let _rbms_ = rbms.clone();
         let handle = thread::spawn(move || {
+            ceo::set_gpu(k as i32+1);
             println!(
                 "{}{}AGWS PROBE #{}{}",
                 termion::cursor::Goto(4, (10 * (k + 1)) as u16),
@@ -358,7 +359,7 @@ fn main() {
 
     let science_receiver = science_channel.1.clone();
     let handle = thread::spawn(move || {
-        let n_src = 1 as usize; //21i32;
+        let n_src = 21 as usize; //21i32;
         zen.truncate(n_src);
         azi.truncate(n_src);
         //let zen = vec![0f32; n_src];
@@ -373,7 +374,7 @@ fn main() {
         let mut src = ceo::Source::new(n_src as i32, pupil_size, pupil_sampling);
         src.build("V", zen, azi, vec![0.0; n_src]);
 
-        let mut src_pssn = ceo::PSSn::new(15e-2, 25.0);
+        let mut src_pssn = ceo::PSSn::new();
         src_pssn.build(&mut src.through(&mut gmt).xpupil());
 
         loop {
@@ -479,13 +480,13 @@ fn main() {
     );
 
     // Calibration ----------------
+    /*
     state0.m2_rbm[0][3] = 1e-6;
     state0.m2_rbm[0][4] = 1e-6;
     state0.m2_rbm[2][3] = 1e-6;
     state0.m2_rbm[4][4] = 1e-6;
     state0.m2_rbm[6][3] = 1e-6;
     state0.m2_rbm[6][4] = -2e-6;
-    /*
         state0.m1_mode[0][0] = 100e-9;
         state0.m1_mode[2][8] = -30e-9;
         state0.m1_mode[4][9] = 60e-9;
