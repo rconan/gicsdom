@@ -27,7 +27,7 @@ pub struct GmtState {
 /// ```
 pub struct Gmt {
     _c_m1_modes: modes,
-    _c_m2_modes: zernikeS,
+    _c_m2_modes: modes,
     _c_m1: gmt_m1,
     _c_m2: gmt_m2,
     /// M1 number of bending modes per segment
@@ -75,15 +75,15 @@ impl Gmt {
                 .setup(mode_type.into_raw(), 7, self.m1_n_mode as i32);
             self._c_m1.setup1(&mut self._c_m1_modes);
             self._c_m2_modes
-                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
-            self._c_m2.setup2(&mut self._c_m2_modes);
+                .setup(CString::new("Karhunen-Loeve").unwrap().into_raw(), 7, self.m2_n_mode as i32);
+            self._c_m2.setup1(&mut self._c_m2_modes);
         }
         self
     }
     /// Sets the `Gmt` M1 parameters:
     ///
     /// * `mode_type` - the type of modes: "bending modes", "KarhunenLoeve", ...
-    /// * `m1_n_mode` - the number of of modes on each M1 segment
+    /// * `m1_n_mode` - the number of modes on each M1 segment
     pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self{
         let m1_mode_type = CString::new(mode_type).unwrap();
         self.m1_n_mode = m1_n_mode;
@@ -97,30 +97,45 @@ impl Gmt {
         }
         self
     }
+    pub fn from_m2_modes(&mut self, mode_type: &str, m2_n_mode: usize) -> &mut Self{
+        let m2_mode_type = CString::new(mode_type).unwrap();
+        self.m2_n_mode = m2_n_mode;
+        if self.m2_n_mode > 0 {
+            self.a1 = vec![0.0; 7 * self.m2_n_mode as usize];
+        }
+        unsafe {
+            self._c_m2_modes
+                .setup(m2_mode_type.into_raw(), 7, self.m2_n_mode as i32);
+            self._c_m2.setup1(&mut self._c_m2_modes);
+        }
+        self
+    }
     /// Sets the `Gmt` M2 parameters:
     ///
-    /// * `m2_max_n` - M2 largest Zernike radial order per segment
-    pub fn build_m2(&mut self, m2_max_n: Option<usize>) -> &mut Self {
-        self.m2_max_n = match m2_max_n {
-            Some(m2_max_n) => m2_max_n,
+    /// * `m2_n_mode` - the number of Karhunen-Loeve modes on each M2 segment
+    pub fn build_m2(&mut self, m2_n_mode: Option<usize>) -> &mut Self {
+        let m2_mode_type = CString::new("Karhunen-Loeve").unwrap();
+        self.m2_n_mode = match m2_n_mode {
+            Some(m2_n_mode) => m2_n_mode,
             None => 0,
         };
-        self.m2_n_mode = (self.m2_max_n + 1) * (self.m2_max_n + 2) / 2;
         self.a2 = vec![0.0; 7 * self.m2_n_mode as usize];
         unsafe {
             self._c_m2_modes
-                .setup1(self.m2_max_n as i32, self.a2.as_mut_ptr(), 7);
-            self._c_m2.setup2(&mut self._c_m2_modes);
+                .setup(m2_mode_type.into_raw(), 7, self.m2_n_mode as i32);
+            self._c_m2.setup1(&mut self._c_m2_modes);
         }
         self
     }
     /// Resets M1 and M2 to their aligned states
     pub fn reset(&mut self) -> &mut Self {
-        let mut a: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
+        let mut a1: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];
+        let mut a2: Vec<f64> = vec![0.0; 7 * self.m2_n_mode as usize];
         unsafe {
             self._c_m1.reset();
             self._c_m2.reset();
-            self._c_m1_modes.update(a.as_mut_ptr());
+            self._c_m1_modes.update(a1.as_mut_ptr());
+            self._c_m2_modes.update(a2.as_mut_ptr());
         }
         self
     }
@@ -169,6 +184,19 @@ impl Gmt {
     pub fn set_m1_modes(&mut self, a: &mut Vec<f64>) {
         unsafe {
             self._c_m1_modes.update(a.as_mut_ptr());
+        }
+    }
+    /// Sets M2 modal coefficients
+    pub fn set_m2_modes(&mut self, a: &mut Vec<f64>) {
+        unsafe {
+            self._c_m2_modes.update(a.as_mut_ptr());
+        }
+    }
+    pub fn set_m2_modes_ij(&mut self, i: usize, j: usize, value: f64) {
+        let mut a = vec![0f64;7*self.m2_n_mode];
+        a[i*self.m2_n_mode+j] = value;
+        unsafe {
+            self._c_m2_modes.update(a.as_mut_ptr());
         }
     }
     /// Updates M1 and M1 rigid body motion and M1 model coefficients

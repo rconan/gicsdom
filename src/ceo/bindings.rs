@@ -142,6 +142,12 @@ pub struct cublasContext {
     _unused: [u8; 0],
 }
 pub type cublasHandle_t = *mut cublasContext;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct cusolverDnContext {
+    _unused: [u8; 0],
+}
+pub type cusolverDnHandle_t = *mut cusolverDnContext;
 extern "C" {
     #[link_name = "\u{1}_Z10set_devicei"]
     pub fn set_device(id: ::std::os::raw::c_int);
@@ -823,15 +829,19 @@ extern "C" {
 pub struct gpu_float {
     pub dev_data: *mut f32,
     pub host_data: *mut f32,
+    pub d_tau: *mut f32,
     pub N: ::std::os::raw::c_int,
     pub nb: ::std::os::raw::c_int,
     pub S: stats,
+    pub stat: cublasStatus_t,
+    pub handle: cublasHandle_t,
+    pub cusolverH: cusolverDnHandle_t,
 }
 #[test]
 fn bindgen_test_layout_gpu_float() {
     assert_eq!(
         ::std::mem::size_of::<gpu_float>(),
-        40usize,
+        72usize,
         concat!("Size of: ", stringify!(gpu_float))
     );
     assert_eq!(
@@ -860,8 +870,18 @@ fn bindgen_test_layout_gpu_float() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<gpu_float>())).N as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).d_tau as *const _ as usize },
         16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(d_tau)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).N as *const _ as usize },
+        24usize,
         concat!(
             "Offset of field: ",
             stringify!(gpu_float),
@@ -871,7 +891,7 @@ fn bindgen_test_layout_gpu_float() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<gpu_float>())).nb as *const _ as usize },
-        20usize,
+        28usize,
         concat!(
             "Offset of field: ",
             stringify!(gpu_float),
@@ -881,12 +901,42 @@ fn bindgen_test_layout_gpu_float() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<gpu_float>())).S as *const _ as usize },
-        24usize,
+        32usize,
         concat!(
             "Offset of field: ",
             stringify!(gpu_float),
             "::",
             stringify!(S)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).stat as *const _ as usize },
+        48usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(stat)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).handle as *const _ as usize },
+        56usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(handle)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_float>())).cusolverH as *const _ as usize },
+        64usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_float),
+            "::",
+            stringify!(cusolverH)
         )
     );
 }
@@ -918,6 +968,18 @@ extern "C" {
     #[link_name = "\u{1}_ZN9gpu_float5resetEv"]
     pub fn gpu_float_reset(this: *mut gpu_float);
 }
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float2qrEi"]
+    pub fn gpu_float_qr(this: *mut gpu_float, m: ::std::os::raw::c_int);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float2mvEPS_S0_"]
+    pub fn gpu_float_mv(this: *mut gpu_float, y: *mut gpu_float, x: *mut gpu_float);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN9gpu_float8qr_solveEPS_S0_"]
+    pub fn gpu_float_qr_solve(this: *mut gpu_float, x: *mut gpu_float, b: *mut gpu_float);
+}
 impl gpu_float {
     #[inline]
     pub unsafe fn setup(&mut self) {
@@ -947,6 +1009,18 @@ impl gpu_float {
     pub unsafe fn reset(&mut self) {
         gpu_float_reset(self)
     }
+    #[inline]
+    pub unsafe fn qr(&mut self, m: ::std::os::raw::c_int) {
+        gpu_float_qr(self, m)
+    }
+    #[inline]
+    pub unsafe fn mv(&mut self, y: *mut gpu_float, x: *mut gpu_float) {
+        gpu_float_mv(self, y, x)
+    }
+    #[inline]
+    pub unsafe fn qr_solve(&mut self, x: *mut gpu_float, b: *mut gpu_float) {
+        gpu_float_qr_solve(self, x, b)
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -956,12 +1030,15 @@ pub struct gpu_double {
     pub N: ::std::os::raw::c_int,
     pub nb: ::std::os::raw::c_int,
     pub S: stats,
+    pub stat: cublasStatus_t,
+    pub handle: cublasHandle_t,
+    pub cusolverH: cusolverDnHandle_t,
 }
 #[test]
 fn bindgen_test_layout_gpu_double() {
     assert_eq!(
         ::std::mem::size_of::<gpu_double>(),
-        40usize,
+        64usize,
         concat!("Size of: ", stringify!(gpu_double))
     );
     assert_eq!(
@@ -1019,6 +1096,36 @@ fn bindgen_test_layout_gpu_double() {
             stringify!(S)
         )
     );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).stat as *const _ as usize },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(stat)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).handle as *const _ as usize },
+        48usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(handle)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<gpu_double>())).cusolverH as *const _ as usize },
+        56usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(gpu_double),
+            "::",
+            stringify!(cusolverH)
+        )
+    );
 }
 extern "C" {
     #[link_name = "\u{1}_ZN10gpu_double5setupEv"]
@@ -1047,6 +1154,10 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_ZN10gpu_double5resetEv"]
     pub fn gpu_double_reset(this: *mut gpu_double);
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN10gpu_double2qrEi"]
+    pub fn gpu_double_qr(this: *mut gpu_double, m: ::std::os::raw::c_int);
 }
 impl gpu_double {
     #[inline]
@@ -1077,6 +1188,24 @@ impl gpu_double {
     pub unsafe fn reset(&mut self) {
         gpu_double_reset(self)
     }
+    #[inline]
+    pub unsafe fn qr(&mut self, m: ::std::os::raw::c_int) {
+        gpu_double_qr(self, m)
+    }
+}
+extern "C" {
+    #[link_name = "\u{1}_Z5geqrfPfS_ii"]
+    pub fn geqrf(d_tau: *mut f32, a: *mut f32, m: ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z5ormqrPfiS_S_i"]
+    pub fn ormqr(
+        b: *mut f32,
+        m: ::std::os::raw::c_int,
+        q: *mut f32,
+        tau: *mut f32,
+        n: ::std::os::raw::c_int,
+    );
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

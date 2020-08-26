@@ -44,14 +44,14 @@ fn main() {
             .map(|&x| if x.is_nan() { 0f32 } else { x as f32 })
             .collect();
         print!("WFE RMS: {:8.3}nm", std(opd));
-        gopd.up(&mut opd_f32);
+        /*gopd.into(&mut opd_f32);
         println!(
             " ; {:8.3}nm",
             src.through(&mut gmt)
                 .xpupil()
                 .add(&mut gopd)
                 .wfe_rms_10e(-9)[0]
-        );
+        );*/
     }
 
     /*

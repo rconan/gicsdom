@@ -310,8 +310,9 @@ fn main() {
                     termion::style::Reset
                 );
                 let c = if WITH_DOME_SEEING {
-                    gopd.up(&mut msg.opd.unwrap());
-                    probe.through(Some(&mut gopd))
+                    //gopd.into(&mut msg.opd.unwrap());
+                    //probe.through(Some(&mut gopd))
+                    probe.through(None)
                 } else {
                     probe.through(None)
                 };

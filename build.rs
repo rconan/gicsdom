@@ -26,6 +26,8 @@ fn main() {
         .whitelist_type("gmt_m1")
         .whitelist_type("gmt_m2")
         .whitelist_type("atmosphere")
+        .whitelist_function("geqrf")
+        .whitelist_function("ormqr")
         .generate()
         .expect("Unable to generate bindings");
 //    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -42,6 +44,7 @@ fn main() {
     println!("cargo:rustc-link-lib=cufft");
     println!("cargo:rustc-link-lib=cusparse");
     println!("cargo:rustc-link-lib=curand");
+    println!("cargo:rustc-link-lib=cusolver");
     println!("cargo:include=CEO/include");
     println!("cargo:include=/usr/local/cuda/include");
     println!("cargo:lib=CEO/lib");

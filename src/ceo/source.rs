@@ -332,6 +332,9 @@ impl Drop for Source {
         }
     }
 }
+impl Default for Source {
+    fn default() -> Self { Self::empty() }
+}
 
 #[cfg(test)]
 mod tests {

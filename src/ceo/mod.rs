@@ -1,4 +1,5 @@
 use std::{f32, f64, fmt, mem};
+use rand::Rng;
 
 pub mod atmosphere;
 pub mod calibrations;
@@ -17,7 +18,7 @@ pub use self::imaging::{Imaging, LensletArray};
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use ceo_bindings::{gpu_double, gpu_float, pssn, set_device};
+pub use ceo_bindings::{gpu_double, gpu_float, pssn, set_device, geqrf, ormqr};
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
@@ -88,34 +89,73 @@ pub fn set_gpu(id: i32) {
 
 pub struct CuFloat {
     _c_: gpu_float,
+    host_data: Vec<f32>,
 }
 impl CuFloat {
     pub fn new() -> CuFloat {
         CuFloat {
             _c_: unsafe { mem::zeroed() },
+            host_data: vec![]
         }
     }
-    pub fn malloc(&mut self, len: i32) -> &mut Self {
+    pub fn malloc(&mut self, len: usize) -> &mut Self {
         unsafe {
-            self._c_.setup1(len);
+            self._c_.setup1(len as i32);
             self._c_.dev_malloc();
         }
         self
     }
-    pub fn up(&mut self, host_data: &mut Vec<f32>) -> &mut Self {
+    pub fn into(&mut self, host_data: &mut Vec<f32>) -> &mut Self {
         unsafe {
             self._c_.host_data = host_data.as_mut_ptr();
             self._c_.host2dev();
         }
         self
     }
+    pub fn from(&mut self) -> Vec<f32> {
+        self.host_data = vec![0f32; self._c_.N as usize];
+        unsafe {
+            self._c_.host_data = self.host_data.as_mut_ptr();
+            self._c_.dev2host()
+        }
+        self.host_data.clone()
+    }
     pub fn as_mut_ptr(&mut self) -> *mut f32 {
         self._c_.dev_data
+    }
+    pub fn mv(&mut self, y: &mut CuFloat, x: &mut CuFloat) -> &mut Self {
+        unsafe {
+            self._c_.mv(&mut y._c_, &mut x._c_);
+        }
+        self
+    }
+    pub fn qr(&mut self, m: i32) -> &mut Self {
+        unsafe {
+            self._c_.qr(m);
+        }
+        self
+    }
+    pub fn qr_solve(&mut self, x: &mut CuFloat, b: &mut CuFloat) -> &mut Self {
+        unsafe {
+            self._c_.qr_solve(&mut x._c_, &mut b._c_);
+        }
+        self
     }
 }
 impl Drop for CuFloat {
     fn drop(&mut self) {
         unsafe { self._c_.free_dev() }
+    }
+}
+
+pub fn qr(tau: &mut CuFloat, a: &mut CuFloat, m: i32, n: i32) {
+    unsafe {
+        geqrf(tau._c_.dev_data, a._c_.dev_data, m, n)
+    }
+}
+pub fn qtb(b: &mut CuFloat, m: i32, a: &mut CuFloat, tau: &mut CuFloat, n: i32) {
+    unsafe {
+        ormqr(b._c_.dev_data, m, a._c_.dev_data, tau._c_.dev_data, n)
     }
 }
 
@@ -242,3 +282,67 @@ impl<S> fmt::Display for GPSSn<S> {
 }
 
 pub type PSSn = GPSSn<TelescopeError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cufloat_mv() {
+        let mut a = CuFloat::new();
+        a.malloc(9)
+            .into(&mut (0..9).map(|x| x as f32).collect::<Vec<f32>>());
+        let mut x = CuFloat::new();
+        x.malloc(3).into(&mut vec![1f32; 3]);
+        let mut y = CuFloat::new();
+        y.malloc(3);
+        a.mv(&mut y, &mut x);
+        println!("R: {:?}", y.from());
+        assert_eq!(y.from(), vec![9f32, 12f32, 15f32]);
+    }
+
+    #[test]
+    fn cufloat_qr() {
+        let mut a = CuFloat::new();
+        a.malloc(12)
+            .into(&mut vec![
+                1f32, 4f32, 2f32, 1f32, 2f32, 5f32, 1f32, 1f32, 3f32, 6f32, 1f32, 1f32
+            ])
+            .qr(4);
+        println!("a: {:?}",a.from());
+        let mut b = CuFloat::new();
+        b.malloc(4).into(&mut vec![6f32,15f32,4f32,3f32]);
+        let mut x = CuFloat::new();
+        x.malloc(3);
+        a.qr_solve(&mut x, &mut b);
+        println!("x: {:?}",x.from());
+    }
+
+    #[test]
+    fn cufloat_bigqr() {
+        let m = 5000;
+        let n = 700;
+        let p = m*n;
+        let mut rng = rand::thread_rng();
+        let mut a = CuFloat::new();
+        a.malloc(p)
+            .into(&mut (0..p).map(|_| rng.gen_range(-100,100) as f32).collect::<Vec<f32>>());
+        //println!("a: {:?}",a.from());
+        let mut b = CuFloat::new();
+        b.malloc(m);
+        {
+            let mut x = CuFloat::new();
+            x.malloc(n).into(&mut vec![1f32;n]);
+            a.mv(&mut b, &mut x);
+        }
+        //println!("b: {:?}",b.from());
+        a.qr(m as i32);
+        //println!("a: {:?}",a.from());
+        let mut x = CuFloat::new();
+        x.malloc(n);
+        a.qr_solve(&mut x, &mut b);
+        let sx = x.from().iter().sum::<f32>();
+        println!("sum of x: {:?}",sx);
+        assert!((sx-(n as f32)).abs()<1e-6);
+    }
+}

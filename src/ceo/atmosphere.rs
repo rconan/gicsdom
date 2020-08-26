@@ -159,6 +159,7 @@ impl Propagation for Atmosphere {
     
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
         unsafe {
+            src._c_.wavefront.reset();
             let n_xy = src.pupil_sampling;
             let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
             if self.built {
@@ -185,6 +186,7 @@ impl Propagation for Atmosphere {
                 );
                 */
             }
+            src._c_.opd2phase();
         }
         self
     }
