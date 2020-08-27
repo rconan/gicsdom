@@ -45,7 +45,7 @@ impl GeometricShackHartmann {
         unsafe {
             self._c_
                 .setup(self.n_side_lenslet, self.d as f32, self.n_sensor);
-            self.centroids.build().to_ptr(self._c_.data_proc.d__c);
+            self.centroids.from_ptr(self._c_.data_proc.d__c);
         }
         //self.centroids = vec![0.0; self.n_centroids as usize]; //Vec::with_capacity(self.n_centroids as usize);
         self

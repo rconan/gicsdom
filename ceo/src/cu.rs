@@ -45,44 +45,56 @@ impl<T> Cu<T> {
     }
 }
 impl Cu<f32> {
-    pub fn build(&mut self) -> &mut Self {
+    pub fn malloc(&mut self) -> &mut Self {
         let s = self.size();
         unsafe {
             self._c_f32.setup1(s as i32);
-        }
-        self
-    }
-    pub fn malloc(&mut self) -> &mut Self {
-        unsafe {
             self._c_f32.dev_malloc();
         }
         self.dev_alloc = true;
         self
     }
-    pub fn to_ptr(&mut self, ptr: *mut f32) {
-        self._c_f32.dev_data = ptr;
+    pub fn from_ptr(&mut self, ptr: *mut f32) {
+        let s = self.size();
+        unsafe {
+            self._c_f32.setup1(s as i32);
+            self._c_f32.dev_data = ptr;
+        }
     }
     pub fn as_ptr(&mut self) -> *mut f32 {
         self._c_f32.dev_data
     }
-    pub fn to_dev(&mut self, host_data: &mut [f32]) -> Result<&mut Self,String> {
-        if self.dev_alloc {
-            unsafe {
-                self._c_f32.host_data = host_data.as_mut_ptr();
-                self._c_f32.host2dev();
-            }
-            return Ok(self);
-        } else {
-            return Err("Memory on device has not been allocated!".to_string());
+    pub fn to_dev(&mut self, host_data: &mut [f32]) -> &mut Self {
+        if !self.dev_alloc {
+            self.malloc();
         }
+        unsafe {
+            self._c_f32.host_data = host_data.as_mut_ptr();
+            self._c_f32.host2dev();
+        }
+        self
     }
     pub fn from_dev(&mut self) -> Vec<f32> {
-        let mut v = vec![0f32;self.size()];
+        let mut v = vec![0f32; self.size()];
         unsafe {
             self._c_f32.host_data = v.as_mut_ptr();
             self._c_f32.dev2host();
         }
         v
+    }
+    pub fn qr(&mut self) -> &mut Self {
+        unsafe {
+            self._c_f32.qr(self.m as i32);
+        }
+        self
+    }
+    pub fn qr_solve(&mut self, b: &mut Cu<f32>) -> Cu<f32> {
+        let mut x = Cu::<f32>::vector(self.n);
+        x.malloc();
+        unsafe {
+            self._c_f32.qr_solve(&mut x._c_f32, &mut b._c_f32);
+        }
+        x
     }
 }
 impl<T> Drop for Cu<T> {
@@ -90,6 +102,7 @@ impl<T> Drop for Cu<T> {
         if self.dev_alloc {
             unsafe { self._c_f32.free_dev() }
         }
+        self.dev_alloc = false;
     }
 }
 
@@ -100,31 +113,30 @@ mod tests {
     #[test]
     fn cu_todev() {
         let mut d = Cu::<f32>::vector(5);
-        let mut v = vec![1f32;5];
-        d.build().malloc();
-        d.to_dev(&mut v.as_mut_slice()).expect("Failed");
+        let mut v = vec![1f32; 5];
+        d.malloc();
+        d.to_dev(&mut v.as_mut_slice());
     }
 
     #[test]
     fn cu_fromdev() {
         let mut d = Cu::<f32>::vector(5);
-        let mut v = vec![1f32;5];
-        d.build().malloc().to_dev(&mut v.as_mut_slice()).expect("Failed");
+        let mut v = vec![1f32; 5];
+        d.malloc().to_dev(&mut v.as_mut_slice());
         let w = d.from_dev();
-        println!("w: {:?}",w);
+        println!("w: {:?}", w);
     }
 
     #[test]
     fn cu_toptr() {
         let mut d = Cu::<f32>::vector(5);
-        let mut v = vec![4.321f32;5];
-        d.build().malloc().to_dev(&mut v.as_mut_slice()).expect("Failed");
+        let mut v = vec![4.321f32; 5];
+        d.malloc().to_dev(&mut v.as_mut_slice());
         let w = d.from_dev();
-        println!("w: {:?}",w);
+        println!("w: {:?}", w);
         let mut dd = Cu::<f32>::vector(5);
-        dd.build().to_ptr(d.as_ptr());
+        dd.from_ptr(d.as_ptr());
         let w = dd.from_dev();
-        println!("w: {:?}",w);
+        println!("w: {:?}", w);
     }
-
 }

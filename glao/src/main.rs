@@ -98,10 +98,12 @@ impl System {
     fn process(&mut self) {
         self.wfs.process();
     }
-    fn m2_mode_calibrate(&mut self) -> Vec<f32> {
+    fn m2_mode_calibrate(&mut self) -> ceo::Cu<f32> {
         let n_mode: usize = self.gmt.m2_n_mode;
         print!("M2 KL[{}] calibration ...", n_mode);
         let now = Instant::now();
+        let m = self.wfs.n_centroids as usize;
+        let n = 7*(n_mode-1);
         let mut kl_coefs = vec![vec![0f64; n_mode]; 7];
         let mut calib: Vec<f32> = vec![];
         for s in 0..7 {
@@ -112,7 +114,7 @@ impl System {
                     self.gmt.set_m2_modes(&mut m);
                     self.wfs.reset();
                     self.through().process();
-                    self.wfs.centroids.from_dev().clone()
+                    self.wfs.centroids.from_dev()
                 };
                 let cp = f(1e-6);
                 let cm = f(-1e-6);
@@ -138,7 +140,9 @@ impl System {
             self.wfs.n_centroids,
             calib.len() / self.wfs.n_centroids as usize
         );
-        calib
+        let mut a = ceo::Cu::<f32>::array(m,n);
+        a.to_dev(&mut calib);
+        a
     }
 }
 
@@ -156,45 +160,22 @@ fn main() {
         .wfs_build("V", vec![0f32], vec![0f32], vec![0f32])
         .wfs_calibrate(wfs_intensity_threshold).through();
 
-    let calib = on_axis_sys.m2_mode_calibrate();
-    println!("calib sum: {:}",calib.iter().sum::<f32>());
+    let mut calib = on_axis_sys.m2_mode_calibrate();
+    //println!("calib sum: {:}",calib.iter().sum::<f32>());
 
     on_axis_sys.gmt.set_m2_modes_ij(1, 1, 1e-6);
     on_axis_sys.wfs.reset();
     on_axis_sys.through().process();
 
-    let mut a = ceo::CuFloat::new();
-    a.malloc(calib.len()).into(&mut calib.clone());
-    let mut d_s = ceo::CuFloat::new();
-    d_s.malloc(on_axis_sys.wfs.n_centroids as usize).into(&mut on_axis_sys.wfs.centroids.from_dev());
-
-    a.qr(on_axis_sys.wfs.n_centroids);
-    let mut x = ceo::CuFloat::new();
-    x.malloc(7*(N_KL-1));
-    a.qr_solve(&mut x, &mut d_s);
-    let mut h_x = x.from();
+    calib.qr();
+    let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
+    let mut h_x = x.from_dev();
     h_x.truncate(20);
     println!("x: {:?}",h_x);
 
-
-    //on_axis_sys.gmt.reset();
-    //on_axis_sys.through();
     println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
-    /*
-    let mut atm = ceo::Atmosphere::new();
-    {
-        let mut pssn: ceo::GPSSn<ceo::AtmosphereTelescopeError> = ceo::GPSSn::new();
-        pssn.build(&mut on_axis_sys.gs);
-        atm.gmt_build(pssn.r0(), pssn.oscale);
-    }
-    on_axis_sys.through_atmosphere(&mut atm).process();
-    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
-     */
 
-    let mut d_s = ceo::CuFloat::new();
-    d_s.malloc(on_axis_sys.wfs.n_centroids as usize).into(&mut on_axis_sys.wfs.centroids.from_dev());
-    a.qr_solve(&mut x, &mut d_s);
-    let mut h_x = x.from();
+    let mut h_x = x.from_dev();
     let mut kl_coefs = vec![vec![0f64; N_KL]; 7];
     kl_coefs[1][1] = 1e-6;
     let mut k = 0;
@@ -224,10 +205,8 @@ fn main() {
     println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
     println!("S sum: {:?}",on_axis_sys.wfs.centroids.from_dev().iter().sum::<f32>());
 
-    let mut d_s = ceo::CuFloat::new();
-    d_s.malloc(on_axis_sys.wfs.n_centroids as usize).into(&mut on_axis_sys.wfs.centroids.from_dev());
-    a.qr_solve(&mut x, &mut d_s);
-    let mut h_x = x.from();
+    let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
+    let mut h_x = x.from_dev();
     let mut kl_coefs = vec![vec![0f64; N_KL]; 7];
     let mut k = 0;
     for s in 0..7 {
@@ -240,6 +219,7 @@ fn main() {
     on_axis_sys.gmt.set_m2_modes(&mut m);
     on_axis_sys.through_atmosphere(&mut atm);
     println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
+
     /*
     let mut data = BTreeMap::new();
     data.insert("calib".to_string(),calib);
