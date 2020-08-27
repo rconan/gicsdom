@@ -154,7 +154,7 @@ fn main() {
     let wfs_intensity_threshold = 0.5;
 
     let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
-    const N_KL: usize = 20;
+    const N_KL: usize = 170;
     on_axis_sys
         .gmt_build("bending modes", 27, N_KL)
         .wfs_build("V", vec![0f32], vec![0f32], vec![0f32])
@@ -167,8 +167,12 @@ fn main() {
     on_axis_sys.wfs.reset();
     on_axis_sys.through().process();
 
+    let now = Instant::now();
     calib.qr();
+    println!("QR factorization in {}ms",now.elapsed().as_millis());
+    let now = Instant::now();
     let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
+    println!("QR solve in {}ms",now.elapsed().as_millis());
     let mut h_x = x.from_dev();
     h_x.truncate(20);
     println!("x: {:?}",h_x);
