@@ -1,18 +1,11 @@
 use ceo;
-use serde_pickle as pickle;
-use std::collections::BTreeMap;
 use std::f32;
-use std::fs::File;
 use std::time::Instant;
 
-fn atmosphere_pssn() {
+fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) {
     let npx = 512;
-    let n_src: usize = 6;
+    let n_src: usize = zen.len();
     let mut src = ceo::Source::new(n_src as i32, 25.5, npx);
-    let zen: Vec<f32> = (0..n_src)
-        .map(|x| ceo::Conversion::from_arcmin(x as f32))
-        .collect();
-    let azi = vec![0.0; n_src];
     let mag = vec![0.0; n_src];
     src.build("V", zen, azi, mag);
 
@@ -28,7 +21,6 @@ fn atmosphere_pssn() {
     let mut atm = ceo::Atmosphere::new();
     atm.gmt_build(pssn.r0(), pssn.oscale);
 
-    let n_sample = 100;
     let now = Instant::now();
     for _ in 0..n_sample {
         src.through(&mut gmt).xpupil().through(&mut atm);
@@ -44,11 +36,13 @@ fn atmosphere_pssn() {
     println!("PSSn: {}", pssn.reset(&mut src));
 }
 
+#[allow(dead_code)]
 struct System {
     gmt: ceo::Gmt,
     wfs: ceo::GeometricShackHartmann,
     gs: ceo::Source,
 }
+#[allow(dead_code)]
 impl System {
     fn new(pupil_size: f64, n_sensor: i32, n_lenslet: i32, n_px_lenslet: i32) -> Self {
         let d = pupil_size / n_lenslet as f64;
@@ -146,7 +140,8 @@ impl System {
     }
 }
 
-fn main() {
+#[test]
+fn cmd_estimate() { 
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -154,7 +149,7 @@ fn main() {
     let wfs_intensity_threshold = 0.5;
 
     let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
-    const N_KL: usize = 170;
+    const N_KL: usize = 20;
     on_axis_sys
         .gmt_build("bending modes", 27, N_KL)
         .wfs_build("V", vec![0f32], vec![0f32], vec![0f32])
@@ -173,26 +168,37 @@ fn main() {
     let now = Instant::now();
     let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
     println!("QR solve in {}ms",now.elapsed().as_millis());
-    let mut h_x = x.from_dev();
+    let h_x = x.from_dev();
     h_x.truncate(20);
     println!("x: {:?}",h_x);
+    assert_eq!((h_x[19]*1e6f32).round(),1f32);
+}
 
-    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
+#[test]
+fn atmosphere_correction() {
+    let pupil_size = 25.5;
+    let n_lenslet = 48;
+    //let n_actuator = n_lenslet + 1;
+    let n_px_lenslet = 16;
+    let wfs_intensity_threshold = 0.5;
 
-    let mut h_x = x.from_dev();
-    let mut kl_coefs = vec![vec![0f64; N_KL]; 7];
-    kl_coefs[1][1] = 1e-6;
-    let mut k = 0;
-    for s in 0..7 {
-        for a in 1..N_KL {
-            kl_coefs[s][a] -= h_x[k] as f64;
-            k+=1;
-        }
-    }
-    let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
-    on_axis_sys.gmt.set_m2_modes(&mut m);
-    on_axis_sys.through();
-    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
+    let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
+    const N_KL: usize = 20;
+    on_axis_sys
+        .gmt_build("bending modes", 27, N_KL)
+        .wfs_build("V", vec![0f32], vec![0f32], vec![0f32])
+        .wfs_calibrate(wfs_intensity_threshold).through();
+
+    let mut calib = on_axis_sys.m2_mode_calibrate();
+    //println!("calib sum: {:}",calib.iter().sum::<f32>());
+
+    on_axis_sys.gmt.set_m2_modes_ij(1, 1, 1e-6);
+    on_axis_sys.wfs.reset();
+    on_axis_sys.through().process();
+
+    let now = Instant::now();
+    calib.qr();
+    println!("QR factorization in {}ms",now.elapsed().as_millis());
 
     on_axis_sys.gmt.reset();
     on_axis_sys.through();
@@ -206,11 +212,11 @@ fn main() {
     }
     on_axis_sys.wfs.reset();
     on_axis_sys.through_atmosphere(&mut atm).process();
-    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
-    println!("S sum: {:?}",on_axis_sys.wfs.centroids.from_dev().iter().sum::<f32>());
+    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9)[0].round());
+//    println!("S sum: {:?}",on_axis_sys.wfs.centroids.from_dev().iter().sum::<f32>());
 
     let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
-    let mut h_x = x.from_dev();
+    let h_x = x.from_dev();
     let mut kl_coefs = vec![vec![0f64; N_KL]; 7];
     let mut k = 0;
     for s in 0..7 {
@@ -222,15 +228,20 @@ fn main() {
     let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
     on_axis_sys.gmt.set_m2_modes(&mut m);
     on_axis_sys.through_atmosphere(&mut atm);
-    println!("WFE RMS: {:?}nm",on_axis_sys.gs.wfe_rms_10e(-9));
+    let wfe_rms = on_axis_sys.gs.wfe_rms_10e(-9)[0].round();
+    println!("WFE RMS: {:?}nm",wfe_rms);
+    assert_eq!(wfe_rms,658f32)
+}
 
-    /*
-    let mut data = BTreeMap::new();
-    data.insert("calib".to_string(),calib);
-    data.insert("s".to_string(),on_axis_sys.wfs.centroids.clone());
+fn main() {
+    let n_sample = 100;
+    let n_src = 1;
+    let zen: Vec<f32> = (0..n_src)
+        .map(|x| ceo::Conversion::from_arcmin(x as f32))
+        .collect();
+    let azi = vec![0.0; n_src];
 
-    let filename = "data.pkl";
-    let mut file = File::create(filename).unwrap();
-    pickle::to_writer(&mut file, &data, true).unwrap();
-    */
+    let now = Instant::now();
+    atmosphere_pssn(n_sample, zen, azi);
+    println!("#{} sample in {}s",n_sample,now.elapsed().as_secs());
 }
