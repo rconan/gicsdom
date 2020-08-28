@@ -1,8 +1,12 @@
 use ceo;
 use rayon;
 use rayon::prelude::*;
+use serde::Serialize;
+use serde_pickle as pickle;
+use std::collections::BTreeMap;
 use std::f32;
 use std::time::Instant;
+use std::fs::File;
 
 fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32> {
     /*
@@ -247,6 +251,13 @@ fn atmosphere_correction() {
     assert_eq!(wfe_rms, 658f32)
 }
 
+#[derive(Debug, Serialize, Default)]
+struct Results {
+    function_name: String,
+    args_in: BTreeMap<String,Vec<f32>>,
+    args_out: BTreeMap<String,Vec<f32>>,
+}
+
 fn main() {
     let n_sample = 100;
     let n_src = 6;
@@ -260,7 +271,7 @@ fn main() {
         .map(|x| (*x.0, *x.1))
         .collect::<Vec<(f32, f32)>>();
 
-    let n_gpu = 1 as usize;
+    let n_gpu = 8 as usize;
     let n_thread = n_src;
 
     let pool = rayon::ThreadPoolBuilder::new()
@@ -281,4 +292,18 @@ fn main() {
     });
     println!("#{} sample in {}s", n_sample, now.elapsed().as_secs());
     println!("Results: {:?}", results);
+
+    let mut  args_in = BTreeMap::new();
+    args_in.insert("# sample".to_string(), vec![n_sample as f32]);
+    args_in.insert("zenith".to_string(), zen);
+    args_in.insert("azimuth".to_string(), azi);
+    let mut args_out = BTreeMap::new();
+    args_out.insert("pssn".to_string(), results.into_iter().flatten().collect::<Vec<f32>>());
+
+    let data = Results { function_name: "atmosphere_pssn".to_string(),
+                         args_in: args_in, args_out: args_out };
+
+    let mut file = File::create("atmosphere_pssn_100.pkl").unwrap();
+    pickle::to_writer(&mut file, &data, true).unwrap();
+
 }
