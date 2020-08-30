@@ -1,4 +1,4 @@
-use std::{f32, f64, fmt, mem};
+use std::{f32, f64, mem};
 
 pub mod atmosphere;
 //pub mod calibrations;
@@ -8,6 +8,7 @@ pub mod gmt;
 pub mod imaging;
 pub mod shackhartmann;
 pub mod source;
+pub mod pssn;
 pub mod cu;
 
 pub use self::atmosphere::Atmosphere;
@@ -18,8 +19,9 @@ pub use self::imaging::{Imaging, LensletArray};
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
+pub use self::pssn::PSSn;
 pub use self::cu::Cu;
-pub use ceo_bindings::{gpu_double, gpu_float, pssn, set_device, geqrf, ormqr};
+pub use ceo_bindings::{gpu_double, gpu_float, set_device, geqrf, ormqr};
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
@@ -159,120 +161,6 @@ pub fn qtb(b: &mut CuFloat, m: i32, a: &mut CuFloat, tau: &mut CuFloat, n: i32) 
         ormqr(b._c_.dev_data, m, a._c_.dev_data, tau._c_.dev_data, n)
     }
 }
-
-/// Wrapper for CEO PSSn
-///
-/// # Examples
-///
-/// ```
-/// use gicsdom::ceo;
-/// let mut src = ceo::Source::new(1,25.5,401);
-/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
-/// let mut gmt = ceo::Gmt::new();
-/// gmt.build(27,None);
-/// src.through(&mut gmt).xpupil();
-/// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
-/// let mut pssn = ceo::PSSn::new();
-/// pssn.build(&mut src);
-/// println!("PSSn: {:?}",pssn.reset(&mut src).estimates);
-/// ```
-///
-// NEW PSSN
-pub struct TelescopeError;
-pub struct AtmosphereTelescopeError;
-pub struct GPSSn<S> {
-    _c_: pssn,
-    pub r0_at_zenith: f32,
-    pub oscale: f32,
-    pub zenith_angle: f32,
-    /// GPSSn estimates
-    pub estimates: Vec<f32>,
-    mode: std::marker::PhantomData<S>,
-}
-impl<S> GPSSn<S> {
-    /// Creates a new `GPSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
-    pub fn new() -> GPSSn<S> {
-        GPSSn {
-            _c_: unsafe { mem::zeroed() },
-            r0_at_zenith: 0.16,
-            oscale: 25.0,
-            zenith_angle: 30_f32.to_radians(),
-            estimates: vec![],
-            mode: std::marker::PhantomData,
-        }
-    }
-    /// Initializes GPSSn atmosphere and telescope transfer function from a `Source` object
-    pub fn build(&mut self, src: &mut Source) -> &mut Self {
-        unsafe {
-            self._c_.setup(&mut src._c_, self.r0(), self.oscale);
-        }
-        self.estimates = vec![0.0; self._c_.N as usize];
-        self
-    }
-    /// Integrates the `Source` optical transfer function
-    pub fn accumulate(&mut self, src: &mut Source) {
-        unsafe {
-            self._c_.otf(&mut src._c_);
-        }
-    }
-    pub fn reset(&mut self) -> &mut Self {
-        self._c_.N_O = 0;
-        self
-    }
-    /// Computes `GPSSn` spatial uniformity
-    pub fn spatial_uniformity(&mut self) -> f32 {
-        let mut pssn_values = self.estimates.clone();
-        pssn_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        100. * ((pssn_values.len() as f32)
-            * (*pssn_values.last().unwrap() - *pssn_values.first().unwrap()))
-            / pssn_values.iter().sum::<f32>()
-    }
-    pub fn r0(&self) -> f32 {
-        (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
-    }
-}
-impl GPSSn<TelescopeError> {
-    /// Estimates the `GPSSn` values
-    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
-        unsafe {
-            self._c_.eval1(self.estimates.as_mut_ptr())
-        }
-        self
-    }
-}
-impl GPSSn<AtmosphereTelescopeError> {
-    /// Estimates the `GPSSn` values
-    pub fn peek(&mut self, src: &mut Source) -> &mut Self {
-        unsafe {
-            self._c_.oeval1(self.estimates.as_mut_ptr())
-        }
-        self
-    }
-}
-impl<S> Drop for GPSSn<S> {
-    /// Frees CEO memory before dropping `GPSSn`
-    fn drop(&mut self) {
-        unsafe {
-            self._c_.cleanup();
-        }
-    }
-}
-impl<S> fmt::Display for GPSSn<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            self.estimates
-                .iter()
-                .map(|x| format!("{:.4}", x))
-                .collect::<Vec<String>>()
-                .as_slice()
-                .join(",")
-        )
-    }
-}
-
-pub type PSSn = GPSSn<TelescopeError>;
 
 #[cfg(test)]
 mod tests {
