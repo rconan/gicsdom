@@ -119,6 +119,13 @@ impl Source {
         }
         self
     }
+    pub fn opd2phase(&mut self) -> &mut Self {
+        unsafe {
+//            self._c_.wavefront.reset();
+            self._c_.opd2phase();
+        }
+        self
+    }
     /// Returns the wavefront error root mean square [m]
     pub fn wfe_rms(&mut self) -> Vec<f32> {
         unsafe {
