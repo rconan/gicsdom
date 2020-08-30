@@ -215,6 +215,10 @@ impl<S> GPSSn<S> {
             self._c_.otf(&mut src._c_);
         }
     }
+    pub fn reset(&mut self) -> &mut Self {
+        self._c_.N_O = 0;
+        self
+    }
     /// Computes `GPSSn` spatial uniformity
     pub fn spatial_uniformity(&mut self) -> f32 {
         let mut pssn_values = self.estimates.clone();
@@ -228,32 +232,18 @@ impl<S> GPSSn<S> {
     }
 }
 impl GPSSn<TelescopeError> {
-    /// Estimates the `GPSSn` values and resets the `Source` optical transfer function to its initial value
-    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
-        self.peek(src);
-        self._c_.N_O = 0;
-        self
-    }
     /// Estimates the `GPSSn` values
     pub fn peek(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.otf(&mut src._c_);
             self._c_.eval1(self.estimates.as_mut_ptr())
         }
         self
     }
 }
 impl GPSSn<AtmosphereTelescopeError> {
-    /// Estimates the `GPSSn` values and resets the `Source` optical transfer function to its initial value
-    pub fn reset(&mut self, src: &mut Source) -> &mut Self {
-        self.peek(src);
-        self._c_.N_O = 0;
-        self
-    }
     /// Estimates the `GPSSn` values
     pub fn peek(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.otf(&mut src._c_);
             self._c_.oeval1(self.estimates.as_mut_ptr())
         }
         self
