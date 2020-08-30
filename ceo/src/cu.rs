@@ -43,6 +43,12 @@ impl<T> Cu<T> {
     pub fn size(&mut self) -> usize {
         self.m * self.n
     }
+    pub fn n_row(&mut self) -> usize {
+        self.m
+    }
+    pub fn n_col(&mut self) -> usize {
+        self.n
+    }
 }
 impl Cu<f32> {
     pub fn malloc(&mut self) -> &mut Self {
