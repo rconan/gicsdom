@@ -1,5 +1,4 @@
 use ceo;
-use std::time::Instant;
 
 pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32> {
     /*
@@ -19,7 +18,7 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
     src.through(&mut gmt).xpupil();
     //println!("WFE RMS: {:?}nm", src.wfe_rms_10e(-9)[0]);
 
-    let mut pssn: ceo::GPSSn<ceo::AtmosphereTelescopeError> = ceo::GPSSn::new();
+    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     pssn.build(&mut src);
     //println!("PSSn: {}", pssn.reset(&mut src));
 
@@ -32,8 +31,8 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
         src.through(&mut atm).through(&mut gmt).opd2phase();
         pssn.accumulate(&mut src);
         if k%100==0 { 
-            println!("{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",k,src.wfe_rms_10e(-9)[0],pssn.peek(&mut src));
-        }//println!("PSSn: {}",pssn.peek(&mut src));
+            println!("{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",k,src.wfe_rms_10e(-9)[0],pssn.peek());
+        }//println!("PSSn: {}",pssn.peek());
         atm.reset();
     }
     /*
@@ -43,7 +42,7 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
     );
     println!("PSSn: {}", pssn.reset(&mut src));
     */
-    pssn.peek(&mut src).reset();
+    pssn.peek().reset();
     pssn.estimates.clone()
 }
 
@@ -221,7 +220,7 @@ fn atmosphere_correction() {
 
     let mut atm = ceo::Atmosphere::new();
     {
-        let mut pssn: ceo::GPSSn<ceo::AtmosphereTelescopeError> = ceo::GPSSn::new();
+        let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
         pssn.build(&mut on_axis_sys.gs);
         atm.gmt_build(pssn.r0(), pssn.oscale);
     }

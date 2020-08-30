@@ -101,7 +101,7 @@ fn optimal_kl() {
 
         let mut atm = ceo::Atmosphere::new();
         {
-            let mut pssn: ceo::GPSSn<ceo::AtmosphereTelescopeError> = ceo::GPSSn::new();
+            let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
             pssn.build(&mut on_axis_sys.gs);
             atm.gmt_build(pssn.r0(), pssn.oscale);
         }
@@ -138,7 +138,7 @@ fn optimal_kl() {
 }
 
 #[allow(dead_code)]
-fn glao_pssn() {
+fn glao_pssn(n_sample: usize) {
     ceo::set_gpu(1);
 
     let pupil_size = 25.5;
@@ -188,7 +188,7 @@ fn glao_pssn() {
     gmt.reset();
     src.through(gmt).xpupil();
 
-    let mut pssn: ceo::GPSSn<ceo::AtmosphereTelescopeError> = ceo::GPSSn::new();
+    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
@@ -197,7 +197,6 @@ fn glao_pssn() {
     //    let mut data = BTreeMap::new();
 
     let now = Instant::now();
-    let n_sample = 100;
     for k_sample in 0..n_sample {
         gmt.reset();
         wfs.reset();
@@ -250,14 +249,14 @@ fn glao_pssn() {
                 k_sample,
                 wfe_rms_0,
                 wfe_rms,
-                pssn.peek(&mut src)
+                pssn.peek()
             );
         }
 
         atm.reset()
     }
     println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
-    println!("PSSn: {}", pssn.peek(&mut src));
+    println!("PSSn: {}", pssn.peek());
 
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
@@ -265,7 +264,7 @@ fn glao_pssn() {
 
 fn main() {
     //uncorrected_atmosphere_pssn();
-    glao_pssn();
-    let onaxis_pssn = atmosphere_pssn(100, vec![0f32], vec![0f32]);
+    glao_pssn(1);
+    let onaxis_pssn = atmosphere_pssn(1, vec![0f32], vec![0f32]);
     println!("On-axis PSSN: {:?}",onaxis_pssn);
 }
