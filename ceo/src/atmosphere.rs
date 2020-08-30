@@ -159,7 +159,7 @@ impl Propagation for Atmosphere {
             let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
             if self.built {
                 self._c_
-                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, 0f32);
+                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             } else {
                 /*
                 let k_duration = (secs / self._c_.layers_duration as f64) as i32;
