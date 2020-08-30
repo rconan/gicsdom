@@ -12,7 +12,7 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
     let n_src: usize = zen.len();
     let mut src = ceo::Source::new(n_src as i32, 25.5, npx);
     let mag = vec![0.0; n_src];
-    src.build("V", zen, azi, mag);
+    src.build("Vs", zen, azi, mag);
 
     let mut gmt = ceo::Gmt::new();
     gmt.build_m1("bending modes", 0).build_m2(None);
@@ -27,11 +27,13 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
     atm.gmt_build(pssn.r0(), pssn.oscale);
 
     //let now = Instant::now();
-    for _ in 0..n_sample {
-        src.through(&mut gmt).xpupil().through(&mut atm);
+    for k in 0..n_sample {
+        src.reset();
+        src.through(&mut atm).through(&mut gmt).opd2phase();
         pssn.accumulate(&mut src);
-        //println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
-        //println!("PSSn: {}",pssn.peek(&mut src));
+        if k%100==0 { 
+            println!("{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",k,src.wfe_rms_10e(-9)[0],pssn.peek(&mut src));
+        }//println!("PSSn: {}",pssn.peek(&mut src));
         atm.reset();
     }
     /*
@@ -41,19 +43,19 @@ pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32
     );
     println!("PSSn: {}", pssn.reset(&mut src));
     */
-    pssn.reset(&mut src);
+    pssn.peek(&mut src).reset();
     pssn.estimates.clone()
 }
 
 #[allow(dead_code)]
-struct System {
-    gmt: ceo::Gmt,
-    wfs: ceo::GeometricShackHartmann,
-    gs: ceo::Source,
+pub struct System {
+    pub gmt: ceo::Gmt,
+    pub wfs: ceo::GeometricShackHartmann,
+    pub gs: ceo::Source,
 }
 #[allow(dead_code)]
 impl System {
-    fn new(pupil_size: f64, n_sensor: i32, n_lenslet: i32, n_px_lenslet: i32) -> Self {
+    pub fn new(pupil_size: f64, n_sensor: i32, n_lenslet: i32, n_px_lenslet: i32) -> Self {
         let d = pupil_size / n_lenslet as f64;
         Self {
             gmt: ceo::Gmt::new(),
@@ -61,13 +63,13 @@ impl System {
             gs: ceo::Source::default(),
         }
     }
-    fn gmt_build(&mut self, m1_mode_type: &str, m1_n_mode: usize, m2_n_mode: usize) -> &mut Self {
+    pub fn gmt_build(&mut self, m1_mode_type: &str, m1_n_mode: usize, m2_n_mode: usize) -> &mut Self {
         self.gmt
             .build_m1(m1_mode_type, m1_n_mode)
             .build_m2(Some(m2_n_mode));
         self
     }
-    fn wfs_build(
+    pub fn wfs_build(
         &mut self,
         band: &str,
         zenith: Vec<f32>,
@@ -79,32 +81,32 @@ impl System {
         self.gs.build(band, zenith, azimuth, magnitude);
         self
     }
-    fn wfs_calibrate(&mut self, threshold: f64) -> &mut Self {
+    pub fn wfs_calibrate(&mut self, threshold: f64) -> &mut Self {
         self.gs.through(&mut self.gmt).xpupil();
         self.wfs.calibrate(&mut self.gs, threshold);
         self
     }
-    fn through(&mut self) -> &mut Self {
+    pub fn through(&mut self) -> &mut Self {
         self.gs
             .through(&mut self.gmt)
             .xpupil()
             .through(&mut self.wfs);
         self
     }
-    fn through_atmosphere(&mut self, atm: &mut ceo::Atmosphere) -> &mut Self {
+    pub fn through_atmosphere(&mut self, atm: &mut ceo::Atmosphere) -> &mut Self {
         self.gs
             .through(&mut self.gmt)
             .through(atm)
             .through(&mut self.wfs);
         self
     }
-    fn process(&mut self) {
+    pub fn process(&mut self) {
         self.wfs.process();
     }
-    fn m2_mode_calibrate(&mut self) -> ceo::Cu<f32> {
+    pub fn m2_mode_calibrate(&mut self) -> ceo::Cu<f32> {
         let n_mode: usize = self.gmt.m2_n_mode;
-        print!("M2 KL[{}] calibration ...", n_mode);
-        let now = Instant::now();
+        //print!("M2 KL[{}] calibration ...", n_mode);
+        //let now = Instant::now();
         let m = self.wfs.n_centroids as usize;
         let n = 7 * (n_mode - 1);
         let mut kl_coefs = vec![vec![0f64; n_mode]; 7];
@@ -136,13 +138,15 @@ impl System {
             }
         }
         self.wfs.reset();
-
+        self.gmt.reset();
+        /*
         println!(" in {}ms", now.elapsed().as_millis());
         println!(
             "M2 KL calibration size: {}X{}",
             self.wfs.n_centroids,
             calib.len() / self.wfs.n_centroids as usize
         );
+        */
         let mut a = ceo::Cu::<f32>::array(m, n);
         a.to_dev(&mut calib);
         a
@@ -178,7 +182,7 @@ fn cmd_estimate() {
     let now = Instant::now();
     let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
     println!("QR solve in {}ms", now.elapsed().as_millis());
-    let h_x = x.from_dev();
+    let mut h_x = x.from_dev();
     h_x.truncate(20);
     println!("x: {:?}", h_x);
     assert_eq!((h_x[19] * 1e6f32).round(), 1f32);
