@@ -154,12 +154,12 @@ impl Propagation for Atmosphere {
     
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
         unsafe {
-            src._c_.wavefront.reset();
+            //src._c_.wavefront.reset();
             let n_xy = src.pupil_sampling;
             let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
             if self.built {
                 self._c_
-                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
+                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, 0f32);
             } else {
                 /*
                 let k_duration = (secs / self._c_.layers_duration as f64) as i32;
@@ -181,7 +181,7 @@ impl Propagation for Atmosphere {
                 );
                 */
             }
-            src._c_.opd2phase();
+            //src._c_.opd2phase();
         }
         self
     }
