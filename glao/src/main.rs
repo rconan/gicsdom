@@ -183,6 +183,15 @@ fn glao_pssn(n_sample: usize) {
     let gmt = &mut glao_sys.gmt;
     let wfs = &mut glao_sys.wfs;
 
+    let mut v = vec![0f32;(n_lenslet*n_lenslet) as usize];
+    wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize).for_each( |x| {
+        let s = x.iter().map(|x| if *x>0f32 { 1 } else { 0 }).sum::<usize>();
+        println!("lenslet mask: {}",s);
+        for k in 0..v.len() {
+            v[k] += if x[k]>0f32 { 1f32 } else { 0f32 };
+        }
+    });
+
     let mut src = ceo::Source::new(1, pupil_size, 512);
     src.build("Vs", vec![0f32], vec![0f32], vec![0f32]);
     gmt.reset();
@@ -209,9 +218,17 @@ fn glao_pssn(n_sample: usize) {
         let mut mean_c = vec![0f32; calib.n_row()];
         for c in s.as_slice().chunks(calib.n_row()) {
             for k in 0..mean_c.len() {
-                mean_c[k] += c[k] / 3 as f32;
+                mean_c[k] += c[k];
             }
         }
+        let n = (n_lenslet*n_lenslet) as usize;
+        for k in 0..n {
+            if v[k]>0f32 {
+                mean_c[k] /= v[k];
+                mean_c[k+n] /= v[k];
+            }
+        }
+
         //      data.insert("c".to_string(), s);
 
         src.reset();
@@ -262,9 +279,74 @@ fn glao_pssn(n_sample: usize) {
     //  pickle::to_writer(&mut file, &data, true).unwrap();
 }
 
+#[allow(dead_code)]
+fn glao_test(n_sample: usize) {
+    ceo::set_gpu(1);
+
+    let pupil_size = 25.5;
+    let n_lenslet = 48;
+    //let n_actuator = n_lenslet + 1;
+    let n_px_lenslet = 16;
+    let wfs_intensity_threshold = 0.5;
+
+    let n_kl = 170;
+
+    /*
+    let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
+    on_axis_sys
+        .gmt_build("bending modes", 27, n_kl)
+        .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
+        .wfs_calibrate(0f64)
+        .through();
+    let now = Instant::now();
+    let mut calib = on_axis_sys.m2_mode_calibrate();
+
+    calib.qr();
+    println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
+    println!(
+        "Calibration matrix size [{}x{}]",
+        calib.n_row(),
+        calib.n_col()
+    );
+     */
+
+    let n_gs = 3;
+    let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
+    let gs_azi = (0..n_gs)
+        .map(|x| (x as f32) * 2f32 * f32::consts::PI / n_gs as f32)
+        .collect::<Vec<f32>>();
+    let mut glao_sys = System::new(pupil_size, n_gs as i32, n_lenslet, n_px_lenslet);
+    glao_sys
+        .gmt_build("bending modes", 27, n_kl)
+        .wfs_build("Vs", gs_zen, gs_azi, vec![0f32; n_gs])
+        .wfs_calibrate(wfs_intensity_threshold)
+        .through();
+    println!("GLAO centroids #: {}", glao_sys.wfs.n_centroids);
+
+    //let gs = &mut glao_sys.gs;
+    //let gmt = &mut glao_sys.gmt;
+    let wfs = &mut glao_sys.wfs;
+
+    //let mut lenslet_mask = wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize);
+    let mut v = vec![0usize;(n_lenslet*n_lenslet) as usize];
+    wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize).for_each( |x| {
+        let s = x.iter().map(|x| if *x>0f32 { 1 } else { 0 }).sum::<usize>();
+        println!("lenslet mask: {}",s);
+        for k in 0..v.len() {
+            v[k] += if x[k]>0f32 { 1 } else { 0 }
+        }
+    });
+
+    let mut data = BTreeMap::new();
+    data.insert("mask".to_owned(), v);
+    let mut file = File::create("valid_lenslet.pkl").unwrap();
+    pickle::to_writer(&mut file, &data, true).unwrap();
+
+}
+
 fn main() {
     //uncorrected_atmosphere_pssn();
-    glao_pssn(1);
-    let onaxis_pssn = atmosphere_pssn(1, vec![0f32], vec![0f32]);
-    println!("On-axis PSSN: {:?}",onaxis_pssn);
+    glao_pssn(100);
+    //let onaxis_pssn = atmosphere_pssn(1, vec![0f32], vec![0f32]);
+    //println!("On-axis PSSN: {:?}",onaxis_pssn);
 }

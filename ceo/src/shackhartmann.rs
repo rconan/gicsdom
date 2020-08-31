@@ -92,6 +92,12 @@ impl GeometricShackHartmann {
         }
         self
     }
+    pub fn lenset_mask(&mut self) -> Cu<f32> {
+        let mut mask: Cu<f32> =
+            Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
+        mask.from_ptr(self._c_.valid_lenslet.f);
+        mask
+    }
 }
 impl Drop for GeometricShackHartmann {
     fn drop(&mut self) {
