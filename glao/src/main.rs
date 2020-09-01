@@ -317,8 +317,7 @@ fn glao_pssn(n_sample: usize) {
     for k_sample in 0..n_sample {
         gmt.reset();
         wfs.reset();
-        gs.reset();
-        gs.through(&mut atm).through(gmt).opd2phase().through(wfs);
+        gs.through(gmt).xpupil().through(&mut atm).through(wfs);
         wfs.process();
 
         let red_s = wfs
@@ -344,12 +343,7 @@ fn glao_pssn(n_sample: usize) {
             }
         }
 
-        src.reset();
-        let wfe_rms_0 = src
-            .through(&mut atm)
-            .through(gmt)
-            .opd2phase()
-            .wfe_rms_10e(-9)[0];
+        let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
 
         let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
         d_mean_c.to_dev(&mut mean_c);
@@ -368,8 +362,7 @@ fn glao_pssn(n_sample: usize) {
         let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut m);
 
-        src.reset();
-        src.through(&mut atm).through(gmt).opd2phase();
+        src.through(gmt).xpupil().through(&mut atm);
         pssn.accumulate(&mut src);
         let wfe_rms = src.wfe_rms_10e(-9)[0];
         if k_sample % 100 == 0 {
@@ -387,8 +380,8 @@ fn glao_pssn(n_sample: usize) {
     println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     println!("PSSn: {}", pssn.peek());
 
-    //let mut file = File::create("calibs.pkl").unwrap();
-    //pickle::to_writer(&mut file, &data, true).unwrap();
+    let mut file = File::create("gs.pkl").unwrap();
+    pickle::to_writer(&mut file, &data, true).unwrap();
 
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
@@ -457,17 +450,19 @@ fn glao_test(_n_sample: usize) {
                 v[k] += if x[k] > 0f32 { 1 } else { 0 }
             }
         });
-
+    /*
     let mut data = BTreeMap::new();
     data.insert("mask".to_owned(), v);
     let mut file = File::create("valid_lenslet.pkl").unwrap();
     pickle::to_writer(&mut file, &data, true).unwrap();
+     */
 }
 
 fn main() {
     //optimal_kl();
     //uncorrected_atmosphere_pssn();
     glao_pssn(1);
-    //let onaxis_pssn = atmosphere_pssn(1, vec![0f32], vec![0f32]);
-    //println!("On-axis PSSN: {:?}",onaxis_pssn);
+    //let now = Instant::now();
+    //let onaxis_pssn = atmosphere_pssn(100, vec![0f32], vec![0f32]);
+    //println!("On-axis PSSN: {:?} ({}ms)",onaxis_pssn,now.elapsed().as_millis());
 }
