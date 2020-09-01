@@ -57,6 +57,12 @@ impl<S> PSSn<S> {
             self._c_.otf(&mut src._c_);
         }
     }
+    /// Integrates the `Source` optical transfer function
+    pub fn integrate(&mut self, src: &mut Source) {
+        unsafe {
+            self._c_.otf(&mut src._c_);
+        }
+    }
     /// Resets the `Source` optical transfer function to its initial value
     pub fn reset(&mut self) -> &mut Self {
         self._c_.N_O = 0;
