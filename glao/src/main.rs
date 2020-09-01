@@ -363,7 +363,7 @@ fn glao_pssn(n_sample: usize) {
         gmt.set_m2_modes(&mut m);
 
         src.through(gmt).xpupil().through(&mut atm);
-        pssn.accumulate(&mut src);
+        pssn.integrate(&mut src);
         let wfe_rms = src.wfe_rms_10e(-9)[0];
         if k_sample % 100 == 0 {
             println!(
@@ -380,8 +380,8 @@ fn glao_pssn(n_sample: usize) {
     println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     println!("PSSn: {}", pssn.peek());
 
-    let mut file = File::create("gs.pkl").unwrap();
-    pickle::to_writer(&mut file, &data, true).unwrap();
+    //let mut file = File::create("gs.pkl").unwrap();
+    //pickle::to_writer(&mut file, &data, true).unwrap();
 
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
