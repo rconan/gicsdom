@@ -96,7 +96,50 @@ fn optimal_kl() {
             .wfs_calibrate(wfs_intensity_threshold)
             .through();
 
-        let mut calib = on_axis_sys.m2_mode_calibrate();
+        let mut v = vec![0usize; (n_lenslet * n_lenslet) as usize];
+        on_axis_sys
+            .wfs
+            .lenset_mask()
+            .from_dev()
+            .chunks((n_lenslet * n_lenslet) as usize)
+            .for_each(|x| {
+                /*let s = x
+                    .iter()
+                    .map(|x| if *x > 0f32 { 1 } else { 0 })
+                    .sum::<usize>();
+                println!("lenslet mask: {}", s);*/
+                for k in 0..v.len() {
+                    v[k] += if x[k] > 0f32 { 1usize } else { 0usize };
+                }
+            });
+        let mask = v
+            .iter()
+            .map(|&x| if x > 0usize { 1u8 } else { 0u8 })
+            .collect::<Vec<u8>>();
+        let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
+
+        let mut full_calib = on_axis_sys.m2_mode_calibrate();
+
+        let n = 7 * (n_kl - 1);
+        let m = (n_lenslet * n_lenslet) as usize;
+        let mut reduced_calib = full_calib
+            .from_dev()
+            .chunks(m as usize)
+            .map(|x| {
+                let mut r = vec![];
+                for k in 0..m {
+                    if mask[k] > 0 {
+                        r.push(x[k])
+                    }
+                }
+                r
+            })
+            .flatten()
+            .collect::<Vec<f32>>();
+        //println!("Reduced calibration: {}",reduced_calib.len());
+
+        let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+        calib.to_dev(&mut reduced_calib);
         calib.qr();
 
         let mut atm = ceo::Atmosphere::new();
@@ -106,15 +149,40 @@ fn optimal_kl() {
             atm.gmt_build(pssn.r0(), pssn.oscale);
         }
 
-        let n_sample = 10;
+        let n_sample = 1;
         let mut a_wfe_var = 0f32;
         for _ in 0..n_sample {
             on_axis_sys.gmt.reset();
             on_axis_sys.wfs.reset();
-            on_axis_sys.through_atmosphere(&mut atm).process();
-            //let wfe_rms_0 = on_axis_sys.gs.wfe_rms_10e(-9)[0];
+            on_axis_sys.gs.reset();
+            on_axis_sys
+                .gs
+                .through(&mut atm)
+                .through(&mut on_axis_sys.gmt)
+                .opd2phase()
+                .through(&mut on_axis_sys.wfs);
+            let wfe_rms_0 = on_axis_sys.gs.wfe_rms_10e(-9)[0];
 
-            let mut x = calib.qr_solve(&mut on_axis_sys.wfs.centroids);
+            let mut red_s = on_axis_sys
+                .wfs
+                .centroids
+                .from_dev()
+                .chunks(m as usize)
+                .map(|x| {
+                    let mut r = vec![];
+                    for k in 0..m {
+                        if mask[k] > 0 {
+                            r.push(x[k])
+                        }
+                    }
+                    r
+                })
+                .flatten()
+                .collect::<Vec<f32>>();
+
+            let mut c: ceo::Cu<f32> = ceo::Cu::vector(red_s.len());
+            c.to_dev(&mut red_s);
+            let mut x = calib.qr_solve(&mut c);
             let h_x = x.from_dev();
             let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
             let mut k = 0;
@@ -126,10 +194,16 @@ fn optimal_kl() {
             }
             let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
             on_axis_sys.gmt.set_m2_modes(&mut m);
-            on_axis_sys.through_atmosphere(&mut atm);
+            on_axis_sys.gs.reset();
+            on_axis_sys
+                .gs
+                .through(&mut atm)
+                .through(&mut on_axis_sys.gmt)
+                .opd2phase()
+                .through(&mut on_axis_sys.wfs);
             let wfe_rms = on_axis_sys.gs.wfe_rms_10e(-9)[0];
             a_wfe_var += wfe_rms * wfe_rms;
-            //println!("WFE RMS: {}/{}nm", wfe_rms_0, wfe_rms);
+            println!("WFE RMS: {}/{}nm", wfe_rms_0, wfe_rms);
             atm.reset()
         }
         a_wfe_rms.push((a_wfe_var / n_sample as f32).sqrt());
@@ -147,24 +221,7 @@ fn glao_pssn(n_sample: usize) {
     let n_px_lenslet = 16;
     let wfs_intensity_threshold = 0.5;
 
-    let n_kl = 170;
-
-    let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
-    on_axis_sys
-        .gmt_build("bending modes", 27, n_kl)
-        .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
-        .wfs_calibrate(0f64)
-        .through();
-    let now = Instant::now();
-    let mut calib = on_axis_sys.m2_mode_calibrate();
-
-    calib.qr();
-    println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
-    println!(
-        "Calibration matrix size [{}x{}]",
-        calib.n_row(),
-        calib.n_col()
-    );
+    let n_kl = 90;
 
     let n_gs = 3;
     let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
@@ -183,14 +240,67 @@ fn glao_pssn(n_sample: usize) {
     let gmt = &mut glao_sys.gmt;
     let wfs = &mut glao_sys.wfs;
 
-    let mut v = vec![0f32;(n_lenslet*n_lenslet) as usize];
-    wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize).for_each( |x| {
-        let s = x.iter().map(|x| if *x>0f32 { 1 } else { 0 }).sum::<usize>();
-        println!("lenslet mask: {}",s);
-        for k in 0..v.len() {
-            v[k] += if x[k]>0f32 { 1f32 } else { 0f32 };
+    // CALIBRATION
+    let now = Instant::now();
+    let mut v = vec![0usize; (n_lenslet * n_lenslet) as usize];
+    wfs.lenset_mask()
+        .from_dev()
+        .chunks((n_lenslet * n_lenslet) as usize)
+        .for_each(|x| {
+            let s = x
+                .iter()
+                .map(|x| if *x > 0f32 { 1 } else { 0 })
+                .sum::<usize>();
+            println!("lenslet mask: {}", s);
+            for k in 0..v.len() {
+                v[k] += if x[k] > 0f32 { 1usize } else { 0usize };
+            }
+        });
+    let mask = v
+        .iter()
+        .map(|&x| if x == 3usize { 1u8 } else { 0u8 })
+        .collect::<Vec<u8>>();
+    let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
+    println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
+
+    let n = 7 * (n_kl - 1);
+    let m = (n_lenslet * n_lenslet) as usize;
+    let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+    {
+        let mut reduced_calib = {
+            let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
+            on_axis_sys
+                .gmt_build("bending modes", 27, n_kl)
+                .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
+                .wfs_calibrate(0f64)
+                .through();
+            on_axis_sys.m2_mode_calibrate()
         }
-    });
+        .from_dev()
+        .chunks(m as usize)
+        .map(|x| {
+            let mut r = vec![];
+            for k in 0..m {
+                if mask[k] > 0 {
+                    r.push(x[k])
+                }
+            }
+            r
+        })
+        .flatten()
+        .collect::<Vec<f32>>();
+        println!("Reduced calibration: {}", reduced_calib.len());
+
+        calib.to_dev(&mut reduced_calib);
+    }
+    //full_calib.qr();
+    calib.qr();
+    println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
+    println!(
+        "Calibration matrix size [{}x{}]",
+        calib.n_row(),
+        calib.n_col()
+    );
 
     let mut src = ceo::Source::new(1, pupil_size, 512);
     src.build("Vs", vec![0f32], vec![0f32], vec![0f32]);
@@ -203,8 +313,6 @@ fn glao_pssn(n_sample: usize) {
     let mut atm = ceo::Atmosphere::new();
     atm.gmt_build(pssn.r0(), pssn.oscale);
 
-    //    let mut data = BTreeMap::new();
-
     let now = Instant::now();
     for k_sample in 0..n_sample {
         gmt.reset();
@@ -212,24 +320,29 @@ fn glao_pssn(n_sample: usize) {
         gs.reset();
         gs.through(&mut atm).through(gmt).opd2phase().through(wfs);
         wfs.process();
-        //  data.insert("gs phase".to_string(), gs.phase().clone());
 
-        let s = wfs.centroids.from_dev();
+        let red_s = wfs
+            .centroids
+            .from_dev()
+            .chunks(m as usize)
+            .map(|x| {
+                let mut r: Vec<f32> = Vec::with_capacity(nnz);
+                for k in 0..m {
+                    if mask[k] > 0 {
+                        r.push(x[k])
+                    }
+                }
+                r
+            })
+            .flatten()
+            .collect::<Vec<f32>>();
+
         let mut mean_c = vec![0f32; calib.n_row()];
-        for c in s.as_slice().chunks(calib.n_row()) {
+        for c in red_s.chunks(calib.n_row()) {
             for k in 0..mean_c.len() {
-                mean_c[k] += c[k];
+                mean_c[k] += c[k] / 3f32;
             }
         }
-        let n = (n_lenslet*n_lenslet) as usize;
-        for k in 0..n {
-            if v[k]>0f32 {
-                mean_c[k] /= v[k];
-                mean_c[k+n] /= v[k];
-            }
-        }
-
-        //      data.insert("c".to_string(), s);
 
         src.reset();
         let wfe_rms_0 = src
@@ -237,7 +350,6 @@ fn glao_pssn(n_sample: usize) {
             .through(gmt)
             .opd2phase()
             .wfe_rms_10e(-9)[0];
-        //    data.insert("src phase".to_string(), src.phase().clone());
 
         let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
         d_mean_c.to_dev(&mut mean_c);
@@ -275,12 +387,15 @@ fn glao_pssn(n_sample: usize) {
     println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     println!("PSSn: {}", pssn.peek());
 
+    //let mut file = File::create("calibs.pkl").unwrap();
+    //pickle::to_writer(&mut file, &data, true).unwrap();
+
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
 }
 
 #[allow(dead_code)]
-fn glao_test(n_sample: usize) {
+fn glao_test(_n_sample: usize) {
     ceo::set_gpu(1);
 
     let pupil_size = 25.5;
@@ -328,25 +443,31 @@ fn glao_test(n_sample: usize) {
     let wfs = &mut glao_sys.wfs;
 
     //let mut lenslet_mask = wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize);
-    let mut v = vec![0usize;(n_lenslet*n_lenslet) as usize];
-    wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize).for_each( |x| {
-        let s = x.iter().map(|x| if *x>0f32 { 1 } else { 0 }).sum::<usize>();
-        println!("lenslet mask: {}",s);
-        for k in 0..v.len() {
-            v[k] += if x[k]>0f32 { 1 } else { 0 }
-        }
-    });
+    let mut v = vec![0usize; (n_lenslet * n_lenslet) as usize];
+    wfs.lenset_mask()
+        .from_dev()
+        .chunks((n_lenslet * n_lenslet) as usize)
+        .for_each(|x| {
+            let s = x
+                .iter()
+                .map(|x| if *x > 0f32 { 1 } else { 0 })
+                .sum::<usize>();
+            println!("lenslet mask: {}", s);
+            for k in 0..v.len() {
+                v[k] += if x[k] > 0f32 { 1 } else { 0 }
+            }
+        });
 
     let mut data = BTreeMap::new();
     data.insert("mask".to_owned(), v);
     let mut file = File::create("valid_lenslet.pkl").unwrap();
     pickle::to_writer(&mut file, &data, true).unwrap();
-
 }
 
 fn main() {
+    //optimal_kl();
     //uncorrected_atmosphere_pssn();
-    glao_pssn(100);
+    glao_pssn(1);
     //let onaxis_pssn = atmosphere_pssn(1, vec![0f32], vec![0f32]);
     //println!("On-axis PSSN: {:?}",onaxis_pssn);
 }
