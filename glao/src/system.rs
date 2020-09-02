@@ -1,38 +1,87 @@
 use ceo;
+use ceo::Conversion;
+use serde::{Deserialize, Serialize};
+use serde_pickle as pickle;
+use std::time::Instant;
+use std::fs::File;
 
-pub fn atmosphere_pssn(n_sample: usize, zen: Vec<f32>, azi: Vec<f32>) -> Vec<f32> {
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct GlaoField {
+    pub zenith_arcmin: Vec<f32>,
+    pub azimuth_degree: Vec<f32>,
+}
+
+pub fn atmosphere_pssn(
+    n_sample: usize,
+    r_not: f32,
+    l_not: f32,
+    n_layer: usize,
+    altitude: Vec<f32>,
+    xi0: Vec<f32>,
+) -> Vec<f32> {
     /*
     PSSn: [1.2741,1.2718,1.2664,1.2646,1.2633,1.2522] for
      * zen = [0,1,...,5]
      * azi = 0
      * n_sample = 100
-    */
+     */
+
+    let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
+    let glao_field: GlaoField =
+        pickle::from_reader(glao_field_reader).expect("File loading failed!");
+    let n_src = glao_field.zenith_arcmin.len();
+    println!("GLAO field ({} samples):", n_src);
+    println!(" * zenith : {:?}", glao_field.zenith_arcmin);
+    println!(" * azimuth: {:?}", glao_field.azimuth_degree);
+    let src_zen = glao_field
+        .zenith_arcmin
+        .iter()
+        .map(|x| x.from_arcmin())
+        .collect::<Vec<f32>>();
+    let src_azi = glao_field
+        .azimuth_degree
+        .iter()
+        .map(|x| x.to_radians())
+        .collect::<Vec<f32>>();
+
     let npx = 512;
-    let n_src: usize = zen.len();
+    let n_src: usize = src_zen.len();
     let mut src = ceo::Source::new(n_src as i32, 25.5, npx);
     let mag = vec![0.0; n_src];
-    src.build("Vs", zen, azi, mag);
+    src.build("Vs", src_zen, src_azi, mag);
 
     let mut gmt = ceo::Gmt::new();
     gmt.build_m1("bending modes", 0).build_m2(None);
     src.through(&mut gmt).xpupil();
     //println!("WFE RMS: {:?}nm", src.wfe_rms_10e(-9)[0]);
 
-    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> =
+        ceo::PSSn::from_r0_and_outerscale(r_not, l_not);
     pssn.build(&mut src);
-    //println!("PSSn: {}", pssn.reset(&mut src));
 
     let mut atm = ceo::Atmosphere::new();
-    atm.gmt_build(pssn.r0(), pssn.oscale);
+    atm.build(
+        pssn.r0(),
+        pssn.oscale,
+        n_layer as i32,
+        altitude,
+        xi0,
+        vec![0f32; n_layer],
+        vec![0f32; n_layer],
+    );
 
     //let now = Instant::now();
     for k in 0..n_sample {
-        src.reset();
-        src.through(&mut atm).through(&mut gmt).opd2phase();
+        src.through(&mut gmt).xpupil().through(&mut atm);
         pssn.accumulate(&mut src);
-        if k%100==0 { 
-            println!("{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",k,src.wfe_rms_10e(-9)[0],pssn.peek());
-        }//println!("PSSn: {}",pssn.peek());
+        if k % 100 == 0 {
+            println!(
+                "{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",
+                k,
+                src.wfe_rms_10e(-9)[0],
+                pssn.peek()
+            );
+        } //println!("PSSn: {}",pssn.peek());
         atm.reset();
     }
     /*
@@ -62,7 +111,12 @@ impl System {
             gs: ceo::Source::default(),
         }
     }
-    pub fn gmt_build(&mut self, m1_mode_type: &str, m1_n_mode: usize, m2_n_mode: usize) -> &mut Self {
+    pub fn gmt_build(
+        &mut self,
+        m1_mode_type: &str,
+        m1_n_mode: usize,
+        m2_n_mode: usize,
+    ) -> &mut Self {
         self.gmt
             .build_m1(m1_mode_type, m1_n_mode)
             .build_m2(Some(m2_n_mode));
