@@ -1,6 +1,7 @@
-use super::Source;
+use super::{Cu,Source};
 use std::{fmt, mem};
 use super::ceo_bindings::pssn as ceo_pssn;
+use serde::ser::{Serialize, Serializer, SerializeStruct};
 
 /// Wrapper for CEO PSSn
 ///
@@ -30,6 +31,7 @@ pub struct PSSn<S> {
     /// PSSn estimates
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>,
+    otf: Vec<f32>,
 }
 impl<S> PSSn<S> {
     /// Creates a new `PSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
@@ -41,6 +43,19 @@ impl<S> PSSn<S> {
             zenith_angle: 30_f32.to_radians(),
             estimates: vec![],
             mode: std::marker::PhantomData,
+            otf: Vec::new(),
+        }
+    }
+    /// Creates a new `PSSn` from r0 at zenith and L0 a zenith distance of 30 degrees
+    pub fn from_r0_and_outerscale(r0_at_zenith: f32, oscale: f32) -> PSSn<S> {
+        PSSn {
+            _c_: unsafe { mem::zeroed() },
+            r0_at_zenith: r0_at_zenith,
+            oscale: oscale,
+            zenith_angle: 30_f32.to_radians(),
+            estimates: vec![],
+            mode: std::marker::PhantomData,
+            otf: Vec::new(),
         }
     }
     /// Initializes PSSn atmosphere and telescope transfer function from a `Source` object
@@ -79,6 +94,26 @@ impl<S> PSSn<S> {
     pub fn r0(&self) -> f32 {
         (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
+    pub fn xotf(&mut self) -> &Self {
+        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.xotf(d_otf.as_ptr());
+        }
+        self.otf = d_otf.from_dev();
+        self
+    }
+}
+impl<T> Serialize for PSSn<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("PSSn", 1)?;
+        state.serialize_field("values",&self.estimates)?;
+        state.serialize_field("otf",&self.otf)?;
+        state.end()
+    }
 }
 impl PSSn<TelescopeError> {
     /// Estimates the `PSSn` values
@@ -116,3 +151,4 @@ impl<S> fmt::Display for PSSn<S> {
         )
     }
 }
+
