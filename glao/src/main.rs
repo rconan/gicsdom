@@ -2,16 +2,17 @@ mod system;
 
 use ceo;
 use ceo::Conversion;
+use csv;
 use rayon;
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use std::collections::BTreeMap;
 use std::f32;
 use std::fs::File;
 use std::time::Instant;
 
-use system::{atmosphere_pssn, System};
+use system::{atmosphere_pssn, GlaoField, System};
 
 #[derive(Debug, Serialize, Default)]
 struct Results {
@@ -21,6 +22,7 @@ struct Results {
 }
 
 #[allow(dead_code)]
+/*
 pub fn uncorrected_atmosphere_pssn() {
     let n_sample = 100;
     let n_src = 1;
@@ -75,7 +77,7 @@ pub fn uncorrected_atmosphere_pssn() {
     let mut file = File::create("atmosphere_pssn_100.pkl").unwrap();
     pickle::to_writer(&mut file, &data, true).unwrap();
 }
-
+*/
 #[allow(dead_code)]
 fn optimal_kl() {
     ceo::set_gpu(1);
@@ -212,8 +214,31 @@ fn optimal_kl() {
 }
 
 #[allow(dead_code)]
-fn glao_pssn(n_sample: usize) {
-    ceo::set_gpu(1);
+fn glao_pssn(
+    n_sample: usize,
+    r_not: f32,
+    l_not: f32,
+    n_layer: usize,
+    altitude: Vec<f32>,
+    xi0: Vec<f32>,
+) {
+    let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
+    let glao_field: GlaoField =
+        pickle::from_reader(glao_field_reader).expect("File loading failed!");
+    let n_src = glao_field.zenith_arcmin.len();
+    println!("GLAO field ({} samples):", n_src);
+    println!(" * zenith : {:?}", glao_field.zenith_arcmin);
+    println!(" * azimuth: {:?}", glao_field.azimuth_degree);
+    let src_zen = glao_field
+        .zenith_arcmin
+        .iter()
+        .map(|x| x.from_arcmin())
+        .collect::<Vec<f32>>();
+    let src_azi = glao_field
+        .azimuth_degree
+        .iter()
+        .map(|x| x.to_radians())
+        .collect::<Vec<f32>>();
 
     let pupil_size = 25.5;
     let n_lenslet = 48;
@@ -223,7 +248,7 @@ fn glao_pssn(n_sample: usize) {
 
     let n_kl = 90;
 
-    let n_gs = 3;
+    let n_gs = 4;
     let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
     let gs_azi = (0..n_gs)
         .map(|x| (x as f32) * 2f32 * f32::consts::PI / n_gs as f32)
@@ -258,7 +283,7 @@ fn glao_pssn(n_sample: usize) {
         });
     let mask = v
         .iter()
-        .map(|&x| if x == 3usize { 1u8 } else { 0u8 })
+        .map(|&x| if x == n_gs { 1u8 } else { 0u8 })
         .collect::<Vec<u8>>();
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
     println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
@@ -302,26 +327,45 @@ fn glao_pssn(n_sample: usize) {
         calib.n_col()
     );
 
-    let mut src = ceo::Source::new(1, pupil_size, 512);
-    src.build("Vs", vec![0f32], vec![0f32], vec![0f32]);
+    let mut src = ceo::Source::new(n_src as i32, pupil_size, 512);
+    src.build("Vs", src_zen, src_azi, vec![0f32; n_src]);
     gmt.reset();
     src.through(gmt).xpupil();
 
-    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    //let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> =
+        ceo::PSSn::from_r0_and_outerscale(r_not, l_not);
     pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
-    atm.gmt_build(pssn.r0(), pssn.oscale);
+    atm.build(
+        pssn.r0(),
+        pssn.oscale,
+        n_layer as i32,
+        altitude,
+        xi0,
+        vec![0f32; n_layer],
+        vec![0f32; n_layer],
+    );
 
+    let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
+    let mut mean_c = vec![0f32; calib.n_row()];
+    let mut x = ceo::Cu::<f32>::vector(calib.n_col());
+    x.malloc();
     let now = Instant::now();
     for k_sample in 0..n_sample {
-        gmt.reset();
+        let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
+        let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+        gmt.set_m2_modes(&mut b);
+
         wfs.reset();
         gs.through(gmt).xpupil().through(&mut atm).through(wfs);
         wfs.process();
 
-        let red_s = wfs
-            .centroids
+        for x in &mut mean_c {
+            *x = 0f32;
+        }
+        wfs.centroids
             .from_dev()
             .chunks(m as usize)
             .map(|x| {
@@ -334,23 +378,19 @@ fn glao_pssn(n_sample: usize) {
                 r
             })
             .flatten()
-            .collect::<Vec<f32>>();
+            .collect::<Vec<f32>>()
+            .chunks(calib.n_row())
+            .for_each(|c| {
+                for k in 0..mean_c.len() {
+                    mean_c[k] += c[k] / n_gs as f32;
+                }
+            });
 
-        let mut mean_c = vec![0f32; calib.n_row()];
-        for c in red_s.chunks(calib.n_row()) {
-            for k in 0..mean_c.len() {
-                mean_c[k] += c[k] / 3f32;
-            }
-        }
+        //let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
 
-        let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
-
-        let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
         d_mean_c.to_dev(&mut mean_c);
-
-        let mut x = calib.qr_solve(&mut d_mean_c);
+        calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
         let h_x = x.from_dev();
-        let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut k = 0;
         for s in 0..7 {
             for a in 1..n_kl {
@@ -359,12 +399,13 @@ fn glao_pssn(n_sample: usize) {
             }
         }
 
-        let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
-        gmt.set_m2_modes(&mut m);
+        let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+        gmt.set_m2_modes(&mut b);
 
         src.through(gmt).xpupil().through(&mut atm);
         pssn.integrate(&mut src);
-        let wfe_rms = src.wfe_rms_10e(-9)[0];
+
+        /*let wfe_rms = src.wfe_rms_10e(-9)[0];
         if k_sample % 100 == 0 {
             println!(
                 "#{:6}: WFE RMS: {:5.0}/{:5.0}nm ; PSSn: {}",
@@ -373,96 +414,105 @@ fn glao_pssn(n_sample: usize) {
                 wfe_rms,
                 pssn.peek()
             );
-        }
+        }*/
 
         atm.reset()
     }
     println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     println!("PSSn: {}", pssn.peek());
 
-    //let mut file = File::create("gs.pkl").unwrap();
-    //pickle::to_writer(&mut file, &data, true).unwrap();
+    let mut file = File::create("pssn.pkl").unwrap();
+    pickle::to_writer(&mut file, &pssn.xotf(), true).unwrap();
 
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "UPPERCASE")]
+struct Cn2 {
+    idx: usize,
+    date: String,
+    utc: String,
+    m40: f32,
+    m125: f32,
+    m350: f32,
+    m1500: f32,
+    m4000: f32,
+    m8000: f32,
+    m16000: f32,
+    dimm: f64,
+    wdir: f64,
+    wspd: f64,
+}
+
 #[allow(dead_code)]
-fn glao_test(_n_sample: usize) {
-    ceo::set_gpu(1);
-
-    let pupil_size = 25.5;
-    let n_lenslet = 48;
-    //let n_actuator = n_lenslet + 1;
-    let n_px_lenslet = 16;
-    let wfs_intensity_threshold = 0.5;
-
-    let n_kl = 170;
-
-    /*
-    let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
-    on_axis_sys
-        .gmt_build("bending modes", 27, n_kl)
-        .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
-        .wfs_calibrate(0f64)
-        .through();
-    let now = Instant::now();
-    let mut calib = on_axis_sys.m2_mode_calibrate();
-
-    calib.qr();
-    println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
-    println!(
-        "Calibration matrix size [{}x{}]",
-        calib.n_row(),
-        calib.n_col()
-    );
-     */
-
-    let n_gs = 3;
-    let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
-    let gs_azi = (0..n_gs)
-        .map(|x| (x as f32) * 2f32 * f32::consts::PI / n_gs as f32)
-        .collect::<Vec<f32>>();
-    let mut glao_sys = System::new(pupil_size, n_gs as i32, n_lenslet, n_px_lenslet);
-    glao_sys
-        .gmt_build("bending modes", 27, n_kl)
-        .wfs_build("Vs", gs_zen, gs_azi, vec![0f32; n_gs])
-        .wfs_calibrate(wfs_intensity_threshold)
-        .through();
-    println!("GLAO centroids #: {}", glao_sys.wfs.n_centroids);
-
-    //let gs = &mut glao_sys.gs;
-    //let gmt = &mut glao_sys.gmt;
-    let wfs = &mut glao_sys.wfs;
-
-    //let mut lenslet_mask = wfs.lenset_mask().from_dev().chunks((n_lenslet*n_lenslet) as usize);
-    let mut v = vec![0usize; (n_lenslet * n_lenslet) as usize];
-    wfs.lenset_mask()
-        .from_dev()
-        .chunks((n_lenslet * n_lenslet) as usize)
-        .for_each(|x| {
-            let s = x
-                .iter()
-                .map(|x| if *x > 0f32 { 1 } else { 0 })
-                .sum::<usize>();
-            println!("lenslet mask: {}", s);
-            for k in 0..v.len() {
-                v[k] += if x[k] > 0f32 { 1 } else { 0 }
-            }
-        });
-    /*
-    let mut data = BTreeMap::new();
-    data.insert("mask".to_owned(), v);
-    let mut file = File::create("valid_lenslet.pkl").unwrap();
-    pickle::to_writer(&mut file, &data, true).unwrap();
-     */
+fn test_pssn_serialize() {
+    let mut gmt = ceo::Gmt::new();
+    gmt.build_m1("bending modes", 1).build_m2(Some(1));
+    let mut src = ceo::Source::new(1, 25.5, 512);
+    src.build("V", vec![0f32], vec![0f32], vec![0f32]);
+    src.through(&mut gmt).xpupil();
+    let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    pssn.build(&mut src);
+    src.through(&mut gmt).xpupil();
+    pssn.integrate(&mut src);
+    pssn.peek().xotf();
+    let mut writer = File::create("pssn_serialize_test.pkl").unwrap();
+    pickle::to_writer(&mut writer, &pssn, true).unwrap();
 }
 
 fn main() {
-    //optimal_kl();
-    //uncorrected_atmosphere_pssn();
-    glao_pssn(1);
-    //let now = Instant::now();
-    //let onaxis_pssn = atmosphere_pssn(100, vec![0f32], vec![0f32]);
-    //println!("On-axis PSSN: {:?} ({}ms)",onaxis_pssn,now.elapsed().as_millis());
+    test_pssn_serialize();
+    /*
+    let mut cn2_reader = csv::Reader::from_path("glao_cn2.csv").unwrap();
+    let mut cn2_profiles: Vec<Cn2> = vec![];
+    for result in cn2_reader.deserialize() {
+        cn2_profiles.push(result.unwrap());
+    }
+    let cn2_id = 0;
+    println!("Cn2 profile #{}: {:?}", cn2_id + 1, cn2_profiles[cn2_id]);
+
+    let cn2_prof = &cn2_profiles[cn2_id];
+    let tub_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32];
+    let turb_cn2_xi0 = [
+        cn2_prof.m40,
+        cn2_prof.m125,
+        cn2_prof.m350,
+        cn2_prof.m1500,
+        cn2_prof.m4000,
+        cn2_prof.m8000,
+        cn2_prof.m16000,
+    ];
+    let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
+    let atm_oscale = 25f32;
+    println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
+     */
+    /*
+    glao_pssn(
+        1,
+        atm_r0 as f32,
+        atm_oscale,
+        7,
+        tub_cn2_height.to_vec(),
+        turb_cn2_xi0.to_vec(),
+    );
+     */
+
+    /*
+    let now = Instant::now();
+    let onaxis_pssn = atmosphere_pssn(
+        100,
+        atm_r0 as f32,
+        atm_oscale,
+        7,
+        tub_cn2_height.to_vec(),
+        turb_cn2_xi0.to_vec(),
+    );
+    println!(
+        "On-axis PSSN: {:?} ({}ms)",
+        onaxis_pssn,
+        now.elapsed().as_millis()
+    );
+    */
 }
