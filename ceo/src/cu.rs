@@ -102,6 +102,11 @@ impl Cu<f32> {
         }
         x
     }
+    pub fn qr_solve_as_ptr(&mut self, x: &mut Cu<f32>, b: &mut Cu<f32>) {
+        unsafe {
+            self._c_f32.qr_solve(&mut x._c_f32, &mut b._c_f32);
+        }
+    }
 }
 impl<T> Drop for Cu<T> {
     fn drop(&mut self) {
