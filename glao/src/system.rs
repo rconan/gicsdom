@@ -18,7 +18,8 @@ pub fn atmosphere_pssn(
     n_layer: usize,
     altitude: Vec<f32>,
     xi0: Vec<f32>,
-) -> Vec<f32> {
+    filename: &str,
+) {
     /*
     PSSn: [1.2741,1.2718,1.2664,1.2646,1.2633,1.2522] for
      * zen = [0,1,...,5]
@@ -30,9 +31,9 @@ pub fn atmosphere_pssn(
     let glao_field: GlaoField =
         pickle::from_reader(glao_field_reader).expect("File loading failed!");
     let n_src = glao_field.zenith_arcmin.len();
-    println!("GLAO field ({} samples):", n_src);
-    println!(" * zenith : {:?}", glao_field.zenith_arcmin);
-    println!(" * azimuth: {:?}", glao_field.azimuth_degree);
+    //println!("GLAO field ({} samples):", n_src);
+    //println!(" * zenith : {:?}", glao_field.zenith_arcmin);
+    //println!(" * azimuth: {:?}", glao_field.azimuth_degree);
     let src_zen = glao_field
         .zenith_arcmin
         .iter()
@@ -45,7 +46,6 @@ pub fn atmosphere_pssn(
         .collect::<Vec<f32>>();
 
     let npx = 512;
-    let n_src: usize = src_zen.len();
     let mut src = ceo::Source::new(n_src as i32, 25.5, npx);
     let mag = vec![0.0; n_src];
     src.build("Vs", src_zen, src_azi, mag);
@@ -73,7 +73,8 @@ pub fn atmosphere_pssn(
     //let now = Instant::now();
     for k in 0..n_sample {
         src.through(&mut gmt).xpupil().through(&mut atm);
-        pssn.accumulate(&mut src);
+        pssn.integrate(&mut src);
+        /*
         if k % 100 == 0 {
             println!(
                 "{:6}: WFE RMS: {:5.0}nm ; PSSn: {}",
@@ -81,7 +82,8 @@ pub fn atmosphere_pssn(
                 src.wfe_rms_10e(-9)[0],
                 pssn.peek()
             );
-        } //println!("PSSn: {}",pssn.peek());
+        }
+        */
         atm.reset();
     }
     /*
@@ -91,8 +93,9 @@ pub fn atmosphere_pssn(
     );
     println!("PSSn: {}", pssn.reset(&mut src));
     */
-    pssn.peek().reset();
-    pssn.estimates.clone()
+    pssn.peek().xotf();
+    let mut file = File::create(filename).unwrap();
+    pickle::to_writer(&mut file, &pssn, true).unwrap();
 }
 
 #[allow(dead_code)]

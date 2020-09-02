@@ -221,6 +221,7 @@ fn glao_pssn(
     n_layer: usize,
     altitude: Vec<f32>,
     xi0: Vec<f32>,
+    filename: &str
 ) {
     let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
     let glao_field: GlaoField =
@@ -418,11 +419,12 @@ fn glao_pssn(
 
         atm.reset()
     }
-    println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
-    println!("PSSn: {}", pssn.peek());
+    //println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
+    //println!("PSSn: {}", pssn.peek());
+    pssn.peek().xotf();
 
-    let mut file = File::create("pssn.pkl").unwrap();
-    pickle::to_writer(&mut file, &pssn.xotf(), true).unwrap();
+    let mut file = File::create(filename).unwrap();
+    pickle::to_writer(&mut file, &pssn, true).unwrap();
 
     //    let mut file = File::create("glao_pssn.pkl").unwrap();
     //  pickle::to_writer(&mut file, &data, true).unwrap();
@@ -463,56 +465,91 @@ fn test_pssn_serialize() {
 }
 
 fn main() {
-    test_pssn_serialize();
-    /*
     let mut cn2_reader = csv::Reader::from_path("glao_cn2.csv").unwrap();
     let mut cn2_profiles: Vec<Cn2> = vec![];
     for result in cn2_reader.deserialize() {
         cn2_profiles.push(result.unwrap());
     }
-    let cn2_id = 0;
-    println!("Cn2 profile #{}: {:?}", cn2_id + 1, cn2_profiles[cn2_id]);
 
-    let cn2_prof = &cn2_profiles[cn2_id];
-    let tub_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32];
-    let turb_cn2_xi0 = [
-        cn2_prof.m40,
-        cn2_prof.m125,
-        cn2_prof.m350,
-        cn2_prof.m1500,
-        cn2_prof.m4000,
-        cn2_prof.m8000,
-        cn2_prof.m16000,
-    ];
-    let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
-    let atm_oscale = 25f32;
-    println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
-     */
-    /*
-    glao_pssn(
-        1,
-        atm_r0 as f32,
-        atm_oscale,
-        7,
-        tub_cn2_height.to_vec(),
-        turb_cn2_xi0.to_vec(),
-    );
-     */
+    let n_gpu = 8 as usize;
+    let n_thread = 24;
 
-    /*
-    let now = Instant::now();
-    let onaxis_pssn = atmosphere_pssn(
-        100,
-        atm_r0 as f32,
-        atm_oscale,
-        7,
-        tub_cn2_height.to_vec(),
-        turb_cn2_xi0.to_vec(),
-    );
-    println!(
-        "On-axis PSSN: {:?} ({}ms)",
-        onaxis_pssn,
-        now.elapsed().as_millis()
-    );
-    */
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(n_thread)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        cn2_profiles.par_iter().for_each(|cn2_prof| {
+            let thread_id = pool.current_thread_index().unwrap();
+            ceo::set_gpu((thread_id % n_gpu) as i32);
+
+            let turb_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32];
+            let turb_cn2_xi0 = [
+                cn2_prof.m40,
+                cn2_prof.m125,
+                cn2_prof.m350,
+                cn2_prof.m1500,
+                cn2_prof.m4000,
+                cn2_prof.m8000,
+                cn2_prof.m16000,
+            ];
+            let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
+            let atm_oscale = 25f32;
+            println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
+
+            let n_sample: usize = 1000;
+
+            let filename = format!(
+                "Results/atmosphere_pssn_{:04}cn2_{:04}",
+                cn2_prof.idx, n_sample
+            );
+            atmosphere_pssn(
+                n_sample,
+                atm_r0 as f32,
+                atm_oscale,
+                7,
+                turb_cn2_height.to_vec(),
+                turb_cn2_xi0.to_vec(),
+                &filename,
+            );
+        })
+    });
+
+    pool.install(|| {
+        cn2_profiles.par_iter().for_each(|cn2_prof| {
+            let thread_id = pool.current_thread_index().unwrap();
+            ceo::set_gpu((thread_id % n_gpu) as i32);
+
+            let turb_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32];
+            let turb_cn2_xi0 = [
+                cn2_prof.m40,
+                cn2_prof.m125,
+                cn2_prof.m350,
+                cn2_prof.m1500,
+                cn2_prof.m4000,
+                cn2_prof.m8000,
+                cn2_prof.m16000,
+            ];
+            let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
+            let atm_oscale = 25f32;
+            println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
+
+            let n_sample: usize = 1000;
+
+            let filename = format!(
+                "Results/glao_pssn_{:04}cn2_{:04}",
+                cn2_prof.idx, n_sample
+            );
+            glao_pssn(
+                n_sample,
+                atm_r0 as f32,
+                atm_oscale,
+                7,
+                turb_cn2_height.to_vec(),
+                turb_cn2_xi0.to_vec(),
+                &filename
+            );
+        })
+    });
 }
