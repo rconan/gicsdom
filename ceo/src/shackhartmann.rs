@@ -98,6 +98,12 @@ impl GeometricShackHartmann {
         mask.from_ptr(self._c_.valid_lenslet.f);
         mask
     }
+    pub fn lenlet_flux(&mut self) -> Cu<f32> {
+        let mut flux: Cu<f32> =
+            Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
+        flux.from_ptr(self._c_.data_proc.d__mass);
+        flux
+    }
 }
 impl Drop for GeometricShackHartmann {
     fn drop(&mut self) {
