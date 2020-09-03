@@ -32,6 +32,14 @@ fn main() {
     for k in 1..h {
         u.push(k as f64 - h as f64);
     }
+    let mut r: Vec<f64> = Vec::with_capacity( n_otf*n_otf );
+    for i in 0..n_otf {
+        let x = u[i] * d;
+        for j in 0..n_otf {
+            let y = u[j] * d;
+            r.push( x.hypot(y));
+        }
+    }
 
     //println!("h: {}; u len: {}, [{},{},{},{}]",h,u.len(),u[0],u[h-1],u[h],u[u.len()-1]);
     let data_path = Path::new("atmosphere_pssn_3218cn2_1000");
@@ -45,14 +53,6 @@ fn main() {
     };
     println!("... in {}s", now.elapsed().as_secs());
 
-    let mut r: Vec<f64> = Vec::with_capacity( n_otf*n_otf );
-    for i in 0..n_otf {
-        let x = u[i] * d;
-        for j in 0..n_otf {
-            let y = u[j] * d;
-            r.push( x.hypot(y));
-        }
-    }
     let fwhm_def = |e: f64, o: &[f32]| -> f64 {
         let mut s = 0f64;
         for (_r,&_o) in r.iter().zip(o.iter().step_by(2)) {
