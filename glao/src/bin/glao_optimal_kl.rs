@@ -1,10 +1,14 @@
 use ceo::Conversion;
 use glao::system::System;
+use rayon::prelude::*;
+use serde_pickle as pickle;
+use std::collections::BTreeMap;
 use std::f32;
+use std::fs::File;
 use std::time::Instant;
 
 #[allow(unused_variables)]
-fn glao(n_kl: usize, n_sample: usize) -> (f32,f32) {
+fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -182,14 +186,33 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32,f32) {
         */
         atm.reset()
     }
-//    println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
+    //    println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     let a_wfe_rms = (a_wfe_var / n_sample as f32).sqrt();
     let pssn_val = pssn.peek().estimates[0];
-    println!("#{:03} WFE RMS: {:5.0} ; PSSn: {}",n_kl,a_wfe_rms, pssn_val);
-    return (a_wfe_rms, pssn_val)
+    println!(
+        "#{:03} WFE RMS: {:5.0} ; PSSn: {}",
+        n_kl, a_wfe_rms, pssn_val
+    );
+    return (a_wfe_rms, pssn_val);
 }
 
 fn main() {
-    let results = (20..201).step_by(10).map(|n_kl| glao(n_kl,10)).collect::<Vec<(f32,f32)>>();
-    println!("Results: {:?}",results);
+    let n_gpu = 8 as usize;
+    let results = (20..201)
+        .map(|x| x)
+        .collect::<Vec<usize>>()
+        .par_iter()
+        .step_by(10)
+        .map(|n_kl| {
+            let thread_id = rayon::current_thread_index().unwrap();
+            ceo::set_gpu((thread_id % n_gpu) as i32);
+            glao(*n_kl, 100)
+        })
+        .collect::<Vec<(f32, f32)>>();
+    println!("Results: {:?}", results);
+
+    let mut data = BTreeMap::new();
+    data.insert("results".to_owned(), results);
+    let mut file = File::open("glao_optimal_kl.pkl").unwrap();
+    pickle::to_writer(&mut file, &data, true).unwrap();
 }
