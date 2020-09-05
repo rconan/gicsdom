@@ -11,6 +11,25 @@ pub struct GlaoField {
     pub azimuth_degree: Vec<f32>,
 }
 
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "UPPERCASE")]
+pub struct Cn2 {
+    pub idx: usize,
+    pub date: String,
+    pub utc: String,
+    pub m40: f32,
+    pub m125: f32,
+    pub m350: f32,
+    pub m1500: f32,
+    pub m4000: f32,
+    pub m8000: f32,
+    pub m16000: f32,
+    pub dimm: f64,
+    pub wdir: f64,
+    pub wspd: f64,
+}
+
 pub fn atmosphere_pssn(
     n_sample: usize,
     r_not: f32,
