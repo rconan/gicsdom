@@ -8,7 +8,7 @@ use std::fs::File;
 use std::time::Instant;
 
 #[allow(unused_variables)]
-fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
+fn glao(n_kl: usize, n_sample: usize) -> (f32, f32, Vec<f32>, Vec<f32>) {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -52,7 +52,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         });
     let mask = v
         .iter()
-        .map(|&x| if x == n_gs { 1u8 } else { 0u8 })
+        .map(|&x| if x > 0 { 1u8 } else { 0u8 })
         .collect::<Vec<u8>>();
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
     //println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
@@ -118,8 +118,9 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
 
     let mut a_wfe_var = 0f32;
 
+    let mut ps0: Vec<f32> = vec![];
     let now = Instant::now();
-    for k_sample in 0..n_sample {
+    for _k_sample in 0..n_sample {
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);
@@ -152,7 +153,8 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
                 }
             });
 
-        //let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
+        let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
+        ps0 = src.phase().clone();
 
         d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
@@ -190,15 +192,17 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
     let a_wfe_rms = (a_wfe_var / n_sample as f32).sqrt();
     let pssn_val = pssn.peek().estimates[0];
     println!(
-        "#{:03} WFE RMS: {:5.0} ; PSSn: {}",
+        "#{:03} WFE RMS: {:5.0}nm ; PSSn: {}",
         n_kl, a_wfe_rms, pssn_val
     );
-    return (a_wfe_rms, pssn_val);
+    return (a_wfe_rms, pssn_val, ps0, src.phase().clone());
 }
 
 fn main() {
+    let now = Instant::now();
+    /*
     let n_gpu = 8 as usize;
-    let results = (20..201)
+    let results = (20..61)
         .map(|x| x)
         .collect::<Vec<usize>>()
         .par_iter()
@@ -209,10 +213,13 @@ fn main() {
             glao(*n_kl, 100)
         })
         .collect::<Vec<(f32, f32)>>();
-    println!("Results: {:?}", results);
+    //println!("Results: {:?}", results);
+    */
+    let results = glao(70, 2);
+    println!("Elapsed time: {}s", now.elapsed().as_secs());
 
     let mut data = BTreeMap::new();
     data.insert("results".to_owned(), results);
-    let mut file = File::open("glao_optimal_kl.pkl").unwrap();
+    let mut file = File::create("glao_optimal_kl.pkl").unwrap();
     pickle::to_writer(&mut file, &data, true).unwrap();
 }
