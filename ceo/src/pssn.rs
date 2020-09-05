@@ -110,6 +110,8 @@ impl<T> Serialize for PSSn<T> {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("PSSn", 1)?;
+        state.serialize_field("r0",&self.r0())?;
+        state.serialize_field("L0",&self.oscale)?;
         state.serialize_field("values",&self.estimates)?;
         state.serialize_field("otf",&self.otf)?;
         state.end()
