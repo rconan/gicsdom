@@ -52,7 +52,7 @@ fn glao_pssn(
     let n_px_lenslet = 16;
     let wfs_intensity_threshold = 0.5;
 
-    let n_kl = 70;
+    let n_kl = 170;
 
     let n_gs = 4;
     let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
@@ -252,44 +252,6 @@ fn main() {
         .num_threads(n_thread)
         .build()
         .unwrap();
-
-    pool.install(|| {
-        cn2_profiles.par_iter().for_each(|cn2_prof| {
-            let thread_id = pool.current_thread_index().unwrap();
-            ceo::set_gpu((thread_id % n_gpu) as i32);
-
-            let turb_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32]
-                .iter()
-                .map(|x| x * secz)
-                .collect::<Vec<f32>>();
-            let turb_cn2_xi0 = [
-                cn2_prof.m40,
-                cn2_prof.m125,
-                cn2_prof.m350,
-                cn2_prof.m1500,
-                cn2_prof.m4000,
-                cn2_prof.m8000,
-                cn2_prof.m16000,
-            ];
-            let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
-            let atm_oscale = 25f32;
-            println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
-
-            let filename = format!(
-                "Results/atmosphere_pssn_{:04}cn2_{:04}.pkl",
-                cn2_prof.idx, n_sample
-            );
-            atmosphere_pssn(
-                n_sample,
-                atm_r0 as f32,
-                atm_oscale,
-                7,
-                turb_cn2_height,
-                turb_cn2_xi0.to_vec(),
-                &filename,
-            );
-        })
-    });
 
     pool.install(|| {
         cn2_profiles.par_iter().for_each(|cn2_prof| {

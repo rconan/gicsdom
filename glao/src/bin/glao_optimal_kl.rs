@@ -1,3 +1,4 @@
+use indicatif::ParallelProgressIterator;
 use ceo::Conversion;
 use glao::system::System;
 use rayon::prelude::*;
@@ -8,7 +9,7 @@ use std::fs::File;
 use std::time::Instant;
 
 #[allow(unused_variables)]
-fn glao(n_kl: usize, n_sample: usize) -> (f32, f32, Vec<f32>, Vec<f32>) {
+fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -109,7 +110,16 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32, Vec<f32>, Vec<f32>) {
     pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
-    atm.gmt_build(pssn.r0(), pssn.oscale);
+//    atm.gmt_build(pssn.r0(), pssn.oscale);
+    atm.build(
+        pssn.r0(),
+        pssn.oscale,
+        1i32,
+        vec![500f32],
+        vec![1f32],
+        vec![0f32],
+        vec![0f32],
+    );
 
     let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
     let mut mean_c = vec![0f32; calib.n_row()];
@@ -153,8 +163,8 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32, Vec<f32>, Vec<f32>) {
                 }
             });
 
-        let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
-        ps0 = src.phase().clone();
+        //let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
+        //ps0 = src.phase().clone();
 
         d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
@@ -191,32 +201,33 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32, Vec<f32>, Vec<f32>) {
     //    println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     let a_wfe_rms = (a_wfe_var / n_sample as f32).sqrt();
     let pssn_val = pssn.peek().estimates[0];
-    println!(
+    /*println!(
         "#{:03} WFE RMS: {:5.0}nm ; PSSn: {}",
         n_kl, a_wfe_rms, pssn_val
-    );
-    return (a_wfe_rms, pssn_val, ps0, src.phase().clone());
+    );*/
+    return (a_wfe_rms, pssn_val);
 }
 
 fn main() {
     let now = Instant::now();
-    /*
+
     let n_gpu = 8 as usize;
-    let results = (20..61)
+    let results = (20..201)
+        .step_by(10)
         .map(|x| x)
         .collect::<Vec<usize>>()
         .par_iter()
-        .step_by(10)
+        .progress_count(10)
         .map(|n_kl| {
             let thread_id = rayon::current_thread_index().unwrap();
             ceo::set_gpu((thread_id % n_gpu) as i32);
             glao(*n_kl, 100)
         })
         .collect::<Vec<(f32, f32)>>();
-    //println!("Results: {:?}", results);
-    */
-    let results = glao(70, 2);
-    println!("Elapsed time: {}s", now.elapsed().as_secs());
+    println!("Results: {:?}", results);
+
+    //let results = glao(70, 2);
+    //println!("Elapsed time: {}s", now.elapsed().as_secs());
 
     let mut data = BTreeMap::new();
     data.insert("results".to_owned(), results);
