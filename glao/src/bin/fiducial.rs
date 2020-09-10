@@ -1,22 +1,20 @@
-use indicatif::ParallelProgressIterator;
+use ceo;
 use ceo::Conversion;
-use glao::system::System;
+use rayon;
 use rayon::prelude::*;
-use serde_pickle as pickle;
-use std::collections::BTreeMap;
 use std::f32;
-use std::fs::File;
 use std::time::Instant;
 
-#[allow(unused_variables)]
-fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
+use glao::system::System;
+
+fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> Vec<f32> {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
     let n_px_lenslet = 16;
     let wfs_intensity_threshold = 0.5;
 
-    //let n_kl = 90;
+    let n_kl = 70;
 
     let n_gs = 4;
     let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
@@ -29,7 +27,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         .wfs_build("Vs", gs_zen, gs_azi, vec![0f32; n_gs])
         .wfs_calibrate(wfs_intensity_threshold)
         .through();
-    //println!("GLAO centroids #: {}", glao_sys.wfs.n_centroids);
+    println!("GLAO centroids #: {}", glao_sys.wfs.n_centroids);
 
     let gs = &mut glao_sys.gs;
     let gmt = &mut glao_sys.gmt;
@@ -46,7 +44,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
                 .iter()
                 .map(|x| if *x > 0f32 { 1 } else { 0 })
                 .sum::<usize>();
-            //println!("lenslet mask: {}", s);
+            println!("lenslet mask: {}", s);
             for k in 0..v.len() {
                 v[k] += if x[k] > 0f32 { 1usize } else { 0usize };
             }
@@ -56,7 +54,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         .map(|&x| if x > 0 { 1u8 } else { 0u8 })
         .collect::<Vec<u8>>();
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
-    //println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
+    println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
 
     let n = 7 * (n_kl - 1);
     let m = (n_lenslet * n_lenslet) as usize;
@@ -84,24 +82,22 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         })
         .flatten()
         .collect::<Vec<f32>>();
-        //println!("Reduced calibration: {}", reduced_calib.len());
+        println!("Reduced calibration: {}", reduced_calib.len());
 
         calib.to_dev(&mut reduced_calib);
     }
     //full_calib.qr();
     calib.qr();
-    /*
     println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
     println!(
         "Calibration matrix size [{}x{}]",
         calib.n_row(),
         calib.n_col()
     );
-     */
 
-    let n_src = 1;
+    let n_src = src_zen.len();
     let mut src = ceo::Source::new(n_src as i32, pupil_size, 512);
-    src.build("Vs", vec![0f32], vec![0f32], vec![0f32]);
+    src.build("Vs", src_zen, src_azi, vec![0f32; n_src]);
     gmt.reset();
     src.through(gmt).xpupil();
 
@@ -110,25 +106,13 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
     pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
-//    atm.gmt_build(pssn.r0(), pssn.oscale);
-    atm.build(
-        pssn.r0(),
-        pssn.oscale,
-        1i32,
-        vec![500f32],
-        vec![1f32],
-        vec![0f32],
-        vec![0f32],
-    );
+    atm.gmt_build(pssn.r0(), pssn.oscale);
 
     let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
     let mut mean_c = vec![0f32; calib.n_row()];
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
-
-    let mut a_wfe_var = 0f32;
-
-    let now = Instant::now();
+    //let now = Instant::now();
     for _k_sample in 0..n_sample {
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
@@ -163,7 +147,6 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
             });
 
         //let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
-        //ps0 = src.phase().clone();
 
         d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
@@ -182,9 +165,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         src.through(gmt).xpupil().through(&mut atm);
         pssn.integrate(&mut src);
 
-        let wfe_rms = src.wfe_rms_10e(-9)[0];
-        a_wfe_var += wfe_rms * wfe_rms;
-        /*
+        /*let wfe_rms = src.wfe_rms_10e(-9)[0];
         if k_sample % 100 == 0 {
             println!(
                 "#{:6}: WFE RMS: {:5.0}/{:5.0}nm ; PSSn: {}",
@@ -193,43 +174,41 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
                 wfe_rms,
                 pssn.peek()
             );
-        }
-        */
+        }*/
+
         atm.reset()
     }
-    //    println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
-    let a_wfe_rms = (a_wfe_var / n_sample as f32).sqrt();
-    let pssn_val = pssn.peek().estimates[0];
-    /*println!(
-        "#{:03} WFE RMS: {:5.0}nm ; PSSn: {}",
-        n_kl, a_wfe_rms, pssn_val
-    );*/
-    return (a_wfe_rms, pssn_val);
+    //println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
+    //println!("PSSn: {}", pssn.peek());
+    pssn.peek();
+    pssn.estimates.clone()
 }
 
 fn main() {
-    let _now = Instant::now();
-
     let n_gpu = 8 as usize;
-    let results = (20..201)
-        .step_by(10)
-        .map(|x| x)
-        .collect::<Vec<usize>>()
-        .par_iter()
-        .progress_count(10)
-        .map(|n_kl| {
-            let thread_id = rayon::current_thread_index().unwrap();
-            ceo::set_gpu((thread_id % n_gpu) as i32);
-            glao(*n_kl, 100)
-        })
-        .collect::<Vec<(f32, f32)>>();
-    println!("Results: {:?}", results);
+    let n_thread = 24;
 
-    //let results = glao(70, 2);
-    //println!("Elapsed time: {}s", now.elapsed().as_secs());
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(n_thread)
+        .build()
+        .unwrap();
 
-    let mut data = BTreeMap::new();
-    data.insert("results".to_owned(), results);
-    let mut file = File::create("glao_optimal_kl.pkl").unwrap();
-    pickle::to_writer(&mut file, &data, true).unwrap();
+    let o = (0..8).map(|x| x as f32).collect::<Vec<f32>>();
+
+    let fid_pssn = pool.install(|| {
+        o.par_iter()
+            .map(|oo| {
+                let thread_id = pool.current_thread_index().unwrap();
+                ceo::set_gpu((thread_id % n_gpu) as i32);
+                let n_sample: usize = 100;
+                //let src_zen: Vec<f32> = (0..6).map(|x| (x as f32).from_arcmin() ).collect::<Vec<f32>>();
+                //let src_azi: Vec<f32> = vec![oo*f32::consts::PI/4f32;6];
+                let src_zen: Vec<f32> = vec![6f32.from_arcmin()];
+                let src_azi: Vec<f32> = vec![oo * f32::consts::PI / 4f32];
+
+                glao_pssn_fiducial(n_sample, src_zen, src_azi)
+            })
+            .collect::<Vec<_>>()
+    });
+    println!("PSSn: {:?}", fid_pssn);
 }
