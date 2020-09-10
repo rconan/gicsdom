@@ -5,7 +5,7 @@ use ceo::Conversion;
 use csv;
 use rayon;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_pickle as pickle;
 use std::collections::BTreeMap;
 use std::f32;
@@ -152,7 +152,7 @@ fn glao_pssn(
         });
     let mask = v
         .iter()
-        .map(|&x| if x == n_gs { 1u8 } else { 0u8 })
+        .map(|&x| if x > 0 { 1u8 } else { 0u8 })
         .collect::<Vec<u8>>();
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
     println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
@@ -221,8 +221,8 @@ fn glao_pssn(
     let mut mean_c = vec![0f32; calib.n_row()];
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
-    let now = Instant::now();
-    for k_sample in 0..n_sample {
+//    let now = Instant::now();
+    for _k_sample in 0..n_sample {
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);
@@ -306,7 +306,7 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     let n_px_lenslet = 16;
     let wfs_intensity_threshold = 0.5;
 
-    let n_kl = 90;
+    let n_kl = 70;
 
     let n_gs = 4;
     let gs_zen = (0..n_gs).map(|_| 6f32.from_arcmin()).collect::<Vec<f32>>();
@@ -408,8 +408,8 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     let mut mean_c = vec![0f32; calib.n_row()];
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
-    let now = Instant::now();
-    for k_sample in 0..n_sample {
+//    let now = Instant::now();
+    for _k_sample in 0..n_sample {
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);

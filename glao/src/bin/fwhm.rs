@@ -1,4 +1,6 @@
 use ceo::Conversion;
+use glao::system::Cn2;
+use indicatif::ParallelProgressIterator;
 use libm::j0;
 use rayon::prelude::*;
 use roots::find_root_brent;
@@ -8,9 +10,7 @@ use std::f64;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
-use glao::system::Cn2;
 //use std::time::Instant;
-
 
 #[derive(Deserialize, Serialize)]
 struct PSSnData {
@@ -49,13 +49,9 @@ fn main() {
         cn2_profiles.push(result.unwrap());
     }
 
-    cn2_profiles.par_iter().for_each(|cn2_prof| {
-
+    cn2_profiles.par_iter().progress_count(50).for_each(|cn2_prof| {
         let n_sample: usize = 1000;
-        let filename = format!(
-            "Results/glao_pssn_{:04}cn2_{:04}",
-            cn2_prof.idx, n_sample
-        );
+        let filename = format!("Results/70KL/atmosphere_pssn_{:04}cn2_{:04}.pkl", cn2_prof.idx, n_sample);
         let data_path = Path::new(&filename);
 
         //println!("Loading data ...");
@@ -91,7 +87,7 @@ fn main() {
             })
             .collect::<Vec<f64>>();
         //println!("... in {}s", now.elapsed().as_secs());
-        println!("FWHM: {:?}", pssn_3128.fwhm);
+        //println!("FWHM: {:?}", pssn_3128.fwhm);
 
         //println!("Saving data ...");
         //let now = Instant::now();

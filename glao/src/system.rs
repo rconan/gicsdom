@@ -2,7 +2,6 @@ use ceo;
 use ceo::Conversion;
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
-use std::time::Instant;
 use std::fs::File;
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -90,7 +89,7 @@ pub fn atmosphere_pssn(
     );
 
     //let now = Instant::now();
-    for k in 0..n_sample {
+    for _ in 0..n_sample {
         src.through(&mut gmt).xpupil().through(&mut atm);
         pssn.integrate(&mut src);
         /*
@@ -222,6 +221,54 @@ impl System {
             calib.len() / self.wfs.n_centroids as usize
         );
         */
+        let mut a = ceo::Cu::<f32>::array(m, n);
+        a.to_dev(&mut calib);
+        a
+    }
+    pub fn m2_mode_calibrate_data(&mut self) -> ceo::Cu<f32> {
+        let n_mode: usize = self.gmt.m2_n_mode;
+        //print!("M2 KL[{}] calibration ...", n_mode);
+        //let now = Instant::now();
+        let n = 7 * (n_mode - 1);
+        let mut kl_coefs = vec![vec![0f64; n_mode]; 7];
+        let mut calib: Vec<f32> = vec![];
+        for s in 0..7 {
+            for a in 1..n_mode {
+                let mut f = |x: f64| -> Vec<f32> {
+                    kl_coefs[s][a] = x;
+                    let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+                    self.gmt.set_m2_modes(&mut m);
+                    self.wfs.reset();
+                    self.through().process();
+                    self.wfs.get_data().from_dev()
+                };
+                let cp = f(1e-6);
+                let cm = f(-1e-6);
+
+                calib.append(
+                    &mut cp
+                        .iter()
+                        .zip(cm.iter())
+                        .map(|x| 0.5e6 * (x.0 - x.1))
+                        .collect::<Vec<f32>>(),
+                );
+
+                kl_coefs[s][a] = 0f64;
+                let mut m = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+                self.gmt.set_m2_modes(&mut m);
+            }
+        }
+        self.wfs.reset();
+        self.gmt.reset();
+        /*
+        println!(" in {}ms", now.elapsed().as_millis());
+        println!(
+            "M2 KL calibration size: {}X{}",
+            self.wfs.n_centroids,
+            calib.len() / self.wfs.n_centroids as usize
+        );
+         */
+        let m = calib.len()/n;
         let mut a = ceo::Cu::<f32>::array(m, n);
         a.to_dev(&mut calib);
         a

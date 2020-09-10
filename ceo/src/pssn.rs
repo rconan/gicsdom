@@ -31,7 +31,7 @@ pub struct PSSn<S> {
     /// PSSn estimates
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>,
-    otf: Vec<f32>,
+    pub otf: Vec<f32>,
 }
 impl<S> PSSn<S> {
     /// Creates a new `PSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
@@ -102,6 +102,38 @@ impl<S> PSSn<S> {
         }
         self.otf = d_otf.from_dev();
         self
+    }
+    pub fn telescope_otf(&mut self) -> Vec<f32> {
+        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.O0(d_otf.as_ptr());
+        }
+        d_otf.from_dev()
+    }
+    pub fn telescope_error_otf(&mut self) -> Vec<f32> {
+        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.O(d_otf.as_ptr());
+        }
+        d_otf.from_dev()
+    }
+    pub fn buffer_otf(&mut self) -> Vec<f32> {
+        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.B(d_otf.as_ptr());
+        }
+        d_otf.from_dev()
+    }
+    pub fn atmosphere_otf(&mut self) -> Vec<f32> {
+        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.C(d_otf.as_ptr());
+        }
+        d_otf.from_dev()
     }
 }
 impl<T> Serialize for PSSn<T> {

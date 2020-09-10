@@ -86,6 +86,18 @@ impl GeometricShackHartmann {
         }
         self
     }
+    pub fn get_data(&mut self) -> Cu<f32> {
+        let m = self._c_.valid_lenslet.nnz as usize * 2usize;
+        let mut data: Cu<f32> = Cu::vector(m);
+        data.malloc();
+        unsafe {
+            self._c_.get_valid_slopes(data.as_ptr());
+        }
+        data
+    }
+    pub fn n_valid_lenslet(&mut self) -> usize {
+        self._c_.valid_lenslet.nnz as usize
+    }
     pub fn reset(&mut self) -> &mut Self {
         unsafe {
             self._c_.reset();

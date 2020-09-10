@@ -24,14 +24,14 @@ fn main() {
         cn2_profiles.push(result.unwrap());
     }
 
-    cn2_profiles.par_iter().progress().for_each(|cn2_prof| {
+    cn2_profiles.par_iter().progress_count(50).for_each(|cn2_prof| {
         let n_sample: usize = 1000;
 
         //println!("Loading data ...");
         //let now = Instant::now();
         let atmo_pssn: PSSnData = {
             let filename = format!(
-                "Results/atmosphere_pssn_{:04}cn2_{:04}",
+                "Results/70KL/atmosphere_pssn_{:04}cn2_{:04}.pkl",
                 cn2_prof.idx, n_sample
             );
             let data_path = Path::new(&filename);
@@ -40,7 +40,7 @@ fn main() {
             pickle::from_reader(reader).unwrap()
         };
 
-        let filename = format!("Results/glao_pssn_{:04}cn2_{:04}", cn2_prof.idx, n_sample);
+        let filename = format!("Results/70KL/glao_pssn_{:04}cn2_{:04}.pkl", cn2_prof.idx, n_sample);
         let data_path = Path::new(&filename);
         let mut glao_pssn: PSSnData = {
             let file = File::open(data_path).unwrap();
