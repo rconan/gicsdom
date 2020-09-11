@@ -9,6 +9,8 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 serde = { version = "1", features = ["derive"] }
+libm = "0.2.1"
+roots = "0.0.6"
 
 [build-dependencies]
 bindgen = "0.52.0"
