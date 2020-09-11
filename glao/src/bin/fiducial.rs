@@ -1,5 +1,6 @@
 use ceo;
 use ceo::Conversion;
+use indicatif::{ProgressBar,ProgressStyle};
 use rayon;
 use rayon::prelude::*;
 use std::f32;
@@ -7,7 +8,11 @@ use std::time::Instant;
 
 use glao::system::System;
 
-fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> Vec<f32> {
+fn glao_pssn_fiducial(
+    n_sample: usize,
+    src_zen: Vec<f32>,
+    src_azi: Vec<f32>,
+) -> (Vec<f32>, Vec<f32>) {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -23,7 +28,7 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
         .collect::<Vec<f32>>();
     let mut glao_sys = System::new(pupil_size, n_gs as i32, n_lenslet, n_px_lenslet);
     glao_sys
-        .gmt_build("bending modes", 27, n_kl)
+        .gmt_build("S12", 2, n_kl)
         .wfs_build("Vs", gs_zen, gs_azi, vec![0f32; n_gs])
         .wfs_calibrate(wfs_intensity_threshold)
         .through();
@@ -35,29 +40,21 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
 
     // CALIBRATION
     let now = Instant::now();
-    let mut v = vec![0usize; (n_lenslet * n_lenslet) as usize];
-    wfs.lenset_mask()
+    let m = (n_lenslet * n_lenslet) as usize;
+    let mask = wfs
+        .lenset_mask()
         .from_dev()
-        .chunks((n_lenslet * n_lenslet) as usize)
-        .for_each(|x| {
-            let s = x
-                .iter()
-                .map(|x| if *x > 0f32 { 1 } else { 0 })
-                .sum::<usize>();
-            println!("lenslet mask: {}", s);
-            for k in 0..v.len() {
-                v[k] += if x[k] > 0f32 { 1usize } else { 0usize };
-            }
+        .chunks(m)
+        .fold(vec![0u8; m], |a, x| {
+            a.iter()
+                .zip(x.iter())
+                .map(|y: (&u8, &f32)| if *y.1 > 0f32 { 1u8 } else { *y.0 })
+                .collect::<Vec<u8>>()
         });
-    let mask = v
-        .iter()
-        .map(|&x| if x > 0 { 1u8 } else { 0u8 })
-        .collect::<Vec<u8>>();
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
     println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
 
     let n = 7 * (n_kl - 1);
-    let m = (n_lenslet * n_lenslet) as usize;
     let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
     {
         let mut reduced_calib = {
@@ -70,15 +67,16 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
             on_axis_sys.m2_mode_calibrate()
         }
         .from_dev()
-        .chunks(m as usize)
+        .chunks(m)
         .map(|x| {
-            let mut r = vec![];
-            for k in 0..m {
-                if mask[k] > 0 {
-                    r.push(x[k])
-                }
-            }
-            r
+            let (left, _): (Vec<f32>, Vec<u8>) = x
+                .iter()
+                .zip(mask.iter())
+                .filter(|y| y.1 > &0u8)
+                .collect::<Vec<(&f32, &u8)>>()
+                .into_iter()
+                .unzip();
+            left.into_iter()
         })
         .flatten()
         .collect::<Vec<f32>>();
@@ -96,7 +94,7 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     );
 
     let n_src = src_zen.len();
-    let mut src = ceo::Source::new(n_src as i32, pupil_size, 512);
+    let mut src = ceo::Source::new(n_src as i32, pupil_size, 1024);
     src.build("Vs", src_zen, src_azi, vec![0f32; n_src]);
     gmt.reset();
     src.through(gmt).xpupil();
@@ -104,6 +102,8 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     //let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     pssn.build(&mut src);
+    let mut atm_pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    atm_pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
     atm.gmt_build(pssn.r0(), pssn.oscale);
@@ -112,8 +112,14 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     let mut mean_c = vec![0f32; calib.n_row()];
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
+    //gmt.set_m1_modes_ij(0, 1, 1f64);
+    //(1..7).for_each(|i| gmt.set_m1_modes_ij(i, 0, 1f64));
     //let now = Instant::now();
+    let pb = ProgressBar::new(n_sample as u64);
+    pb.set_style(ProgressStyle::default_bar()
+                 .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"));
     for _k_sample in 0..n_sample {
+        pb.inc(1);
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);
@@ -129,13 +135,14 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
             .from_dev()
             .chunks(m as usize)
             .map(|x| {
-                let mut r: Vec<f32> = Vec::with_capacity(nnz);
-                for k in 0..m {
-                    if mask[k] > 0 {
-                        r.push(x[k])
-                    }
-                }
-                r
+                let (left, _): (Vec<f32>, Vec<u8>) = x
+                    .iter()
+                    .zip(mask.iter())
+                    .filter(|y| y.1 > &0u8)
+                    .collect::<Vec<(&f32, &u8)>>()
+                    .into_iter()
+                    .unzip();
+                left.into_iter()
             })
             .flatten()
             .collect::<Vec<f32>>()
@@ -146,7 +153,8 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
                 }
             });
 
-        //let wfe_rms_0 = src.through(gmt).xpupil().through(&mut atm).wfe_rms_10e(-9)[0];
+        src.through(gmt).xpupil().through(&mut atm);
+        atm_pssn.integrate(&mut src);
 
         d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
@@ -180,10 +188,17 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
     }
     //println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     //println!("PSSn: {}", pssn.peek());
+    atm_pssn.peek();
     pssn.peek();
-    pssn.estimates.clone()
+    (atm_pssn.estimates.clone(), pssn.estimates.clone())
 }
 
+fn main() {
+    let (atm_pssn, pssn) = glao_pssn_fiducial(1000, vec![0f32], vec![0f32]);
+    println!("PSSN: {:?}/{:?}={}", pssn, atm_pssn, pssn[0] / atm_pssn[0]);
+}
+
+/*
 fn main() {
     let n_gpu = 8 as usize;
     let n_thread = 24;
@@ -212,3 +227,4 @@ fn main() {
     });
     println!("PSSn: {:?}", fid_pssn);
 }
+*/
