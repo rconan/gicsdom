@@ -28,6 +28,7 @@ pub struct PSSn<S> {
     pub r0_at_zenith: f32,
     pub oscale: f32,
     pub zenith_angle: f32,
+    pub wavelength: f32,
     /// PSSn estimates
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>,
@@ -41,6 +42,7 @@ impl<S> PSSn<S> {
             r0_at_zenith: 0.16,
             oscale: 25.0,
             zenith_angle: 30_f32.to_radians(),
+            wavelength: 500e-9,
             estimates: vec![],
             mode: std::marker::PhantomData,
             otf: Vec::new(),
@@ -53,6 +55,7 @@ impl<S> PSSn<S> {
             r0_at_zenith: r0_at_zenith,
             oscale: oscale,
             zenith_angle: 30_f32.to_radians(),
+            wavelength: 500e-9,
             estimates: vec![],
             mode: std::marker::PhantomData,
             otf: Vec::new(),
