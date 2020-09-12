@@ -55,10 +55,11 @@ impl Fwhm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{pssn::TelescopeError as TE, Conversion, Gmt, PSSn};
+    use crate::{pssn::TelescopeError as TE, Atmosphere, Conversion, Gmt, PSSn};
+    use std::time::Instant;
 
     #[test]
-    fn fwhm_atmosphere() {
+    fn fwhm_atmosphere_x() {
         let mut src = Source::new(1, 25.5, 1024);
         src.build("Vs", vec![0.0], vec![0.0], vec![0.0]);
         let mut gmt = Gmt::new();
@@ -71,5 +72,54 @@ mod tests {
         let atm_fwhm_x = Fwhm::atmosphere(500e-9, pssn.r0() as f64, pssn.oscale as f64).to_arcsec();
         let atm_fwhm_n = fwhm.from_complex_otf(&pssn.atmosphere_otf()).to_arcsec();
         println!("Atm. FWHM [arcsec]: {:.3}/{:.3}", atm_fwhm_x, atm_fwhm_n);
+    }
+
+    #[test]
+    fn fwhm_atmosphere_n() {
+        let mut src = Source::new(1, 25.5, 1024);
+        src.build("Vs", vec![0.0], vec![0.0], vec![0.0]);
+        let mut gmt = Gmt::new();
+        gmt.build(1, None);
+        let mut pssn: PSSn<TE> = PSSn::new();
+        src.through(&mut gmt);
+        pssn.build(&mut src);
+        let mut fwhm = Fwhm::new();
+        fwhm.build(&mut src);
+        let mut atm = Atmosphere::new();
+        atm.build(
+            pssn.r0(),
+            pssn.oscale,
+            1,
+            vec![0f32],
+            vec![1f32],
+            vec![0f32],
+            vec![0f32],
+        );
+        let atm_fwhm_x0 =
+            Fwhm::atmosphere(500e-9, pssn.r0() as f64, pssn.oscale as f64).to_arcsec();
+        let atm_fwhm_x1 = fwhm.from_complex_otf(&pssn.atmosphere_otf()).to_arcsec();
+        let mut k = 0;
+        let now = Instant::now();
+        loop {
+            src.through(&mut gmt)
+                .xpupil()
+                .through(&mut atm)
+                .through(&mut pssn);
+            k += 1;
+            if k == 10 {
+                break;
+            };
+            atm.reset();
+        }
+        let atm_fwhm_n = fwhm
+            .from_complex_otf(&pssn.telescope_error_otf())
+            .to_arcsec();
+        println!(
+            "Atm. FWHM [arcsec]: {:.3}/{:.3}/{:.3} in {}s",
+            atm_fwhm_x0,
+            atm_fwhm_x1,
+            atm_fwhm_n,
+            now.elapsed().as_secs()
+        );
     }
 }
