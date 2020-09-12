@@ -1,6 +1,6 @@
 use ceo;
 use ceo::Conversion;
-use indicatif::{ProgressBar,ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon;
 use rayon::prelude::*;
 use std::f32;
@@ -12,7 +12,7 @@ fn glao_pssn_fiducial(
     n_sample: usize,
     src_zen: Vec<f32>,
     src_azi: Vec<f32>,
-) -> (Vec<f32>, Vec<f32>) {
+) -> (Vec<f32>, Vec<f32>, f64, f64, f64) {
     let pupil_size = 25.5;
     let n_lenslet = 48;
     //let n_actuator = n_lenslet + 1;
@@ -102,8 +102,8 @@ fn glao_pssn_fiducial(
     //let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     let mut pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
     pssn.build(&mut src);
-    //let mut atm_pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
-    //atm_pssn.build(&mut src);
+    let mut atm_pssn: ceo::PSSn<ceo::pssn::AtmosphereTelescopeError> = ceo::PSSn::new();
+    atm_pssn.build(&mut src);
 
     let mut atm = ceo::Atmosphere::new();
     atm.gmt_build(pssn.r0(), pssn.oscale);
@@ -112,13 +112,14 @@ fn glao_pssn_fiducial(
     let mut mean_c = vec![0f32; calib.n_row()];
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
-    gmt.set_m1_modes_ij(0, 1, 1f64);
-    (1..7).for_each(|i| gmt.set_m1_modes_ij(i, 0, 1f64));
+    //gmt.set_m1_modes_ij(0, 1, 1f64);
+    //(1..7).for_each(|i| gmt.set_m1_modes_ij(i, 0, 1f64));
     //let now = Instant::now();
     let pb = ProgressBar::new(n_sample as u64);
-    pb.set_style(ProgressStyle::default_bar()
-                 .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"));
-    let atm_pssn = vec![1.2731141f32];
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"),
+    );
     for _k_sample in 0..n_sample {
         pb.inc(1);
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
@@ -154,8 +155,8 @@ fn glao_pssn_fiducial(
                 }
             });
 
-        //src.through(gmt).xpupil().through(&mut atm);
-        //atm_pssn.integrate(&mut src);
+        src.through(gmt).xpupil().through(&mut atm);
+        atm_pssn.integrate(&mut src);
 
         d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
@@ -187,16 +188,43 @@ fn glao_pssn_fiducial(
 
         atm.reset()
     }
+    pb.finish();
     //println!("{} sample in {}s", n_sample, now.elapsed().as_secs());
     //println!("PSSn: {}", pssn.peek());
-    //atm_pssn.peek();
+    atm_pssn.peek();
     pssn.peek();
-    (atm_pssn, pssn.estimates.clone())
+    let mut fwhm = ceo::Fwhm::new();
+    fwhm.build(&mut src);
+    let atm_fwhm_x =
+        ceo::Fwhm::atmosphere(pssn.wavelength as f64, pssn.r0() as f64, pssn.oscale as f64)
+            .to_arcsec();
+    let atm_fwhm = fwhm
+        .from_complex_otf(&atm_pssn.telescope_error_otf())
+        .to_arcsec();
+    let glao_fwhm = fwhm
+        .from_complex_otf(&pssn.telescope_error_otf())
+        .to_arcsec();
+    (
+        atm_pssn.estimates.clone(),
+        pssn.estimates.clone(),
+        atm_fwhm_x,
+        atm_fwhm,
+        glao_fwhm,
+    )
 }
 
 fn main() {
-    let (atm_pssn, pssn) = glao_pssn_fiducial(1000, vec![0f32], vec![0f32]);
-    println!("PSSN: {:?}/{:?}={}", pssn, atm_pssn, pssn[0] / atm_pssn[0]);
+    let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) =
+        glao_pssn_fiducial(1000, vec![0f32], vec![0f32]);
+    println!(
+        "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
+        pssn,
+        atm_pssn,
+        pssn[0] / atm_pssn[0],
+        atm_fwhm_x,
+        atm_fwhm,
+        glao_fwhm
+    );
 }
 
 /*
