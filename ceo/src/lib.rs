@@ -23,7 +23,7 @@ pub use self::pssn::PSSn;
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use ceo_bindings::{geqrf, gpu_double, gpu_float, ormqr, set_device};
+pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
@@ -89,6 +89,34 @@ impl Conversion<f32> for f32 {
 pub fn set_gpu(id: i32) {
     unsafe {
         set_device(id);
+    }
+}
+
+pub struct Mask {
+    _c_: mask,
+}
+impl Mask {
+    pub fn new() -> Self {
+        Mask {
+            _c_: unsafe { mem::zeroed() },
+        }
+    }
+    pub fn build(&mut self, n_el: usize) -> &mut Self {
+        unsafe { self._c_.setup(n_el as i32) }
+        self
+    }
+    pub fn filter(&mut self, f: &mut Cu<f32>) -> &mut Self {
+        unsafe {
+            self._c_.alter(f.as_ptr());
+            self._c_.set_index();
+        }
+        self
+    }
+    pub fn nnz(&self) -> usize {
+        self._c_.nnz as usize
+    }
+    pub fn as_mut_prt(&mut self) -> *mut mask {
+        &mut self._c_
     }
 }
 
