@@ -190,6 +190,13 @@ impl Gmt {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
     }
+    pub fn set_m1_modes_ij(&mut self, i: usize, j: usize, value: f64) {
+        let mut a = vec![0f64;7*self.m1_n_mode];
+        a[i*self.m1_n_mode+j] = value;
+        unsafe {
+            self._c_m1_modes.update(a.as_mut_ptr());
+        }
+    }
     /// Sets M2 modal coefficients
     pub fn set_m2_modes(&mut self, a: &mut Vec<f64>) {
         unsafe {

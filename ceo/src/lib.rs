@@ -4,24 +4,26 @@ pub mod atmosphere;
 //pub mod calibrations;
 pub mod centroiding;
 pub mod ceo_bindings;
+pub mod cu;
+pub mod fwhm;
 pub mod gmt;
 pub mod imaging;
+pub mod pssn;
 pub mod shackhartmann;
 pub mod source;
-pub mod pssn;
-pub mod cu;
 
 pub use self::atmosphere::Atmosphere;
 //pub use self::calibrations::Calibration;
 pub use self::centroiding::Centroiding;
+pub use self::cu::Cu;
+pub use self::fwhm::Fwhm;
 pub use self::gmt::Gmt;
 pub use self::imaging::{Imaging, LensletArray};
+pub use self::pssn::PSSn;
 pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
 pub use self::source::Propagation;
 pub use self::source::Source;
-pub use self::pssn::PSSn;
-pub use self::cu::Cu;
-pub use ceo_bindings::{gpu_double, gpu_float, set_device, geqrf, ormqr};
+pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
@@ -90,6 +92,34 @@ pub fn set_gpu(id: i32) {
     }
 }
 
+pub struct Mask {
+    _c_: mask,
+}
+impl Mask {
+    pub fn new() -> Self {
+        Mask {
+            _c_: unsafe { mem::zeroed() },
+        }
+    }
+    pub fn build(&mut self, n_el: usize) -> &mut Self {
+        unsafe { self._c_.setup(n_el as i32) }
+        self
+    }
+    pub fn filter(&mut self, f: &mut Cu<f32>) -> &mut Self {
+        unsafe {
+            self._c_.alter(f.as_ptr());
+            self._c_.set_index();
+        }
+        self
+    }
+    pub fn nnz(&self) -> usize {
+        self._c_.nnz as usize
+    }
+    pub fn as_mut_prt(&mut self) -> *mut mask {
+        &mut self._c_
+    }
+}
+
 pub struct CuFloat {
     _c_: gpu_float,
     host_data: Vec<f32>,
@@ -98,7 +128,7 @@ impl CuFloat {
     pub fn new() -> CuFloat {
         CuFloat {
             _c_: unsafe { mem::zeroed() },
-            host_data: vec![]
+            host_data: vec![],
         }
     }
     pub fn malloc(&mut self, len: usize) -> &mut Self {
@@ -152,14 +182,10 @@ impl Drop for CuFloat {
 }
 
 pub fn qr(tau: &mut CuFloat, a: &mut CuFloat, m: i32, n: i32) {
-    unsafe {
-        geqrf(tau._c_.dev_data, a._c_.dev_data, m, n)
-    }
+    unsafe { geqrf(tau._c_.dev_data, a._c_.dev_data, m, n) }
 }
 pub fn qtb(b: &mut CuFloat, m: i32, a: &mut CuFloat, tau: &mut CuFloat, n: i32) {
-    unsafe {
-        ormqr(b._c_.dev_data, m, a._c_.dev_data, tau._c_.dev_data, n)
-    }
+    unsafe { ormqr(b._c_.dev_data, m, a._c_.dev_data, tau._c_.dev_data, n) }
 }
 
 #[cfg(test)]
@@ -186,33 +212,36 @@ mod tests {
         let mut a = CuFloat::new();
         a.malloc(12)
             .into(&mut vec![
-                1f32, 4f32, 2f32, 1f32, 2f32, 5f32, 1f32, 1f32, 3f32, 6f32, 1f32, 1f32
+                1f32, 4f32, 2f32, 1f32, 2f32, 5f32, 1f32, 1f32, 3f32, 6f32, 1f32, 1f32,
             ])
             .qr(4);
-        println!("a: {:?}",a.from());
+        println!("a: {:?}", a.from());
         let mut b = CuFloat::new();
-        b.malloc(4).into(&mut vec![6f32,15f32,4f32,3f32]);
+        b.malloc(4).into(&mut vec![6f32, 15f32, 4f32, 3f32]);
         let mut x = CuFloat::new();
         x.malloc(3);
         a.qr_solve(&mut x, &mut b);
-        println!("x: {:?}",x.from());
+        println!("x: {:?}", x.from());
     }
 
     #[test]
     fn cufloat_bigqr() {
         let m = 5000;
         let n = 700;
-        let p = m*n;
+        let p = m * n;
         let mut rng = rand::thread_rng();
         let mut a = CuFloat::new();
-        a.malloc(p)
-            .into(&mut (0..p).map(|_| rng.gen_range(-100,100) as f32).collect::<Vec<f32>>());
+        a.malloc(p).into(
+            &mut (0..p)
+                .map(|_| rng.gen_range(-100, 100) as f32)
+                .collect::<Vec<f32>>(),
+        );
         //println!("a: {:?}",a.from());
         let mut b = CuFloat::new();
         b.malloc(m);
         {
             let mut x = CuFloat::new();
-            x.malloc(n).into(&mut vec![1f32;n]);
+            x.malloc(n).into(&mut vec![1f32; n]);
             a.mv(&mut b, &mut x);
         }
         //println!("b: {:?}",b.from());
@@ -222,7 +251,7 @@ mod tests {
         x.malloc(n);
         a.qr_solve(&mut x, &mut b);
         let sx = x.from().iter().sum::<f32>();
-        println!("sum of x: {:?}",sx);
-        assert!((sx-(n as f32)).abs()<1e-6);
+        println!("sum of x: {:?}", sx);
+        assert!((sx - (n as f32)).abs() < 1e-6);
     }
 }

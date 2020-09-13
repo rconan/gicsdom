@@ -1,9 +1,7 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host, geometricShackHartmann, shackHartmann};
-use super::Cu;
-use super::Propagation;
-use super::Source;
+use super::{Cu, Mask, Propagation, Source};
 
 pub struct GeometricShackHartmann {
     _c_: geometricShackHartmann,
@@ -94,6 +92,22 @@ impl GeometricShackHartmann {
             self._c_.get_valid_slopes(data.as_ptr());
         }
         data
+    }
+    pub fn filter(&mut self, lenslet_mask: &mut Mask) -> Cu<f32> {
+        let m = lenslet_mask.nnz() as usize * 2usize;
+        let mut data: Cu<f32> = Cu::vector(m);
+        data.malloc();
+        unsafe {
+            self._c_
+                .masked_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
+        }
+        data
+    }
+    pub fn fold_into(&mut self, data: &mut Cu<f32>, lenslet_mask: &mut Mask) {
+        unsafe {
+            self._c_
+                .folded_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
+        }
     }
     pub fn n_valid_lenslet(&mut self) -> usize {
         self._c_.valid_lenslet.nnz as usize

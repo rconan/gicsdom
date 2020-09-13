@@ -1,7 +1,7 @@
-use super::{Cu,Source};
-use std::{fmt, mem};
 use super::ceo_bindings::pssn as ceo_pssn;
-use serde::ser::{Serialize, Serializer, SerializeStruct};
+use super::{Cu, Propagation, Source};
+use serde::ser::{Serialize, SerializeStruct, Serializer};
+use std::{fmt, mem};
 
 /// Wrapper for CEO PSSn
 ///
@@ -28,6 +28,7 @@ pub struct PSSn<S> {
     pub r0_at_zenith: f32,
     pub oscale: f32,
     pub zenith_angle: f32,
+    pub wavelength: f32,
     /// PSSn estimates
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>,
@@ -41,6 +42,7 @@ impl<S> PSSn<S> {
             r0_at_zenith: 0.16,
             oscale: 25.0,
             zenith_angle: 30_f32.to_radians(),
+            wavelength: 500e-9,
             estimates: vec![],
             mode: std::marker::PhantomData,
             otf: Vec::new(),
@@ -53,6 +55,7 @@ impl<S> PSSn<S> {
             r0_at_zenith: r0_at_zenith,
             oscale: oscale,
             zenith_angle: 30_f32.to_radians(),
+            wavelength: 500e-9,
             estimates: vec![],
             mode: std::marker::PhantomData,
             otf: Vec::new(),
@@ -95,7 +98,7 @@ impl<S> PSSn<S> {
         (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
     pub fn xotf(&mut self) -> &Self {
-        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
         unsafe {
             self._c_.xotf(d_otf.as_ptr());
@@ -104,7 +107,7 @@ impl<S> PSSn<S> {
         self
     }
     pub fn telescope_otf(&mut self) -> Vec<f32> {
-        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
         unsafe {
             self._c_.O0(d_otf.as_ptr());
@@ -112,7 +115,7 @@ impl<S> PSSn<S> {
         d_otf.from_dev()
     }
     pub fn telescope_error_otf(&mut self) -> Vec<f32> {
-        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
         unsafe {
             self._c_.O(d_otf.as_ptr());
@@ -120,7 +123,7 @@ impl<S> PSSn<S> {
         d_otf.from_dev()
     }
     pub fn buffer_otf(&mut self) -> Vec<f32> {
-        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
         unsafe {
             self._c_.B(d_otf.as_ptr());
@@ -128,7 +131,7 @@ impl<S> PSSn<S> {
         d_otf.from_dev()
     }
     pub fn atmosphere_otf(&mut self) -> Vec<f32> {
-        let mut d_otf  = Cu::vector(2*self._c_.NN as usize);
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
         unsafe {
             self._c_.C(d_otf.as_ptr());
@@ -186,3 +189,13 @@ impl<S> fmt::Display for PSSn<S> {
     }
 }
 
+impl<S> Propagation for PSSn<S> {
+    fn propagate(&mut self, src: &mut Source) -> &mut Self {
+        self.integrate(src);
+        self
+    }
+    fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
+        self.integrate(src);
+        self
+    }
+}

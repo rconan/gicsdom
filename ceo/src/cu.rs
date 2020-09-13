@@ -70,6 +70,9 @@ impl Cu<f32> {
     pub fn as_ptr(&mut self) -> *mut f32 {
         self._c_f32.dev_data
     }
+    pub fn as_mut_ptr(&mut self) -> *mut f32 {
+        self._c_f32.dev_data
+    }
     pub fn to_dev(&mut self, host_data: &mut [f32]) -> &mut Self {
         if !self.dev_alloc {
             self.malloc();
