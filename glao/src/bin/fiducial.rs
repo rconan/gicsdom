@@ -54,36 +54,23 @@ fn glao_pssn_fiducial(
     let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
     println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
 
-    let n = 7 * (n_kl - 1);
-    let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
-    {
-        let mut reduced_calib = {
-            let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
-            on_axis_sys
-                .gmt_build("bending modes", 27, n_kl)
-                .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
-                .wfs_calibrate(0f64)
-                .through();
-            on_axis_sys.m2_mode_calibrate()
-        }
-        .from_dev()
-        .chunks(m)
-        .map(|x| {
-            let (left, _): (Vec<f32>, Vec<u8>) = x
-                .iter()
-                .zip(mask.iter())
-                .filter(|y| y.1 > &0u8)
-                .collect::<Vec<(&f32, &u8)>>()
-                .into_iter()
-                .unzip();
-            left.into_iter()
-        })
-        .flatten()
-        .collect::<Vec<f32>>();
-        println!("Reduced calibration: {}", reduced_calib.len());
+    let mut lenslet_mask = ceo::Mask::new();
+    lenslet_mask.build(m);
+    let mut f: ceo::Cu<f32> = ceo::Cu::vector(m);
+    let mut q = mask.iter().cloned().map(|x| x as f32).collect::<Vec<f32>>();
+    f.to_dev(&mut q);
+    lenslet_mask.filter(&mut f);
 
-        calib.to_dev(&mut reduced_calib);
-    }
+    //let n = 7 * (n_kl - 1);
+    let mut calib: ceo::Cu<f32> = {
+        let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
+        on_axis_sys
+            .gmt_build("bending modes", 27, n_kl)
+            .wfs_build("Vs", vec![0f32], vec![0f32], vec![0f32])
+            .wfs_calibrate(0f64)
+            .through();
+        on_axis_sys.m2_mode_calibrate_data(&mut lenslet_mask)
+    };
     //full_calib.qr();
     calib.qr();
     println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
@@ -109,12 +96,13 @@ fn glao_pssn_fiducial(
     atm.gmt_build(pssn.r0(), pssn.oscale);
 
     let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
-    let mut mean_c = vec![0f32; calib.n_row()];
+    d_mean_c.malloc();
     let mut x = ceo::Cu::<f32>::vector(calib.n_col());
     x.malloc();
     //gmt.set_m1_modes_ij(0, 1, 1f64);
     //(1..7).for_each(|i| gmt.set_m1_modes_ij(i, 0, 1f64));
     //let now = Instant::now();
+
     let pb = ProgressBar::new(n_sample as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -128,37 +116,11 @@ fn glao_pssn_fiducial(
 
         wfs.reset();
         gs.through(gmt).xpupil().through(&mut atm).through(wfs);
-        wfs.process();
-
-        for x in &mut mean_c {
-            *x = 0f32;
-        }
-        wfs.centroids
-            .from_dev()
-            .chunks(m as usize)
-            .map(|x| {
-                let (left, _): (Vec<f32>, Vec<u8>) = x
-                    .iter()
-                    .zip(mask.iter())
-                    .filter(|y| y.1 > &0u8)
-                    .collect::<Vec<(&f32, &u8)>>()
-                    .into_iter()
-                    .unzip();
-                left.into_iter()
-            })
-            .flatten()
-            .collect::<Vec<f32>>()
-            .chunks(calib.n_row())
-            .for_each(|c| {
-                for k in 0..mean_c.len() {
-                    mean_c[k] += c[k] / n_gs as f32;
-                }
-            });
+        wfs.process().fold_into(&mut d_mean_c, &mut lenslet_mask);
 
         src.through(gmt).xpupil().through(&mut atm);
         atm_pssn.integrate(&mut src);
 
-        d_mean_c.to_dev(&mut mean_c);
         calib.qr_solve_as_ptr(&mut x, &mut d_mean_c);
         let h_x = x.from_dev();
         let mut k = 0;

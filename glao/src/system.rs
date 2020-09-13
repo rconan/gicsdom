@@ -226,7 +226,7 @@ impl System {
         a.to_dev(&mut calib);
         a
     }
-    pub fn m2_mode_calibrate_data(&mut self) -> ceo::Cu<f32> {
+    pub fn m2_mode_calibrate_data(&mut self, lenslet_mask: &mut ceo::Mask) -> ceo::Cu<f32> {
         let n_mode: usize = self.gmt.m2_n_mode;
         //print!("M2 KL[{}] calibration ...", n_mode);
         //let now = Instant::now();
@@ -241,7 +241,7 @@ impl System {
                     self.gmt.set_m2_modes(&mut m);
                     self.wfs.reset();
                     self.through().process();
-                    self.wfs.get_data().from_dev()
+                    self.wfs.filter(lenslet_mask).from_dev()
                 };
                 let cp = f(1e-6);
                 let cm = f(-1e-6);
