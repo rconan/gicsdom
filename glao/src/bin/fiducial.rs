@@ -1,14 +1,18 @@
 use ceo;
 use ceo::Conversion;
 use glao::glao_sys::GlaoSys;
-use indicatif::{ProgressBar, ProgressStyle,ProgressIterator};
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon;
 use rayon::prelude::*;
 use std::f32;
 use std::time::Instant;
+use serde::Serialize;
+use serde_pickle as pickle;
+use std::fs::File;
 
-use glao::system::System;
+use glao::system::{Cn2, GlaoField, System};
 
+#[allow(dead_code)]
 fn glao_pssn_fiducial(
     n_sample: usize,
     src_zen: Vec<f32>,
@@ -176,7 +180,8 @@ fn glao_pssn_fiducial(
     )
 }
 
-fn main() {
+#[allow(dead_code)]
+fn on_axis_glao() {
     /*
     let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) =
         glao_pssn_fiducial(1, vec![0f32], vec![0f32]);
@@ -193,8 +198,92 @@ fn main() {
     let mut atm = ceo::Atmosphere::new();
     let mut glao_4gs = GlaoSys::default(&mut atm);
     glao_4gs
-        .build(6f32.from_arcmin(), 70, 0.5, vec![0f32], vec![0f32])
+        .build(6f32.from_arcmin(), 70, 0.5)
+        .build_science_field( vec![0f32], vec![0f32])
+        .build_single_layer_atmosphere()
         .calibration();
+
+    let n_sample = 1;
+    let pb = ProgressBar::new(n_sample as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"),
+    );
+    let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) = {
+        for k in &mut glao_4gs {
+            pb.inc(1);
+            if k == n_sample {
+                break;
+            }
+        }
+        pb.finish();
+        glao_4gs.wrap_up()
+    };
+    println!(
+        "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
+        pssn,
+        atm_pssn,
+        pssn[0] / atm_pssn[0],
+        atm_fwhm_x,
+        atm_fwhm,
+        glao_fwhm
+    );
+}
+
+#[allow(dead_code)]
+fn main() { //}lucy() {
+    let mut cn2_reader = csv::Reader::from_path("glao_cn2.csv").unwrap();
+    let mut cn2_profiles: Vec<Cn2> = vec![];
+    for result in cn2_reader.deserialize() {
+        cn2_profiles.push(result.unwrap());
+    }
+    let secz = 1f32 / 30f32.to_radians().cos();
+
+    let cn2_prof = &cn2_profiles[0];
+    let turb_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32]
+        .iter()
+        .map(|x| x * secz)
+        .collect::<Vec<f32>>();
+    let turb_cn2_xi0 = [
+        cn2_prof.m40,
+        cn2_prof.m125,
+        cn2_prof.m350,
+        cn2_prof.m1500,
+        cn2_prof.m4000,
+        cn2_prof.m8000,
+        cn2_prof.m16000,
+    ];
+
+    let atm_r0 = 0.9759 * 500e-9 / cn2_prof.dimm.from_arcsec();
+    let atm_oscale = 25f32;
+    println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
+
+    let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
+    let glao_field: GlaoField =
+        pickle::from_reader(glao_field_reader).expect("File loading failed!");
+    let n_src = glao_field.zenith_arcmin.len();
+    println!("GLAO field ({} samples):", n_src);
+    println!(" * zenith : {:?}", glao_field.zenith_arcmin);
+    println!(" * azimuth: {:?}", glao_field.azimuth_degree);
+    let src_zen = glao_field
+        .zenith_arcmin
+        .iter()
+        .map(|x| x.from_arcmin())
+        .collect::<Vec<f32>>();
+    let src_azi = glao_field
+        .azimuth_degree
+        .iter()
+        .map(|x| x.to_radians())
+        .collect::<Vec<f32>>();
+
+    let mut atm = ceo::Atmosphere::new();
+    let mut glao_4gs = GlaoSys::default(&mut atm);
+    glao_4gs
+        .build(6f32.from_arcmin(), 70, 0.5)
+        .build_science_field( src_zen, src_azi)
+        .build_atmosphere(turb_cn2_height,turb_cn2_xi0.to_vec())
+        .calibration();
+
     let n_sample = 1;
     let pb = ProgressBar::new(n_sample as u64);
     pb.set_style(

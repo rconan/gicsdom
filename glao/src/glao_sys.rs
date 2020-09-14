@@ -57,8 +57,6 @@ impl<'a> GlaoSys<'a> {
         gs_off_axis_dist: f32,
         m2_n_kl: usize,
         wfs_intensity_threshold: f64,
-        src_zen: Vec<f32>,
-        src_azi: Vec<f32>,
     ) -> &mut Self {
         let n_gs = self.sys.n_wfs;
         let gs_zen = (0..n_gs).map(|_| gs_off_axis_dist).collect::<Vec<f32>>();
@@ -73,7 +71,7 @@ impl<'a> GlaoSys<'a> {
         println!("GLAO centroids #: {}", self.sys.wfs.n_centroids);
 
         let n_lenslet = self.sys.n_lenslet as usize;
-        let (_, gmt, wfs) = self.sys.devices();
+        let (_, _, wfs) = self.sys.devices();
         let m = n_lenslet * n_lenslet;
         let mask = wfs
             .lenset_mask()
@@ -94,6 +92,11 @@ impl<'a> GlaoSys<'a> {
         f.to_dev(&mut q);
         self.lenslet_mask.filter(&mut f);
 
+        self
+    }
+    pub fn build_science_field(&mut self, src_zen: Vec<f32>, src_azi: Vec<f32>) -> &mut Self {
+        let (_, gmt, _) = self.sys.devices();
+
         let n_src = src_zen.len();
         self.src.build("Vs", src_zen, src_azi, vec![0f32; n_src]);
 
@@ -103,8 +106,23 @@ impl<'a> GlaoSys<'a> {
         self.pssn.build(&mut self.src);
         self.atm_pssn.build(&mut self.src);
 
+        self
+    }
+    pub fn build_single_layer_atmosphere(&mut self) -> &mut Self {
         self.atm.gmt_build(self.pssn.r0(), self.pssn.oscale);
-
+        self
+    }
+    pub fn build_atmosphere(&mut self, altitude: Vec<f32>, xi0: Vec<f32>) -> &mut Self {
+        let n_layer = altitude.len();
+        self.atm.build(
+            self.pssn.r0(),
+            self.pssn.oscale,
+            n_layer as i32,
+            altitude,
+            xi0,
+            vec![0f32; n_layer],
+            vec![0f32; n_layer],
+        );
         self
     }
     pub fn calibration(&mut self) -> &mut Self {
