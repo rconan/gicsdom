@@ -1,6 +1,7 @@
 use ceo;
 use ceo::Conversion;
-use indicatif::{ProgressBar, ProgressStyle};
+use glao::glao_sys::GlaoSys;
+use indicatif::{ProgressBar, ProgressStyle,ProgressIterator};
 use rayon;
 use rayon::prelude::*;
 use std::f32;
@@ -176,8 +177,40 @@ fn glao_pssn_fiducial(
 }
 
 fn main() {
+    /*
     let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) =
-        glao_pssn_fiducial(1000, vec![0f32], vec![0f32]);
+        glao_pssn_fiducial(1, vec![0f32], vec![0f32]);
+    println!(
+        "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
+        pssn,
+        atm_pssn,
+        pssn[0] / atm_pssn[0],
+        atm_fwhm_x,
+        atm_fwhm,
+        glao_fwhm
+    );
+    */
+    let mut atm = ceo::Atmosphere::new();
+    let mut glao_4gs = GlaoSys::default(&mut atm);
+    glao_4gs
+        .build(6f32.from_arcmin(), 70, 0.5, vec![0f32], vec![0f32])
+        .calibration();
+    let n_sample = 1;
+    let pb = ProgressBar::new(n_sample as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"),
+    );
+    let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) = {
+        for k in &mut glao_4gs {
+            pb.inc(1);
+            if k == n_sample {
+                break;
+            }
+        }
+        pb.finish();
+        glao_4gs.wrap_up()
+    };
     println!(
         "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
         pssn,
