@@ -1,5 +1,5 @@
 use ceo;
-use ceo::Conversion;
+use ceo::{Conversion, GeometricShackHartmann, Gmt, Source};
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use std::fs::File;
@@ -10,7 +10,6 @@ pub struct GlaoField {
     pub zenith_arcmin: Vec<f32>,
     pub azimuth_degree: Vec<f32>,
 }
-
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(rename_all = "UPPERCASE")]
@@ -119,6 +118,11 @@ pub fn atmosphere_pssn(
 
 #[allow(dead_code)]
 pub struct System {
+    pub pupil_size: f64,
+    pub n_wfs: usize,
+    pub n_lenslet: usize,
+    pub n_px_lenslet: usize,
+    pub m2_n_mode: usize,
     pub gmt: ceo::Gmt,
     pub wfs: ceo::GeometricShackHartmann,
     pub gs: ceo::Source,
@@ -128,6 +132,11 @@ impl System {
     pub fn new(pupil_size: f64, n_sensor: i32, n_lenslet: i32, n_px_lenslet: i32) -> Self {
         let d = pupil_size / n_lenslet as f64;
         Self {
+            pupil_size: pupil_size,
+            n_wfs: n_sensor as usize,
+            n_lenslet: n_lenslet as usize,
+            n_px_lenslet: n_px_lenslet as usize,
+            m2_n_mode: 0,
             gmt: ceo::Gmt::new(),
             wfs: ceo::GeometricShackHartmann::new(n_sensor, n_lenslet, n_px_lenslet, d),
             gs: ceo::Source::default(),
@@ -139,6 +148,7 @@ impl System {
         m1_n_mode: usize,
         m2_n_mode: usize,
     ) -> &mut Self {
+        self.m2_n_mode = m2_n_mode;
         self.gmt
             .build_m1(m1_mode_type, m1_n_mode)
             .build_m2(Some(m2_n_mode));
@@ -160,6 +170,9 @@ impl System {
         self.gs.through(&mut self.gmt).xpupil();
         self.wfs.calibrate(&mut self.gs, threshold);
         self
+    }
+    pub fn devices(&mut self) -> (&mut Source, &mut Gmt, &mut GeometricShackHartmann) {
+        (&mut self.gs, &mut self.gmt, &mut self.wfs)
     }
     pub fn through(&mut self) -> &mut Self {
         self.gs
@@ -269,7 +282,7 @@ impl System {
             calib.len() / self.wfs.n_centroids as usize
         );
          */
-        let m = calib.len()/n;
+        let m = calib.len() / n;
         let mut a = ceo::Cu::<f32>::array(m, n);
         a.to_dev(&mut calib);
         a
