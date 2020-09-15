@@ -4,15 +4,15 @@ use glao::glao_sys::GlaoSys;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon;
 use rayon::prelude::*;
-use std::f32;
-use std::time::Instant;
-use serde::Serialize;
 use serde_pickle as pickle;
+use std::f32;
 use std::fs::File;
+use std::time::Instant;
 
 use glao::system::{Cn2, GlaoField, System};
 
 #[allow(dead_code)]
+/*
 fn glao_pssn_fiducial(
     n_sample: usize,
     src_zen: Vec<f32>,
@@ -179,6 +179,7 @@ fn glao_pssn_fiducial(
         glao_fwhm,
     )
 }
+ */
 
 #[allow(dead_code)]
 fn on_axis_glao() {
@@ -199,7 +200,7 @@ fn on_axis_glao() {
     let mut glao_4gs = GlaoSys::default(&mut atm);
     glao_4gs
         .build(6f32.from_arcmin(), 70, 0.5)
-        .build_science_field( vec![0f32], vec![0f32])
+        .build_science_field(vec![0f32], vec![0f32])
         .build_single_layer_atmosphere()
         .calibration();
 
@@ -217,7 +218,7 @@ fn on_axis_glao() {
             }
         }
         pb.finish();
-        glao_4gs.wrap_up()
+        glao_4gs.wrap_up().results()
     };
     println!(
         "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
@@ -225,13 +226,13 @@ fn on_axis_glao() {
         atm_pssn,
         pssn[0] / atm_pssn[0],
         atm_fwhm_x,
-        atm_fwhm,
-        glao_fwhm
+        atm_fwhm[0],
+        glao_fwhm[0]
     );
 }
 
 #[allow(dead_code)]
-fn main() { //}lucy() {
+fn main() {    //}luci() {
     let mut cn2_reader = csv::Reader::from_path("glao_cn2.csv").unwrap();
     let mut cn2_profiles: Vec<Cn2> = vec![];
     for result in cn2_reader.deserialize() {
@@ -277,14 +278,14 @@ fn main() { //}lucy() {
         .collect::<Vec<f32>>();
 
     let mut atm = ceo::Atmosphere::new();
-    let mut glao_4gs = GlaoSys::default(&mut atm);
+    let mut glao_4gs = GlaoSys::with_n_science_sources(src_azi.len(), &mut atm);
     glao_4gs
         .build(6f32.from_arcmin(), 70, 0.5)
-        .build_science_field( src_zen, src_azi)
-        .build_atmosphere(turb_cn2_height,turb_cn2_xi0.to_vec())
+        .build_science_field(src_zen, src_azi)
+        .build_atmosphere(turb_cn2_height, turb_cn2_xi0.to_vec())
         .calibration();
 
-    let n_sample = 1;
+    let n_sample = 1000;
     let pb = ProgressBar::new(n_sample as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -298,10 +299,10 @@ fn main() { //}lucy() {
             }
         }
         pb.finish();
-        glao_4gs.wrap_up()
+        glao_4gs.wrap_up().dump("luci.pkl").unwrap().results()
     };
     println!(
-        "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
+        "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:?}/{:?}",
         pssn,
         atm_pssn,
         pssn[0] / atm_pssn[0],
