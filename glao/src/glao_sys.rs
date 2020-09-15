@@ -1,7 +1,20 @@
 use crate::system::System;
 use ceo::{pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Mask, PSSn, Source};
-use std::f32;
+use serde::ser::{Serialize, SerializeStruct, Serializer};
+use serde::{Deserialize as Dserde, Serialize as Sserde};
+use serde_pickle as pickle;
+use std::error::Error;
+use std::fs::File;
 use std::time::Instant;
+use std::{f32, f64};
+use std::io::BufWriter;
+
+#[derive(Sserde, Dserde, Default, Debug)]
+pub struct Fwhms {
+    atm_fwhm_x: f64,
+    atm_fwhm: Vec<f64>,
+    glao_fwhm: Vec<f64>,
+}
 
 pub struct GlaoSys<'a> {
     sys: System,
@@ -14,6 +27,7 @@ pub struct GlaoSys<'a> {
     atm: &'a mut Atmosphere,
     d_mean_c: ceo::Cu<f32>,
     x: ceo::Cu<f32>,
+    fwhms: Fwhms,
 }
 
 impl<'a> GlaoSys<'a> {
@@ -36,6 +50,7 @@ impl<'a> GlaoSys<'a> {
             atm: atm,
             d_mean_c: Cu::new(),
             x: Cu::new(),
+            fwhms: Fwhms::default(),
         }
     }
     pub fn default(atm: &'a mut Atmosphere) -> Self {
@@ -50,6 +65,22 @@ impl<'a> GlaoSys<'a> {
             atm: atm,
             d_mean_c: Cu::new(),
             x: Cu::new(),
+            fwhms: Fwhms::default(),
+        }
+    }
+    pub fn with_n_science_sources(n_src: usize, atm: &'a mut Atmosphere) -> Self {
+        Self {
+            sys: System::new(25.5, 4, 48, 16),
+            lenslet_mask: Mask::new(),
+            calib: Cu::new(),
+            src: Source::new(n_src as i32, 25.5, 1024),
+            atm_pssn: PSSn::new(),
+            pssn: PSSn::new(),
+            step: 0,
+            atm: atm,
+            d_mean_c: Cu::new(),
+            x: Cu::new(),
+            fwhms: Fwhms::default(),
         }
     }
     pub fn build(
@@ -154,9 +185,9 @@ impl<'a> GlaoSys<'a> {
         self.x.malloc();
         self
     }
-    pub fn wrap_up(&mut self) -> (Vec<f32>, Vec<f32>, f64, f64, f64) {
-        self.atm_pssn.peek();
-        self.pssn.peek();
+    pub fn wrap_up(&mut self) -> &mut Self {
+        self.atm_pssn.peek().telescope_error_into_otf();
+        self.pssn.peek().telescope_error_into_otf();
         let mut fwhm = ceo::Fwhm::new();
         fwhm.build(&mut self.src);
         let atm_fwhm_x = ceo::Fwhm::atmosphere(
@@ -165,19 +196,27 @@ impl<'a> GlaoSys<'a> {
             self.pssn.oscale as f64,
         )
         .to_arcsec();
-        let atm_fwhm = fwhm
-            .from_complex_otf(&self.atm_pssn.telescope_error_otf())
-            .to_arcsec();
-        let glao_fwhm = fwhm
-            .from_complex_otf(&self.pssn.telescope_error_otf())
-            .to_arcsec();
+        let atm_fwhm = fwhm.from_complex_otf(&self.atm_pssn.telescope_error_otf());
+        let glao_fwhm = fwhm.from_complex_otf(&self.pssn.telescope_error_otf());
+        self.fwhms.atm_fwhm_x = atm_fwhm_x;
+        self.fwhms.atm_fwhm = atm_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
+        self.fwhms.glao_fwhm = glao_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
+        self
+    }
+    pub fn results(&self) -> (Vec<f32>, Vec<f32>, f64, Vec<f64>, Vec<f64>) {
         (
             self.atm_pssn.estimates.clone(),
             self.pssn.estimates.clone(),
-            atm_fwhm_x,
-            atm_fwhm,
-            glao_fwhm,
+            self.fwhms.atm_fwhm_x,
+            self.fwhms.atm_fwhm.clone(),
+            self.fwhms.glao_fwhm.clone(),
         )
+    }
+    pub fn dump(&self, filename: &str) -> Result<&Self, Box<dyn Error>> {
+        let mut file = File::create(filename)?;
+        let mut writer = BufWriter::with_capacity(1_000_000, file);
+        pickle::to_writer(&mut writer, self, true)?;
+        Ok(self)
     }
 }
 
@@ -236,5 +275,18 @@ impl<'a> Iterator for GlaoSys<'a> {
 
         self.step += 1;
         Some(self.step)
+    }
+}
+
+impl<'a> Serialize for GlaoSys<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("GLAO", 1)?;
+        state.serialize_field("atmosphere pssn", &self.atm_pssn)?;
+        state.serialize_field("GLAO pssn", &self.pssn)?;
+        state.serialize_field("FWHMS [arcsec]", &self.fwhms)?;
+        state.end()
     }
 }

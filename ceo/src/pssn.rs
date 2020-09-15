@@ -122,6 +122,15 @@ impl<S> PSSn<S> {
         }
         d_otf.from_dev()
     }
+    pub fn telescope_error_into_otf(&mut self) -> &mut Self {
+        let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
+        d_otf.malloc();
+        unsafe {
+            self._c_.O(d_otf.as_ptr());
+        }
+        self.otf = d_otf.from_dev();
+        self
+    }
     pub fn buffer_otf(&mut self) -> Vec<f32> {
         let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
@@ -148,7 +157,7 @@ impl<T> Serialize for PSSn<T> {
         state.serialize_field("r0",&self.r0())?;
         state.serialize_field("L0",&self.oscale)?;
         state.serialize_field("values",&self.estimates)?;
-        state.serialize_field("otf",&self.otf)?;
+        //state.serialize_field("otf",&self.otf)?;
         state.end()
     }
 }
