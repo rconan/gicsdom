@@ -2,13 +2,16 @@ use super::Source;
 use libm::j0;
 use roots::find_root_brent;
 use std::f64;
+use rayon::prelude::*;
 
 pub struct Fwhm {
     r: Vec<f64>,
+    n_otf: usize
 }
 impl Fwhm {
     pub fn new() -> Self {
-        Fwhm { r: vec![] }
+        Fwhm { r: vec![],
+        n_otf: 0}
     }
     pub fn build(&mut self, src: &mut Source) -> &mut Self {
         let n = src.pupil_sampling as usize;
@@ -32,12 +35,14 @@ impl Fwhm {
                 self.r.push(x.hypot(y));
             }
         }
+        self.n_otf = n_otf;
         self
     }
-    pub fn from_complex_otf(&mut self, otf: &[f32]) -> f64 {
+    pub fn from_complex_otf(&mut self, otf: &[f32]) -> Vec<f64> {
+        otf.par_chunks(self.n_otf*self.n_otf*2).map(|o|{
         let scalar_eq = |e: f64| -> f64 {
             let mut s = 0f64;
-            for (_r, _o) in self.r.iter().zip(otf.chunks(2)) {
+            for (_r, _o) in self.r.iter().zip(o.chunks(2)) {
                 let q = f64::consts::PI * e * _r;
                 let g = j0(q);
                 s += f64::from(_o[0]) * (0.5f64 - g) + f64::from(_o[1]) * g;
@@ -45,7 +50,7 @@ impl Fwhm {
             s
         };
         let root = find_root_brent(0f64, 20f64, &scalar_eq, &mut 1e-6f64).unwrap();
-        500e-9_f64 * root
+            500e-9_f64 * root}).collect::<Vec<f64>>()
     }
     pub fn atmosphere(wavelength: f64, r0: f64, oscale: f64) -> f64 {
         0.9759 * (wavelength / r0) * (1.0 - 2.183 * (r0 / oscale).powf(0.356)).sqrt()
@@ -70,8 +75,8 @@ mod tests {
         let mut fwhm = Fwhm::new();
         fwhm.build(&mut src);
         let atm_fwhm_x = Fwhm::atmosphere(500e-9, pssn.r0() as f64, pssn.oscale as f64).to_arcsec();
-        let atm_fwhm_n = fwhm.from_complex_otf(&pssn.atmosphere_otf()).to_arcsec();
-        println!("Atm. FWHM [arcsec]: {:.3}/{:.3}", atm_fwhm_x, atm_fwhm_n);
+        let atm_fwhm_n = fwhm.from_complex_otf(&pssn.atmosphere_otf());
+        println!("Atm. FWHM [arcsec]: {:.3}/{:.3}", atm_fwhm_x, atm_fwhm_n[0].to_arcsec());
     }
 
     #[test]
@@ -97,7 +102,7 @@ mod tests {
         );
         let atm_fwhm_x0 =
             Fwhm::atmosphere(500e-9, pssn.r0() as f64, pssn.oscale as f64).to_arcsec();
-        let atm_fwhm_x1 = fwhm.from_complex_otf(&pssn.atmosphere_otf()).to_arcsec();
+        let atm_fwhm_x1 = fwhm.from_complex_otf(&pssn.atmosphere_otf());
         let mut k = 0;
         let now = Instant::now();
         loop {
@@ -112,13 +117,12 @@ mod tests {
             atm.reset();
         }
         let atm_fwhm_n = fwhm
-            .from_complex_otf(&pssn.telescope_error_otf())
-            .to_arcsec();
+            .from_complex_otf(&pssn.telescope_error_otf());
         println!(
             "Atm. FWHM [arcsec]: {:.3}/{:.3}/{:.3} in {}s",
             atm_fwhm_x0,
-            atm_fwhm_x1,
-            atm_fwhm_n,
+            atm_fwhm_x1[0].to_arcsec(),
+            atm_fwhm_n[0].to_arcsec(),
             now.elapsed().as_secs()
         );
     }
