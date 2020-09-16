@@ -1,6 +1,6 @@
 use ceo;
 use ceo::Conversion;
-use glao::glao_sys::GlaoSys;
+use glao::glao_sys::{GlaoSys, ScienceField};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon;
 use rayon::prelude::*;
@@ -180,7 +180,6 @@ fn glao_pssn_fiducial(
     )
 }
  */
-
 #[allow(dead_code)]
 fn on_axis_glao() {
     /*
@@ -197,14 +196,13 @@ fn on_axis_glao() {
     );
     */
     let mut atm = ceo::Atmosphere::new();
-    let mut glao_4gs = GlaoSys::default(&mut atm);
-    glao_4gs
-        .build(6f32.from_arcmin(), 70, 0.5)
-        .build_science_field(vec![0f32], vec![0f32])
-        .build_single_layer_atmosphere()
-        .calibration();
+    let mut science = ScienceField::on_axis("Vs", 1024, None);
+    science.build();
+    atm.gmt_build(science.pssn.r0(), science.pssn.oscale);
+    let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
+    glao_4gs.build(6f32.from_arcmin(), 70, 0.5).calibration();
 
-    let n_sample = 1;
+    let n_sample = 1000;
     let pb = ProgressBar::new(n_sample as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -218,7 +216,7 @@ fn on_axis_glao() {
             }
         }
         pb.finish();
-        glao_4gs.wrap_up().results()
+        science.wrap_up().results()
     };
     println!(
         "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:.3}/{:.3}",
@@ -232,7 +230,8 @@ fn on_axis_glao() {
 }
 
 #[allow(dead_code)]
-fn main() {    //}luci() {
+fn main() {
+    //}luci() {
     let mut cn2_reader = csv::Reader::from_path("glao_cn2.csv").unwrap();
     let mut cn2_profiles: Vec<Cn2> = vec![];
     for result in cn2_reader.deserialize() {
@@ -259,31 +258,27 @@ fn main() {    //}luci() {
     let atm_oscale = 25f32;
     println!("Atmosphere: r0={} , L0={}", atm_r0, atm_oscale);
 
-    let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
-    let glao_field: GlaoField =
-        pickle::from_reader(glao_field_reader).expect("File loading failed!");
-    let n_src = glao_field.zenith_arcmin.len();
-    println!("GLAO field ({} samples):", n_src);
-    println!(" * zenith : {:?}", glao_field.zenith_arcmin);
-    println!(" * azimuth: {:?}", glao_field.azimuth_degree);
-    let src_zen = glao_field
-        .zenith_arcmin
-        .iter()
-        .map(|x| x.from_arcmin())
-        .collect::<Vec<f32>>();
-    let src_azi = glao_field
-        .azimuth_degree
-        .iter()
-        .map(|x| x.to_radians())
-        .collect::<Vec<f32>>();
+    let n_px = (4.0 * 25.5
+        / ceo::PSSn::<ceo::pssn::TelescopeError>::r0_at_z(atm_r0 as f32, 30f32.to_radians()))
+    .ceil()
+    .min(1024f32) as usize;
+    println!("Source pupil sampling: {}", n_px);
 
     let mut atm = ceo::Atmosphere::new();
-    let mut glao_4gs = GlaoSys::with_n_science_sources(src_azi.len(), &mut atm);
-    glao_4gs
-        .build(6f32.from_arcmin(), 70, 0.5)
-        .build_science_field(src_zen, src_azi)
-        .build_atmosphere(turb_cn2_height, turb_cn2_xi0.to_vec())
-        .calibration();
+    let mut science =
+        ScienceField::delaunay_21("Vs", n_px, Some((atm_r0 as f32, atm_oscale as f32)));
+    science.build();
+    atm.build(
+        science.pssn.r0(),
+        science.pssn.oscale,
+        7,
+        turb_cn2_height.clone(),
+        turb_cn2_xi0.to_vec().clone(),
+        vec![0f32; 7],
+        vec![0f32; 7],
+    );
+    let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
+    glao_4gs.build(6f32.from_arcmin(), 70, 0.5).calibration();
 
     let n_sample = 1000;
     let pb = ProgressBar::new(n_sample as u64);
@@ -299,7 +294,7 @@ fn main() {    //}luci() {
             }
         }
         pb.finish();
-        glao_4gs.wrap_up().dump("luci.pkl").unwrap().results()
+        science.wrap_up().dump("luci.pkl").unwrap().results()
     };
     println!(
         "PSSN: {:?}/{:?}={} ; FWHM [arcsec]: {:.3}/{:?}/{:?}",
