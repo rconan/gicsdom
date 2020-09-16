@@ -1,13 +1,17 @@
-use crate::system::System;
-use ceo::{pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Mask, PSSn, Source};
+use crate::system::{GlaoField, System};
+use ceo::{
+    pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Gmt, Mask, PSSn, Source,
+};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::{Deserialize as Dserde, Serialize as Sserde};
 use serde_pickle as pickle;
 use std::error::Error;
 use std::fs::File;
+use std::io::BufWriter;
 use std::time::Instant;
 use std::{f32, f64};
-use std::io::BufWriter;
+
+const PUPIL_SIZE: f64 = 25.5;
 
 #[derive(Sserde, Dserde, Default, Debug)]
 pub struct Fwhms {
@@ -16,71 +20,175 @@ pub struct Fwhms {
     glao_fwhm: Vec<f64>,
 }
 
-pub struct GlaoSys<'a> {
+pub struct ScienceField {
+    band: String,
+    n_src: usize,
+    n_px: usize,
+    zenith: Vec<f32>,
+    azimuth: Vec<f32>,
+    src: Source,
+    atm_pssn: ceo::PSSn<ATE>,
+    pub pssn: ceo::PSSn<ATE>,
+    fwhms: Fwhms,
+}
+impl ScienceField {
+    pub fn on_axis(band: &str, n_px: usize, r0_oscale: Option<(f32, f32)>) -> Self {
+        ScienceField {
+            band: band.to_owned(),
+            n_src: 1,
+            n_px: n_px,
+            zenith: vec![0f32],
+            azimuth: vec![0f32],
+            src: Source::new(1, PUPIL_SIZE, n_px as i32),
+            atm_pssn: match r0_oscale {
+                Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
+                None => PSSn::new(),
+            },
+            pssn: match r0_oscale {
+                Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
+                None => PSSn::new(),
+            },
+            fwhms: Fwhms::default(),
+        }
+    }
+    pub fn delaunay_21(band: &str, n_px: usize, r0_oscale: Option<(f32, f32)>) -> Self {
+        let glao_field_reader = File::open("glao_field.pkl").expect("File not found!");
+        let glao_field: GlaoField =
+            pickle::from_reader(glao_field_reader).expect("File loading failed!");
+        let n_src = glao_field.zenith_arcmin.len();
+        assert_eq!(n_src, 21);
+        let src_zen = glao_field
+            .zenith_arcmin
+            .iter()
+            .map(|x| x.from_arcmin())
+            .collect::<Vec<f32>>();
+        let src_azi = glao_field
+            .azimuth_degree
+            .iter()
+            .map(|x| x.to_radians())
+            .collect::<Vec<f32>>();
+        ScienceField {
+            band: band.to_owned(),
+            n_src: 21,
+            n_px: n_px,
+            zenith: src_zen,
+            azimuth: src_azi,
+            src: Source::new(n_src as i32, PUPIL_SIZE, n_px as i32),
+            atm_pssn: match r0_oscale {
+                Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
+                None => PSSn::new(),
+            },
+            pssn: match r0_oscale {
+                Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
+                None => PSSn::new(),
+            },
+            fwhms: Fwhms::default(),
+        }
+    }
+    pub fn build(&mut self) -> &mut Self {
+        self.src.build(
+            &self.band,
+            self.zenith.clone(),
+            self.azimuth.clone(),
+            vec![0f32; self.n_src],
+        );
+        let mut gmt = Gmt::new();
+        gmt.build(0, Some(0));
+        self.src.through(&mut gmt).xpupil();
+        self.pssn.build(&mut self.src);
+        self.atm_pssn.build(&mut self.src);
+        self
+    }
+    pub fn wrap_up(&mut self) -> &mut Self {
+        self.atm_pssn.peek().telescope_error_into_otf();
+        self.pssn.peek().telescope_error_into_otf();
+        let mut fwhm = ceo::Fwhm::new();
+        fwhm.build(&mut self.src);
+        fwhm.upper_bracket = 2f64/self.pssn.r0() as f64;
+        let atm_fwhm_x = ceo::Fwhm::atmosphere(
+            self.pssn.wavelength as f64,
+            self.pssn.r0() as f64,
+            self.pssn.oscale as f64,
+        )
+        .to_arcsec();
+        let atm_fwhm = fwhm.from_complex_otf(&self.atm_pssn.telescope_error_otf());
+        let glao_fwhm = fwhm.from_complex_otf(&self.pssn.telescope_error_otf());
+        self.fwhms.atm_fwhm_x = atm_fwhm_x;
+        self.fwhms.atm_fwhm = atm_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
+        self.fwhms.glao_fwhm = glao_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
+        self
+    }
+    pub fn results(&self) -> (Vec<f32>, Vec<f32>, f64, Vec<f64>, Vec<f64>) {
+        (
+            self.atm_pssn.estimates.clone(),
+            self.pssn.estimates.clone(),
+            self.fwhms.atm_fwhm_x,
+            self.fwhms.atm_fwhm.clone(),
+            self.fwhms.glao_fwhm.clone(),
+        )
+    }
+    pub fn dump(&self, filename: &str) -> Result<&Self, Box<dyn Error>> {
+        let file = File::create(filename)?;
+        let mut writer = BufWriter::with_capacity(1_000_000, file);
+        pickle::to_writer(&mut writer, self, true)?;
+        Ok(self)
+    }
+}
+
+impl Serialize for ScienceField {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("GLAO", 1)?;
+        state.serialize_field("atmosphere pssn", &self.atm_pssn)?;
+        state.serialize_field("GLAO pssn", &self.pssn)?;
+        state.serialize_field("FWHMS [arcsec]", &self.fwhms)?;
+        state.end()
+    }
+}
+
+pub struct GlaoSys<'a, 'b> {
     sys: System,
     lenslet_mask: Mask,
     calib: Cu<f32>,
-    src: Source,
-    atm_pssn: ceo::PSSn<ATE>,
-    pssn: ceo::PSSn<ATE>,
     step: usize,
     atm: &'a mut Atmosphere,
+    science: &'b mut ScienceField,
     d_mean_c: ceo::Cu<f32>,
     x: ceo::Cu<f32>,
-    fwhms: Fwhms,
 }
 
-impl<'a> GlaoSys<'a> {
+impl<'a, 'b> GlaoSys<'a, 'b> {
     pub fn new(
         pupil_size: f64,
         n_sensor: i32,
         n_lenslet: i32,
         n_px_lenslet: i32,
-        n_src: usize,
+        science: &'b mut ScienceField,
         atm: &'a mut Atmosphere,
     ) -> Self {
         Self {
             sys: System::new(pupil_size, n_sensor as i32, n_lenslet, n_px_lenslet),
             lenslet_mask: Mask::new(),
             calib: Cu::new(),
-            src: Source::new(n_src as i32, pupil_size, 1024),
-            atm_pssn: PSSn::new(),
-            pssn: PSSn::new(),
             step: 0,
             atm: atm,
+            science: science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
-            fwhms: Fwhms::default(),
         }
     }
-    pub fn default(atm: &'a mut Atmosphere) -> Self {
+    pub fn default(atm: &'a mut Atmosphere, science: &'b mut ScienceField) -> Self {
         Self {
             sys: System::new(25.5, 4, 48, 16),
             lenslet_mask: Mask::new(),
             calib: Cu::new(),
-            src: Source::new(1, 25.5, 1024),
-            atm_pssn: PSSn::new(),
-            pssn: PSSn::new(),
             step: 0,
             atm: atm,
+            science: science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
-            fwhms: Fwhms::default(),
-        }
-    }
-    pub fn with_n_science_sources(n_src: usize, atm: &'a mut Atmosphere) -> Self {
-        Self {
-            sys: System::new(25.5, 4, 48, 16),
-            lenslet_mask: Mask::new(),
-            calib: Cu::new(),
-            src: Source::new(n_src as i32, 25.5, 1024),
-            atm_pssn: PSSn::new(),
-            pssn: PSSn::new(),
-            step: 0,
-            atm: atm,
-            d_mean_c: Cu::new(),
-            x: Cu::new(),
-            fwhms: Fwhms::default(),
         }
     }
     pub fn build(
@@ -125,37 +233,6 @@ impl<'a> GlaoSys<'a> {
 
         self
     }
-    pub fn build_science_field(&mut self, src_zen: Vec<f32>, src_azi: Vec<f32>) -> &mut Self {
-        let (_, gmt, _) = self.sys.devices();
-
-        let n_src = src_zen.len();
-        self.src.build("Vs", src_zen, src_azi, vec![0f32; n_src]);
-
-        gmt.reset();
-        self.src.through(gmt).xpupil();
-
-        self.pssn.build(&mut self.src);
-        self.atm_pssn.build(&mut self.src);
-
-        self
-    }
-    pub fn build_single_layer_atmosphere(&mut self) -> &mut Self {
-        self.atm.gmt_build(self.pssn.r0(), self.pssn.oscale);
-        self
-    }
-    pub fn build_atmosphere(&mut self, altitude: Vec<f32>, xi0: Vec<f32>) -> &mut Self {
-        let n_layer = altitude.len();
-        self.atm.build(
-            self.pssn.r0(),
-            self.pssn.oscale,
-            n_layer as i32,
-            altitude,
-            xi0,
-            vec![0f32; n_layer],
-            vec![0f32; n_layer],
-        );
-        self
-    }
     pub fn calibration(&mut self) -> &mut Self {
         let now = Instant::now();
         self.calib = {
@@ -185,42 +262,9 @@ impl<'a> GlaoSys<'a> {
         self.x.malloc();
         self
     }
-    pub fn wrap_up(&mut self) -> &mut Self {
-        self.atm_pssn.peek().telescope_error_into_otf();
-        self.pssn.peek().telescope_error_into_otf();
-        let mut fwhm = ceo::Fwhm::new();
-        fwhm.build(&mut self.src);
-        let atm_fwhm_x = ceo::Fwhm::atmosphere(
-            self.pssn.wavelength as f64,
-            self.pssn.r0() as f64,
-            self.pssn.oscale as f64,
-        )
-        .to_arcsec();
-        let atm_fwhm = fwhm.from_complex_otf(&self.atm_pssn.telescope_error_otf());
-        let glao_fwhm = fwhm.from_complex_otf(&self.pssn.telescope_error_otf());
-        self.fwhms.atm_fwhm_x = atm_fwhm_x;
-        self.fwhms.atm_fwhm = atm_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
-        self.fwhms.glao_fwhm = glao_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
-        self
-    }
-    pub fn results(&self) -> (Vec<f32>, Vec<f32>, f64, Vec<f64>, Vec<f64>) {
-        (
-            self.atm_pssn.estimates.clone(),
-            self.pssn.estimates.clone(),
-            self.fwhms.atm_fwhm_x,
-            self.fwhms.atm_fwhm.clone(),
-            self.fwhms.glao_fwhm.clone(),
-        )
-    }
-    pub fn dump(&self, filename: &str) -> Result<&Self, Box<dyn Error>> {
-        let mut file = File::create(filename)?;
-        let mut writer = BufWriter::with_capacity(1_000_000, file);
-        pickle::to_writer(&mut writer, self, true)?;
-        Ok(self)
-    }
 }
 
-impl<'a> Iterator for GlaoSys<'a> {
+impl<'a, 'b> Iterator for GlaoSys<'a, 'b> {
     type Item = usize;
     fn next(&mut self) -> Option<Self::Item> {
         let n_kl = self.sys.m2_n_mode;
@@ -235,11 +279,12 @@ impl<'a> Iterator for GlaoSys<'a> {
         wfs.process()
             .fold_into(&mut self.d_mean_c, &mut self.lenslet_mask);
 
-        self.src
+        self.science
+            .src
             .through(gmt)
             .xpupil()
             .through(self.atm)
-            .through(&mut self.atm_pssn);
+            .through(&mut self.science.atm_pssn);
 
         self.calib.qr_solve_as_ptr(&mut self.x, &mut self.d_mean_c);
         let h_x = self.x.from_dev();
@@ -254,11 +299,12 @@ impl<'a> Iterator for GlaoSys<'a> {
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);
 
-        self.src
+        self.science
+            .src
             .through(gmt)
             .xpupil()
             .through(self.atm)
-            .through(&mut self.pssn);
+            .through(&mut self.science.pssn);
 
         /*let wfe_rms = src.wfe_rms_10e(-9)[0];
         if k_sample % 100 == 0 {
@@ -278,15 +324,3 @@ impl<'a> Iterator for GlaoSys<'a> {
     }
 }
 
-impl<'a> Serialize for GlaoSys<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("GLAO", 1)?;
-        state.serialize_field("atmosphere pssn", &self.atm_pssn)?;
-        state.serialize_field("GLAO pssn", &self.pssn)?;
-        state.serialize_field("FWHMS [arcsec]", &self.fwhms)?;
-        state.end()
-    }
-}
