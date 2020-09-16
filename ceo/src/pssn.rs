@@ -97,6 +97,9 @@ impl<S> PSSn<S> {
     pub fn r0(&self) -> f32 {
         (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
+    pub fn r0_at_z(r0_at_zenith: f32, zenith_angle:f32) -> f32 {
+        (r0_at_zenith.powf(-5_f32 / 3_f32) / zenith_angle.cos()).powf(-3_f32 / 5_f32)
+    }
     pub fn xotf(&mut self) -> &Self {
         let mut d_otf = Cu::vector(2 * self._c_.NN as usize);
         d_otf.malloc();
