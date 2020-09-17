@@ -28,7 +28,7 @@ fn main() {
     let m1_polishing_error = false;
     let n_sample: usize = 1000;
 
-    let n_gpu = 1 as usize;
+    let n_gpu = 8 as usize;
     let n_thread = n_gpu;
 
     let pool = rayon::ThreadPoolBuilder::new()
@@ -36,20 +36,22 @@ fn main() {
         .build()
         .unwrap();
 
-    let mpb = MultiProgress::new();
-    let pb_main = mpb.add(ProgressBar::new(cn2_profiles.len() as u64));
-    pb_main.set_style(
-        ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {bar:40.green/yellow} {pos:>4}/{len:4}"),
-    );
 
     pool.install(|| {
+        let mpb = MultiProgress::new();
+        let pb_main = mpb.add(ProgressBar::new(cn2_profiles.len() as u64));
+        pb_main.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.green/yellow} {pos:>4}/{len:4}"),
+        );
         cn2_profiles
             .par_iter()
             .progress_with(pb_main)
             .for_each(|cn2_prof| {
                 let thread_id = pool.current_thread_index().unwrap();
                 ceo::set_gpu((thread_id % n_gpu) as i32);
+
+                log::info!("LUCI CN2 #{}", cn2_prof.idx);
 
                 let turb_cn2_height = [40f32, 125f32, 350f32, 1500f32, 4000f32, 8000f32, 16000f32]
                     .iter()
@@ -92,8 +94,9 @@ fn main() {
                     vec![0f32; 7],
                 );
                 let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
+                glao_4gs.build(6f32.from_arcmin(), 70, 0.5).calibration();
                 if m1_polishing_error {
-                    glao_4gs.build(6f32.from_arcmin(), 70, 0.5).calibration();
+                    glao_4gs.s12 = Some(((2, 7), (1, 1)));
                     //glao_sys::m1_polishing_wavefront_error(&mut glao_4gs);
                 }
                 let pb = mpb.add(ProgressBar::new(n_sample as u64));
@@ -136,7 +139,7 @@ fn main() {
                 );
                 science.dump(&filename).unwrap();
             });
+        mpb.join_and_clear().unwrap();
     });
 
-    mpb.join_and_clear().unwrap();
 }
