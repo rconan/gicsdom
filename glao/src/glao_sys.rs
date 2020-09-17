@@ -29,6 +29,7 @@ pub struct ScienceField {
     src: Source,
     atm_pssn: ceo::PSSn<ATE>,
     pub pssn: ceo::PSSn<ATE>,
+    pub pssn_nsample_tol: Option<(usize,f32)>,
     fwhms: Fwhms,
 }
 impl ScienceField {
@@ -48,6 +49,7 @@ impl ScienceField {
                 Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
                 None => PSSn::new(),
             },
+            pssn_nsample_tol: None,
             fwhms: Fwhms::default(),
         }
     }
@@ -82,6 +84,7 @@ impl ScienceField {
                 Some(r0_oscale) => PSSn::from_r0_and_outerscale(r0_oscale.0, r0_oscale.1),
                 None => PSSn::new(),
             },
+            pssn_nsample_tol: None,
             fwhms: Fwhms::default(),
         }
     }
@@ -140,10 +143,12 @@ impl Serialize for ScienceField {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("GLAO", 1)?;
+        let mut state = serializer.serialize_struct("ScienceField", 5)?;
+        state.serialize_field("pupil sampling [px]", &self.n_px)?;
         state.serialize_field("atmosphere pssn", &self.atm_pssn)?;
         state.serialize_field("GLAO pssn", &self.pssn)?;
         state.serialize_field("FWHMS [arcsec]", &self.fwhms)?;
+        state.serialize_field("pssn (n_sample,tol)",&self.pssn_nsample_tol)?;
         state.end()
     }
 }
@@ -261,6 +266,9 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         self.x = Cu::vector(self.calib.n_col());
         self.x.malloc();
         self
+    }
+    pub fn peek(&mut self) -> Vec<f32> {
+        self.science.pssn.peek().estimates.clone()
     }
 }
 
