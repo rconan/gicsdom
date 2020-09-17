@@ -280,16 +280,32 @@ fn main() {
     let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
     glao_4gs.build(6f32.from_arcmin(), 70, 0.5).calibration();
 
-    let n_sample = 1000;
-    let pb = ProgressBar::new(n_sample as u64);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}"),
-    );
     let (atm_pssn, pssn, atm_fwhm_x, atm_fwhm, glao_fwhm) = {
-        for k in &mut glao_4gs {
+        let n_sample = 1000;
+        let pb = ProgressBar::new(n_sample as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}"),
+        );
+        let mut pssn_previous = 0f32;
+        let mut tol_count = 0;
+        let mut tol = 0f32;
+        for k in 0..n_sample {
             pb.inc(1);
-            if k == n_sample {
+            glao_4gs.next();
+            if k % 25 == 0 {
+                let pssn_current = glao_4gs.peek()[12];
+                tol = (pssn_previous - pssn_current).abs();
+                pb.set_message(&format!("Tol.: {:>7.4}",tol));
+                if tol < 1e-4 {
+                    tol_count += 1;
+                } else {
+                    tol_count = 0;
+                }
+                pssn_previous = pssn_current;
+            }
+            if tol_count == 2 {
+                science.pssn_nsample_tol = Some((k,tol));
                 break;
             }
         }
