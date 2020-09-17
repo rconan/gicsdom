@@ -1,3 +1,5 @@
+
+use log;
 use crate::system::{GlaoField, System};
 use ceo::{
     pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Gmt, Mask, PSSn, Source,
@@ -29,7 +31,7 @@ pub struct ScienceField {
     src: Source,
     atm_pssn: ceo::PSSn<ATE>,
     pub pssn: ceo::PSSn<ATE>,
-    pub pssn_nsample_tol: Option<(usize,f32)>,
+    pub pssn_nsample_tol: Option<(usize, f32)>,
     fwhms: Fwhms,
 }
 impl ScienceField {
@@ -107,7 +109,7 @@ impl ScienceField {
         self.pssn.peek().telescope_error_into_otf();
         let mut fwhm = ceo::Fwhm::new();
         fwhm.build(&mut self.src);
-        fwhm.upper_bracket = 2f64/self.pssn.r0() as f64;
+        fwhm.upper_bracket = 2f64 / self.pssn.r0() as f64;
         let atm_fwhm_x = ceo::Fwhm::atmosphere(
             self.pssn.wavelength as f64,
             self.pssn.r0() as f64,
@@ -148,7 +150,7 @@ impl Serialize for ScienceField {
         state.serialize_field("atmosphere pssn", &self.atm_pssn)?;
         state.serialize_field("GLAO pssn", &self.pssn)?;
         state.serialize_field("FWHMS [arcsec]", &self.fwhms)?;
-        state.serialize_field("pssn (n_sample,tol)",&self.pssn_nsample_tol)?;
+        state.serialize_field("pssn (n_sample,tol)", &self.pssn_nsample_tol)?;
         state.end()
     }
 }
@@ -162,6 +164,7 @@ pub struct GlaoSys<'a, 'b> {
     science: &'b mut ScienceField,
     d_mean_c: ceo::Cu<f32>,
     x: ceo::Cu<f32>,
+    pub s12: Option<((usize, usize), (usize, usize))>,
 }
 
 impl<'a, 'b> GlaoSys<'a, 'b> {
@@ -182,6 +185,7 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             science: science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
+            s12: None,
         }
     }
     pub fn default(atm: &'a mut Atmosphere, science: &'b mut ScienceField) -> Self {
@@ -194,6 +198,7 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             science: science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
+            s12: None,
         }
     }
     pub fn build(
@@ -212,7 +217,7 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             .wfs_build("Vs", gs_zen, gs_azi, vec![0f32; n_gs])
             .wfs_calibrate(wfs_intensity_threshold)
             .through();
-        println!("GLAO centroids #: {}", self.sys.wfs.n_centroids);
+        log::info!("GLAO centroids #: {}", self.sys.wfs.n_centroids);
 
         let n_lenslet = self.sys.n_lenslet as usize;
         let (_, _, wfs) = self.sys.devices();
@@ -228,7 +233,7 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
                     .collect::<Vec<u8>>()
             });
         let nnz = mask.iter().cloned().map(|x| x as usize).sum::<usize>();
-        println!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
+        log::info!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
 
         self.lenslet_mask.build(m);
         let mut f: ceo::Cu<f32> = ceo::Cu::vector(m);
@@ -255,8 +260,8 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             on_axis_sys.m2_mode_calibrate_data(&mut self.lenslet_mask)
         };
         self.calib.qr();
-        println!("Calibration & Inversion in {}s", now.elapsed().as_secs());
-        println!(
+        log::info!("Calibration & Inversion in {}s", now.elapsed().as_secs());
+        log::info!(
             "Calibration matrix size [{}x{}]",
             self.calib.n_row(),
             self.calib.n_col()
@@ -270,29 +275,59 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
     pub fn peek(&mut self) -> Vec<f32> {
         self.science.pssn.peek().estimates.clone()
     }
+    pub fn set_m1_polishing_error(&mut self, v: f64) {
+        match self.s12 {
+            Some(((s1, e1), (s2, e2))) => {
+                let mut a = vec![vec![0f64; self.sys.gmt.m1_n_mode]; 7];
+                ((s1 - 1)..e1).for_each(|i| {
+                    a[i][0] = v;
+                });
+                ((s2 - 1)..e2).for_each(|i| {
+                    a[i][1] = v;
+                });
+                self.sys.gmt.update(None, None, Some(&a));
+            }
+            None => (),
+        }
+    }
+}
+
+pub fn m1_polishing_wavefront_error(glao: &mut GlaoSys) {
+    glao.set_m1_polishing_error(1f64);
+    let (_, gmt, _) = glao.sys.devices();
+    let mut src = Source::new(1, 25.5, 1024);
+    src.build("Vs", vec![0f32], vec![0f32], vec![0f32]);
+    let wfe_rms = src.through(gmt).xpupil().wfe_rms_10e(-9);
+    log::info!("M1 polishing WFE RMS [nm]: {:.3}", wfe_rms[0]);
+    let mut file = File::create("m1_polishing_wavefront_error.pkl").unwrap();
+    pickle::to_writer(&mut file, src.phase(), true).unwrap();
 }
 
 impl<'a, 'b> Iterator for GlaoSys<'a, 'b> {
     type Item = usize;
     fn next(&mut self) -> Option<Self::Item> {
         let n_kl = self.sys.m2_n_mode;
-        let (gs, gmt, wfs) = self.sys.devices();
+
+        self.set_m1_polishing_error(0f64);
 
         let mut kl_coefs = vec![vec![0f64; n_kl]; 7];
         let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
-        gmt.set_m2_modes(&mut b);
+        self.sys.gmt.set_m2_modes(&mut b);
+
+        self.science
+            .src
+            .through(&mut self.sys.gmt)
+            .xpupil()
+            .through(self.atm)
+            .through(&mut self.science.atm_pssn);
+
+        self.set_m1_polishing_error(1f64);
+        let (gs, gmt, wfs) = self.sys.devices();
 
         wfs.reset();
         gs.through(gmt).xpupil().through(self.atm).through(wfs);
         wfs.process()
             .fold_into(&mut self.d_mean_c, &mut self.lenslet_mask);
-
-        self.science
-            .src
-            .through(gmt)
-            .xpupil()
-            .through(self.atm)
-            .through(&mut self.science.atm_pssn);
 
         self.calib.qr_solve_as_ptr(&mut self.x, &mut self.d_mean_c);
         let h_x = self.x.from_dev();
@@ -331,4 +366,3 @@ impl<'a, 'b> Iterator for GlaoSys<'a, 'b> {
         Some(self.step)
     }
 }
-
