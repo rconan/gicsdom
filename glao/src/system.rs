@@ -3,7 +3,6 @@ use ceo::{Conversion, GeometricShackHartmann, Gmt, Source};
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use std::fs::File;
-use std::time::Instant;
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct GlaoField {
