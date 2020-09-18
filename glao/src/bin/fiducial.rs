@@ -1,4 +1,3 @@
-use ceo;
 use ceo::Conversion;
 use glao::glao_sys;
 use glao::glao_sys::{GlaoSys, ScienceField};

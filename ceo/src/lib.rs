@@ -119,6 +119,11 @@ impl Mask {
         &mut self._c_
     }
 }
+impl Default for Mask {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 pub struct CuFloat {
     _c_: gpu_float,

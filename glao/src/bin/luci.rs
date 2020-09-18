@@ -1,13 +1,9 @@
-use ceo;
 use ceo::Conversion;
-use csv;
 //use glao::glao_sys;
 use glao::glao_sys::{GlaoSys, ScienceField};
 use glao::system::Cn2;
 use indicatif::{MultiProgress, ParallelProgressIterator, ProgressBar, ProgressStyle};
-use log;
 use log::LevelFilter;
-use rayon;
 use rayon::prelude::*;
 use simple_logger::SimpleLogger;
 use std::f32;
@@ -88,8 +84,8 @@ fn main() {
                     science.pssn.r0(),
                     science.pssn.oscale,
                     7,
-                    turb_cn2_height.clone(),
-                    turb_cn2_xi0.to_vec().clone(),
+                    turb_cn2_height,
+                    turb_cn2_xi0.to_vec(),
                     vec![0f32; 7],
                     vec![0f32; 7],
                 );

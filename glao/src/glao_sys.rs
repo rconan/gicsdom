@@ -1,5 +1,3 @@
-
-use log;
 use crate::system::{GlaoField, System};
 use ceo::{
     pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Gmt, Mask, PSSn, Source,
@@ -39,7 +37,7 @@ impl ScienceField {
         ScienceField {
             band: band.to_owned(),
             n_src: 1,
-            n_px: n_px,
+            n_px,
             zenith: vec![0f32],
             azimuth: vec![0f32],
             src: Source::new(1, PUPIL_SIZE, n_px as i32),
@@ -74,7 +72,7 @@ impl ScienceField {
         ScienceField {
             band: band.to_owned(),
             n_src: 21,
-            n_px: n_px,
+            n_px,
             zenith: src_zen,
             azimuth: src_azi,
             src: Source::new(n_src as i32, PUPIL_SIZE, n_px as i32),
@@ -181,8 +179,8 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             lenslet_mask: Mask::new(),
             calib: Cu::new(),
             step: 0,
-            atm: atm,
-            science: science,
+            atm,
+            science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
             s12: None,
@@ -194,8 +192,8 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             lenslet_mask: Mask::new(),
             calib: Cu::new(),
             step: 0,
-            atm: atm,
-            science: science,
+            atm,
+            science,
             d_mean_c: Cu::new(),
             x: Cu::new(),
             s12: None,
@@ -276,18 +274,14 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         self.science.pssn.peek().estimates.clone()
     }
     pub fn set_m1_polishing_error(&mut self, v: f64) {
-        match self.s12 {
-            Some(((s1, e1), (s2, e2))) => {
-                let mut a = vec![vec![0f64; self.sys.gmt.m1_n_mode]; 7];
-                ((s1 - 1)..e1).for_each(|i| {
-                    a[i][0] = v;
-                });
-                ((s2 - 1)..e2).for_each(|i| {
-                    a[i][1] = v;
-                });
-                self.sys.gmt.update(None, None, Some(&a));
-            }
-            None => (),
+        if let Some(((s1, e1), (s2, e2))) = self.s12 {
+            let mut a = vec![vec![0f64; self.sys.gmt.m1_n_mode]; 7];
+            ((s1 - 1)..e1).for_each(|i| {
+                a[i][0] = v;
+            });
+            ((s2 - 1)..e2).for_each(|i| {
+                a[i][1] = v;
+            });
         }
     }
 }
@@ -332,14 +326,14 @@ impl<'a, 'b> Iterator for GlaoSys<'a, 'b> {
         self.calib.qr_solve_as_ptr(&mut self.x, &mut self.d_mean_c);
         let h_x = self.x.from_dev();
         let mut k = 0;
-        for s in 0..7 {
-            for a in 1..n_kl {
-                kl_coefs[s][a] -= h_x[k] as f64;
+        for s in kl_coefs.iter_mut() {
+            for a in s.iter_mut().skip(1) {
+                *a -= h_x[k] as f64;
                 k += 1;
             }
         }
 
-        let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+        let mut b = kl_coefs.into_iter().flatten().collect::<Vec<f64>>();
         gmt.set_m2_modes(&mut b);
 
         self.science

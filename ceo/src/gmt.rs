@@ -217,19 +217,18 @@ impl Gmt {
         m2_rbm: Option<&Vec<Vec<f64>>>,
         m1_mode: Option<&Vec<Vec<f64>>>,
     ) {
-        if m1_rbm.is_some() {
-            for (k, rbm) in m1_rbm.unwrap().iter().enumerate() {
+        if let Some(m1_rbm) = m1_rbm {
+            for (k, rbm) in m1_rbm.iter().enumerate() {
                 self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
             }
         }
-        if m2_rbm.is_some() {
-            for (k, rbm) in m2_rbm.unwrap().iter().enumerate() {
+        if let Some(m2_rbm) = m2_rbm {
+            for (k, rbm) in m2_rbm.iter().enumerate() {
                 self.set_m2_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
             }
         }
-        if m1_mode.is_some() {
+        if let Some(m1_mode) = m1_mode {
             let mut m = m1_mode
-                .unwrap()
                 .clone()
                 .into_iter()
                 .flatten()
@@ -243,18 +242,18 @@ impl Gmt {
         m2_rbm: Option<&Vec<f64>>,
         m1_mode: Option<&Vec<f64>>,
     ) {
-        if m1_rbm.is_some() {
-            for (k, rbm) in m1_rbm.unwrap().chunks(6).enumerate() {
+        if let Some(m1_rbm) = m1_rbm {
+            for (k, rbm) in m1_rbm.chunks(6).enumerate() {
                 self.set_m1_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
             }
         }
-        if m2_rbm.is_some() {
-            for (k, rbm) in m2_rbm.unwrap().chunks(6).enumerate() {
+        if let Some(m2_rbm) = m2_rbm {
+            for (k, rbm) in m2_rbm.chunks(6).enumerate() {
                 self.set_m2_segment_state((k + 1) as i32, &rbm[..3], &rbm[3..]);
             }
         }
-        if m1_mode.is_some() {
-            let mut m = m1_mode.unwrap().clone();
+        if let Some(m1_mode) = m1_mode {
+            let mut m = m1_mode.clone();
             self.set_m1_modes(&mut m);
         }
     }

@@ -170,7 +170,7 @@ impl Source {
                 / n;
             segment_wfe_std.push(var.sqrt());
         }
-        segment_wfe_std.clone()
+        segment_wfe_std
     }
     pub fn segment_piston(&mut self) -> Vec<f32> {
         let mut mask = vec![0i32; self._c_.rays.N_RAY_TOTAL as usize];
@@ -195,7 +195,7 @@ impl Source {
             //let var = segment_phase.iter().map(|x| (x-mean).powi(2)).sum::<f32>()/n;
             segment_mean.push(mean);
         }
-        segment_mean.clone()
+        segment_mean
     }
     pub fn segment_piston_10e(&mut self, exp: i32) -> Vec<f32> {
         self.segment_piston()

@@ -1,4 +1,3 @@
-use ceo;
 use ceo::{Conversion, GeometricShackHartmann, Gmt, Source};
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
@@ -131,7 +130,7 @@ impl System {
     pub fn new(pupil_size: f64, n_sensor: i32, n_lenslet: i32, n_px_lenslet: i32) -> Self {
         let d = pupil_size / n_lenslet as f64;
         Self {
-            pupil_size: pupil_size,
+            pupil_size,
             n_wfs: n_sensor as usize,
             n_lenslet: n_lenslet as usize,
             n_px_lenslet: n_px_lenslet as usize,
