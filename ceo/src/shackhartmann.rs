@@ -1,51 +1,54 @@
 use std::{f32, mem};
 
-use super::ceo_bindings::{dev2host, geometricShackHartmann, shackHartmann};
+use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
 use super::{Cu, Mask, Propagation, Source};
 
-pub struct GeometricShackHartmann {
-    _c_: geometricShackHartmann,
+pub type Geometric = geometricShackHartmann;
+pub type Diffractive = shackHartmann;
+
+enum Cleanup {
+    None,
+    Geometric,
+    Diffractive,
+}
+
+pub struct ShackHartmann<S> {
+    _c_: std::marker::PhantomData<S>,
+    _c_geometric: Geometric,
+    _c_diffractive: Diffractive,
     pub n_side_lenslet: i32,
     pub n_px_lenslet: i32,
     pub d: f64,
     pub n_sensor: i32,
     pub n_centroids: i32,
     pub centroids: Cu<f32>,
+    cleanup: Cleanup,
 }
-pub struct DiffractiveShackHartmann {
-    _c_: shackHartmann,
-    n_side_lenslet: i32,
-    n_px_lenslet: i32,
-    d: f64,
-    n_sensor: i32,
-    pub n_centroids: i32,
-    pub centroids: Vec<f32>,
-}
-impl GeometricShackHartmann {
-    pub fn new(
-        n_sensor: i32,
-        n_side_lenslet: i32,
-        n_px_lenslet: i32,
-        d: f64,
-    ) -> GeometricShackHartmann {
-        GeometricShackHartmann {
-            _c_: unsafe { mem::zeroed() },
+impl<S> ShackHartmann<S> {
+    pub fn new(n_sensor: i32, n_side_lenslet: i32, n_px_lenslet: i32, d: f64) -> ShackHartmann<S> {
+        ShackHartmann {
+            _c_: std::marker::PhantomData,
+            _c_geometric: unsafe { mem::zeroed() },
+            _c_diffractive: unsafe { mem::zeroed() },
             n_side_lenslet,
             n_px_lenslet,
             d,
             n_sensor,
             n_centroids: 0,
             centroids: Cu::vector((n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize),
+            cleanup: Cleanup::None,
         }
     }
+}
+impl ShackHartmann<Geometric> {
     pub fn build(&mut self) -> &mut Self {
         self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
         unsafe {
-            self._c_
+            self._c_geometric
                 .setup(self.n_side_lenslet, self.d as f32, self.n_sensor);
-            self.centroids.from_ptr(self._c_.data_proc.d__c);
+            self.centroids.from_ptr(self._c_geometric.data_proc.d__c);
         }
-        //self.centroids = vec![0.0; self.n_centroids as usize]; //Vec::with_capacity(self.n_centroids as usize);
+        self.cleanup = Cleanup::Geometric;
         self
     }
     pub fn guide_star_args(&self) -> (i32, f64, i32) {
@@ -64,32 +67,22 @@ impl GeometricShackHartmann {
     }
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_.calibrate(&mut src._c_, threshold as f32);
+            self._c_geometric.calibrate(&mut src._c_, threshold as f32);
         }
         self
     }
     pub fn process(&mut self) -> &mut Self {
-        //self.centroids = vec![0.0; self.n_centroids as usize];
-        //let mut c = vec![0.0;self.n_centroids as usize];
         unsafe {
-            self._c_.process();
-            /*
-            dev2host(
-                self.centroids.as_mut_ptr(),
-                self._c_.data_proc.d__c,
-                self.n_centroids as i32,
-            );
-            */
-            //self._c_.reset();
+            self._c_geometric.process();
         }
         self
     }
     pub fn get_data(&mut self) -> Cu<f32> {
-        let m = self._c_.valid_lenslet.nnz as usize * 2usize;
+        let m = self._c_geometric.valid_lenslet.nnz as usize * 2usize;
         let mut data: Cu<f32> = Cu::vector(m);
         data.malloc();
         unsafe {
-            self._c_.get_valid_slopes(data.as_ptr());
+            self._c_geometric.get_valid_slopes(data.as_ptr());
         }
         data
     }
@@ -98,50 +91,56 @@ impl GeometricShackHartmann {
         let mut data: Cu<f32> = Cu::vector(m);
         data.malloc();
         unsafe {
-            self._c_
+            self._c_geometric
                 .masked_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
         }
         data
     }
     pub fn fold_into(&mut self, data: &mut Cu<f32>, lenslet_mask: &mut Mask) {
         unsafe {
-            self._c_
+            self._c_geometric
                 .folded_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
         }
     }
     pub fn n_valid_lenslet(&mut self) -> usize {
-        self._c_.valid_lenslet.nnz as usize
+        self._c_geometric.valid_lenslet.nnz as usize
     }
     pub fn reset(&mut self) -> &mut Self {
         unsafe {
-            self._c_.reset();
+            self._c_geometric.reset();
         }
         self
     }
     pub fn lenset_mask(&mut self) -> Cu<f32> {
         let mut mask: Cu<f32> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
-        mask.from_ptr(self._c_.valid_lenslet.f);
+        mask.from_ptr(self._c_geometric.valid_lenslet.f);
         mask
     }
     pub fn lenlet_flux(&mut self) -> Cu<f32> {
         let mut flux: Cu<f32> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
-        flux.from_ptr(self._c_.data_proc.d__mass);
+        flux.from_ptr(self._c_geometric.data_proc.d__mass);
         flux
     }
 }
-impl Drop for GeometricShackHartmann {
+impl<S> Drop for ShackHartmann<S> {
     fn drop(&mut self) {
-        unsafe {
-            self._c_.cleanup();
+        match self.cleanup {
+            Cleanup::None => (),
+            Cleanup::Geometric => {
+                unsafe { self._c_geometric.cleanup() };
+            }
+            Cleanup::Diffractive => {
+                unsafe { self._c_diffractive.cleanup() };
+            }
         }
     }
 }
-impl Propagation for GeometricShackHartmann {
+impl Propagation for ShackHartmann<Geometric> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.propagate(&mut src._c_);
+            self._c_geometric.propagate(&mut src._c_);
         }
         self
     }
@@ -149,23 +148,7 @@ impl Propagation for GeometricShackHartmann {
         self.propagate(src)
     }
 }
-impl DiffractiveShackHartmann {
-    pub fn new(
-        n_sensor: i32,
-        n_side_lenslet: i32,
-        n_px_lenslet: i32,
-        d: f64,
-    ) -> DiffractiveShackHartmann {
-        DiffractiveShackHartmann {
-            _c_: unsafe { mem::zeroed() },
-            n_side_lenslet,
-            n_px_lenslet,
-            d,
-            n_sensor,
-            n_centroids: 0,
-            centroids: Vec::new(),
-        }
-    }
+impl ShackHartmann<Diffractive> {
     pub fn build(
         &mut self,
         n_px_framelet: i32,
@@ -181,8 +164,9 @@ impl DiffractiveShackHartmann {
             Some(osf) => osf,
             None => 2,
         };
+        self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
         unsafe {
-            self._c_.setup(
+            self._c_diffractive.setup(
                 self.n_side_lenslet,
                 self.n_px_lenslet,
                 self.d as f32,
@@ -191,9 +175,9 @@ impl DiffractiveShackHartmann {
                 b,
                 self.n_sensor,
             );
+            self.centroids.from_ptr(self._c_diffractive.data_proc.d__c);
         }
-        self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
-        self.centroids = vec![0.0; self.n_centroids as usize]; //Vec::with_capacity(self.n_centroids as usize);
+        self.cleanup = Cleanup::Diffractive;
         self
     }
     pub fn new_guide_stars(&self) -> Source {
@@ -205,22 +189,15 @@ impl DiffractiveShackHartmann {
     }
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_.calibrate(&mut src._c_, threshold as f32);
-            self._c_.camera.reset();
+            self._c_diffractive
+                .calibrate(&mut src._c_, threshold as f32);
+            self._c_diffractive.camera.reset();
         }
         self
     }
     pub fn process(&mut self) -> &mut Self {
-        self.centroids = vec![0.0; self.n_centroids as usize];
-        //let mut c = vec![0.0;self.n_centroids as usize];
         unsafe {
-            self._c_.process();
-            dev2host(
-                self.centroids.as_mut_ptr(),
-                self._c_.data_proc.d__c,
-                self.n_centroids as i32,
-            );
-            self._c_.camera.reset();
+            self._c_diffractive.process();
         }
         self
     }
@@ -232,7 +209,7 @@ impl DiffractiveShackHartmann {
         noise_factor: f32,
     ) -> &mut Self {
         unsafe {
-            self._c_.camera.readout1(
+            self._c_diffractive.camera.readout1(
                 exposure_time,
                 readout_noise_rms,
                 n_background_photon,
@@ -243,22 +220,15 @@ impl DiffractiveShackHartmann {
     }
     pub fn reset(&mut self) -> &mut Self {
         unsafe {
-            self._c_.camera.reset();
+            self._c_diffractive.camera.reset();
         }
         self
     }
 }
-impl Drop for DiffractiveShackHartmann {
-    fn drop(&mut self) {
-        unsafe {
-            self._c_.cleanup();
-        }
-    }
-}
-impl Propagation for DiffractiveShackHartmann {
+impl Propagation for ShackHartmann<Diffractive> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.propagate(&mut src._c_);
+            self._c_diffractive.propagate(&mut src._c_);
         }
         self
     }
@@ -266,4 +236,3 @@ impl Propagation for DiffractiveShackHartmann {
         self.propagate(src)
     }
 }
-pub type ShackHartmann = DiffractiveShackHartmann;

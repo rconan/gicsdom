@@ -20,10 +20,12 @@ pub use self::fwhm::Fwhm;
 pub use self::gmt::Gmt;
 pub use self::imaging::{Imaging, LensletArray};
 pub use self::pssn::PSSn;
-pub use self::shackhartmann::{GeometricShackHartmann, ShackHartmann};
+pub use self::shackhartmann::ShackHartmann;
 pub use self::source::Propagation;
 pub use self::source::Source;
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
+
+pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
