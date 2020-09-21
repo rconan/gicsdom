@@ -119,6 +119,21 @@ impl<T> Drop for Cu<T> {
         self.dev_alloc = false;
     }
 }
+impl From<Vec<f32>> for Cu<f32> {
+    fn from(item: Vec<f32>) -> Self {
+        let mut this = Cu::vector(item.len());
+        this.to_dev(&mut item.clone());
+        this
+    }
+}
+
+impl From<Cu<f32>> for Vec<f32> {
+    fn from(item: Cu<f32>) -> Self {
+        let mut q = item;
+        q.from_dev()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -152,5 +167,21 @@ mod tests {
         dd.from_ptr(d.as_ptr());
         let w = dd.from_dev();
         println!("w: {:?}", w);
+    }
+
+    #[test]
+    fn cu_from_into() {
+        let d_v = Cu::<f32>::from(vec![1f32;7]);
+        let u: Vec<f32> = d_v.into();
+        println!("u: {:?}",u);
+        assert_eq!(u,vec![1f32;7]);
+    }
+
+    #[test]
+    fn cu_into_from() {
+        let v = vec![1f32;7];
+        let d_v: Cu<f32> = v.into();
+        let u = Vec::<f32>::from(d_v);
+        assert_eq!(u,vec![1f32;7]);
     }
 }
