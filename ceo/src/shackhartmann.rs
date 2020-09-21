@@ -6,7 +6,7 @@ use super::{Cu, Mask, Propagation, Source};
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
 
-enum Cleanup {
+enum Model {
     None,
     Geometric,
     Diffractive,
@@ -22,7 +22,7 @@ pub struct ShackHartmann<S> {
     pub n_sensor: i32,
     pub n_centroids: i32,
     pub centroids: Cu<f32>,
-    cleanup: Cleanup,
+    model: Model,
 }
 impl<S> ShackHartmann<S> {
     pub fn new(n_sensor: i32, n_side_lenslet: i32, n_px_lenslet: i32, d: f64) -> ShackHartmann<S> {
@@ -36,7 +36,7 @@ impl<S> ShackHartmann<S> {
             n_sensor,
             n_centroids: 0,
             centroids: Cu::vector((n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize),
-            cleanup: Cleanup::None,
+            model: Model::None,
         }
     }
 }
@@ -48,7 +48,7 @@ impl ShackHartmann<Geometric> {
                 .setup(self.n_side_lenslet, self.d as f32, self.n_sensor);
             self.centroids.from_ptr(self._c_geometric.data_proc.d__c);
         }
-        self.cleanup = Cleanup::Geometric;
+        self.model = Model::Geometric;
         self
     }
     pub fn guide_star_args(&self) -> (i32, f64, i32) {
@@ -126,12 +126,12 @@ impl ShackHartmann<Geometric> {
 }
 impl<S> Drop for ShackHartmann<S> {
     fn drop(&mut self) {
-        match self.cleanup {
-            Cleanup::None => (),
-            Cleanup::Geometric => {
+        match self.model {
+            Model::None => (),
+            Model::Geometric => {
                 unsafe { self._c_geometric.cleanup() };
             }
-            Cleanup::Diffractive => {
+            Model::Diffractive => {
                 unsafe { self._c_diffractive.cleanup() };
             }
         }
@@ -177,7 +177,7 @@ impl ShackHartmann<Diffractive> {
             );
             self.centroids.from_ptr(self._c_diffractive.data_proc.d__c);
         }
-        self.cleanup = Cleanup::Diffractive;
+        self.model = Model::Diffractive;
         self
     }
     pub fn new_guide_stars(&self) -> Source {
