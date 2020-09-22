@@ -12,19 +12,32 @@ enum Model {
     Diffractive,
 }
 
+/// Shack-Hartmann wavefront sensor model
 pub struct ShackHartmann<S> {
     _c_: std::marker::PhantomData<S>,
     _c_geometric: Geometric,
     _c_diffractive: Diffractive,
+    /// The size of the square lenslet array
     pub n_side_lenslet: i32,
+    /// The number of pixel per lenslet in the telescope pupil
     pub n_px_lenslet: i32,
+    /// The lenslet array pitch [m]
     pub d: f64,
+    /// The number of WFS
     pub n_sensor: i32,
+    /// The total number of centroids
     pub n_centroids: i32,
+    /// The centroids
     pub centroids: Cu<f32>,
     model: Model,
 }
 impl<S> ShackHartmann<S> {
+    /// Creates a new `ShackHartmann` as either `Geometric` or `Diffractive` type
+    ///
+    /// * `n_sensor` - the number of WFS
+    /// * `n_side_lenslet` - the size of the square lenslet array
+    /// * `n_px_lenslet` - the number of pixel per lenslet in the telescope pupil
+    /// * `d` - the lenslet pitch [m]
     pub fn new(n_sensor: i32, n_side_lenslet: i32, n_px_lenslet: i32, d: f64) -> ShackHartmann<S> {
         ShackHartmann {
             _c_: std::marker::PhantomData,
@@ -41,6 +54,7 @@ impl<S> ShackHartmann<S> {
     }
 }
 impl ShackHartmann<Geometric> {
+    /// Initializes the `ShackHartmann` WFS
     pub fn build(&mut self) -> &mut Self {
         self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
         unsafe {
@@ -65,6 +79,7 @@ impl ShackHartmann<Geometric> {
             self.n_px_lenslet * self.n_side_lenslet + 1,
         )
     }
+    /// Calibrates the `ShackHartmann` WFS reference slopes and valid lenslets
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
             self._c_geometric.calibrate(&mut src._c_, threshold as f32);
@@ -234,5 +249,16 @@ impl Propagation for ShackHartmann<Diffractive> {
     }
     fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.propagate(src)
+    }
+}
+
+impl From<ShackHartmann<Geometric>> for Source {
+    fn from(item: ShackHartmann<Geometric>) -> Self {
+        item.new_guide_stars()
+    }
+}
+impl From<ShackHartmann<Diffractive>> for Source {
+    fn from(item: ShackHartmann<Diffractive>) -> Self {
+        item.new_guide_stars()
     }
 }
