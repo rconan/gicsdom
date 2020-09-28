@@ -27,6 +27,31 @@ pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
+pub struct Mirror {
+    mode_type: String,
+    n_mode: usize,
+}
+impl Default for Mirror {
+    fn default() -> Self {
+        Mirror {
+            mode_type: String::new(),
+            n_mode: 0,
+        }
+    }
+}
+pub enum CeoElement {
+    Gmt { m1: Mirror, m2: Mirror },
+    Source { n_px: usize },
+}
+pub struct CEO<T> {
+    element: CeoElement,
+    t: std::marker::PhantomData<T>,
+}
+pub mod element {
+    pub struct GMT {}
+    pub struct SOURCE {}
+}
+
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
     fn from_arcsec(self) -> T;

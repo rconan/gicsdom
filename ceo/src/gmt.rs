@@ -2,8 +2,46 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
-use super::Propagation;
-use super::Source;
+use super::{element, CeoElement, Mirror, Propagation, Source, CEO};
+
+/*
+struct RigidBody<'a> {
+    _c_: &'a mut coordinate_system,
+}
+impl<'a> RigidBody<'a> {
+    pub fn new(cs: &'a mut coordinate_system) -> RigidBody<'a> {
+        RigidBody { _c_: cs }
+    }
+    pub fn update(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
+        let t_xyz = vector {
+            x: t_xyz[0],
+            y: t_xyz[1],
+            z: t_xyz[2],
+        };
+        let r_xyz = vector {
+            x: r_xyz[0],
+            y: r_xyz[1],
+            z: r_xyz[2],
+        };
+        unsafe {
+            self._c_.update1(t_xyz, r_xyz, sid);
+        }
+    }
+}
+struct Modes<'a> {
+    _c_: &'a mut modes,
+}
+
+struct Segment<'a> {
+    id: u8,
+    rigid_body: Option<RigidBody<'a>>,
+    modes: Option<Modes<'a>>,
+}
+
+struct Mirror<'a> {
+    segment: Vec<Segment<'a>>,
+}
+ */
 
 /// Wrapper for CEO gmt_m1 and gmt_m2
 ///
@@ -32,6 +70,105 @@ pub struct Gmt {
     a1: Vec<f64>,
     a2: Vec<f64>,
 }
+
+impl CEO<element::GMT> {
+    pub fn new() -> CEO<element::GMT> {
+        CEO {
+            element: CeoElement::Gmt {
+                m1: Mirror{
+                    mode_type: "bending modes".into(),
+                    n_mode: 0
+                } ,
+                m2: Mirror{
+                    mode_type: "Karhunen-Loeve".into(),
+                    n_mode: 0
+                } ,
+            },
+            t: std::marker::PhantomData,
+        }
+    }
+    pub fn set_m1(mut self, mode_type: &str, n_mode: usize) -> Self {
+        if let CeoElement::Gmt { m1: _, m2 } = self.element {
+            self.element = CeoElement::Gmt {
+                m1: Mirror {
+                    mode_type: mode_type.into(),
+                    n_mode: n_mode,
+                },
+                m2: m2,
+            };
+        };
+        self
+    }
+    pub fn set_m1_n_mode(mut self, n_mode: usize) -> Self {
+        if let CeoElement::Gmt { m1, m2 } = self.element {
+            self.element = CeoElement::Gmt {
+                m1: Mirror {
+                    mode_type: m1.mode_type,
+                    n_mode: n_mode,
+                },
+                m2: m2,
+            };
+        }
+        self
+    }
+    pub fn set_m2(mut self, mode_type: &str, n_mode: usize) -> Self {
+        if let CeoElement::Gmt { m1, m2: _ } = self.element {
+            self.element = CeoElement::Gmt {
+                m1: m1,
+                m2: Mirror {
+                    mode_type: mode_type.into(),
+                    n_mode: n_mode,
+                },
+            };
+        };
+        self
+    }
+    pub fn set_m2_n_mode(mut self, n_mode: usize) -> Self {
+        if let CeoElement::Gmt { m1, m2 } = self.element {
+            self.element = CeoElement::Gmt {
+                m1: m1,
+                m2: Mirror {
+                    mode_type: m2.mode_type,
+                    n_mode: n_mode,
+                },
+            };
+        };
+        self
+    }
+    pub fn build(self) -> Gmt {
+        let mut gmt = Gmt {
+            _c_m1_modes: unsafe { mem::zeroed() },
+            _c_m2_modes: unsafe { mem::zeroed() },
+            _c_m1: unsafe { mem::zeroed() },
+            _c_m2: unsafe { mem::zeroed() },
+            m1_n_mode: 0,
+            m2_n_mode: 1,
+            m2_max_n: 0,
+            a1: vec![0.],
+            a2: vec![0.],
+        };
+        if let CeoElement::Gmt { m1, m2 } = self.element {
+            let m1_mode_type = CString::new(m1.mode_type.into_bytes()).unwrap();
+            gmt.m1_n_mode = m1.n_mode;
+            gmt.a1 = vec![0.0; 7 * gmt.m1_n_mode as usize];
+            unsafe {
+                gmt._c_m1_modes
+                    .setup(m1_mode_type.into_raw(), 7, gmt.m1_n_mode as i32);
+                gmt._c_m1.setup1(&mut gmt._c_m1_modes);
+            }
+            let m2_mode_type = CString::new(m2.mode_type.into_bytes()).unwrap();
+            gmt.m2_n_mode = m2.n_mode;
+            gmt.a2 = vec![0.0; 7 * gmt.m2_n_mode as usize];
+            unsafe {
+                gmt._c_m2_modes
+                    .setup(m2_mode_type.into_raw(), 7, gmt.m2_n_mode as i32);
+                gmt._c_m2.setup1(&mut gmt._c_m2_modes);
+            }
+        };
+        gmt
+    }
+}
+
 impl Gmt {
     /// Creates a new `Gmt`
     pub fn new() -> Gmt {
@@ -67,8 +204,11 @@ impl Gmt {
             self._c_m1_modes
                 .setup(mode_type.into_raw(), 7, self.m1_n_mode as i32);
             self._c_m1.setup1(&mut self._c_m1_modes);
-            self._c_m2_modes
-                .setup(CString::new("Karhunen-Loeve").unwrap().into_raw(), 7, self.m2_n_mode as i32);
+            self._c_m2_modes.setup(
+                CString::new("Karhunen-Loeve").unwrap().into_raw(),
+                7,
+                self.m2_n_mode as i32,
+            );
             self._c_m2.setup1(&mut self._c_m2_modes);
         }
         self
@@ -77,7 +217,7 @@ impl Gmt {
     ///
     /// * `mode_type` - the type of modes: "bending modes", "KarhunenLoeve", ...
     /// * `m1_n_mode` - the number of modes on each M1 segment
-    pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self{
+    pub fn build_m1(&mut self, mode_type: &str, m1_n_mode: usize) -> &mut Self {
         let m1_mode_type = CString::new(mode_type).unwrap();
         self.m1_n_mode = m1_n_mode;
         if self.m1_n_mode > 0 {
@@ -90,7 +230,7 @@ impl Gmt {
         }
         self
     }
-    pub fn from_m2_modes(&mut self, mode_type: &str, m2_n_mode: usize) -> &mut Self{
+    pub fn from_m2_modes(&mut self, mode_type: &str, m2_n_mode: usize) -> &mut Self {
         let m2_mode_type = CString::new(mode_type).unwrap();
         self.m2_n_mode = m2_n_mode;
         if self.m2_n_mode > 0 {
@@ -191,8 +331,8 @@ impl Gmt {
         }
     }
     pub fn set_m1_modes_ij(&mut self, i: usize, j: usize, value: f64) {
-        let mut a = vec![0f64;7*self.m1_n_mode];
-        a[i*self.m1_n_mode+j] = value;
+        let mut a = vec![0f64; 7 * self.m1_n_mode];
+        a[i * self.m1_n_mode + j] = value;
         unsafe {
             self._c_m1_modes.update(a.as_mut_ptr());
         }
@@ -204,8 +344,8 @@ impl Gmt {
         }
     }
     pub fn set_m2_modes_ij(&mut self, i: usize, j: usize, value: f64) {
-        let mut a = vec![0f64;7*self.m2_n_mode];
-        a[i*self.m2_n_mode+j] = value;
+        let mut a = vec![0f64; 7 * self.m2_n_mode];
+        a[i * self.m2_n_mode + j] = value;
         unsafe {
             self._c_m2_modes.update(a.as_mut_ptr());
         }
@@ -228,11 +368,7 @@ impl Gmt {
             }
         }
         if let Some(m1_mode) = m1_mode {
-            let mut m = m1_mode
-                .clone()
-                .into_iter()
-                .flatten()
-                .collect::<Vec<f64>>();
+            let mut m = m1_mode.clone().into_iter().flatten().collect::<Vec<f64>>();
             self.set_m1_modes(&mut m);
         }
     }
@@ -327,7 +463,12 @@ impl Propagation for Gmt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Centroiding,Gmt,Imaging};
+    use crate::{Centroiding, Gmt, Imaging};
+
+    #[test]
+    fn gmt_new() {
+        let gmt = CEO::<element::GMT>::new().set_m1_n_mode(27).set_m2_n_mode(123).build();
+    }
 
     #[test]
     fn gmt_optical_alignment() {
