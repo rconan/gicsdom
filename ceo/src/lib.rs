@@ -40,8 +40,19 @@ impl Default for Mirror {
     }
 }
 pub enum CeoElement {
-    Gmt { m1: Mirror, m2: Mirror },
-    Source { n_px: usize },
+    Gmt {
+        m1: Mirror,
+        m2: Mirror,
+    },
+    Source {
+        size: usize,
+        pupil_size: f64,
+        pupil_sampling: usize,
+        band: String,
+        zenith: Vec<f32>,
+        azimuth: Vec<f32>,
+        magnitude: Vec<f32>,
+    },
 }
 pub struct CEO<T> {
     element: CeoElement,

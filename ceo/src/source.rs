@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{Centroiding, CuFloat};
+use super::{element, Centroiding, CeoElement, CuFloat, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -29,8 +29,204 @@ pub struct Source {
     pub pupil_sampling: i32,
     pub _wfe_rms: Vec<f32>,
     pub _phase: Vec<f32>,
-    pub magnitude: Vec<f32>
+    pub zenith: Vec<f32>,
+    pub azimuth: Vec<f32>,
+    pub magnitude: Vec<f32>,
 }
+
+impl CEO<element::SOURCE> {
+    pub fn new() -> CEO<element::SOURCE> {
+        CEO {
+            element: CeoElement::Source {
+                size: 1,
+                pupil_size: 25.5,
+                pupil_sampling: 512,
+                band: "Vs".into(),
+                zenith: vec![0f32],
+                azimuth: vec![0f32],
+                magnitude: vec![0f32],
+            },
+            t: std::marker::PhantomData,
+        }
+    }
+    pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
+        if let CeoElement::Source {
+            size,
+            pupil_size,
+            pupil_sampling: _,
+            band,
+            zenith,
+            azimuth,
+            magnitude,
+        } = self.element
+        {
+            self.element = CeoElement::Source {
+                size: size,
+                pupil_size: pupil_size,
+                pupil_sampling: pupil_sampling,
+                band: band,
+                zenith: zenith,
+                azimuth: azimuth,
+                magnitude: magnitude,
+            }
+        };
+        self
+    }
+    pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
+        if let CeoElement::Source {
+            size,
+            pupil_size: _,
+            pupil_sampling,
+            band,
+            zenith,
+            azimuth,
+            magnitude,
+        } = self.element
+        {
+            self.element = CeoElement::Source {
+                size: size,
+                pupil_size: pupil_size,
+                pupil_sampling: pupil_sampling,
+                band: band,
+                zenith: zenith,
+                azimuth: azimuth,
+                magnitude: magnitude,
+            }
+        };
+        self
+    }
+    pub fn set_band(mut self, band: &str) -> Self {
+        if let CeoElement::Source {
+            size,
+            pupil_size,
+            pupil_sampling,
+            band: _,
+            zenith,
+            azimuth,
+            magnitude,
+        } = self.element
+        {
+            self.element = CeoElement::Source {
+                size: size,
+                pupil_size: pupil_size,
+                pupil_sampling: pupil_sampling,
+                band: band.into(),
+                zenith: zenith,
+                azimuth: azimuth,
+                magnitude: magnitude,
+            }
+        };
+        self
+    }
+    pub fn set_zenith_azimuth(mut self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
+        let n = zenith.len();
+        assert_eq!(
+            n,
+            azimuth.len(),
+            "Zenith and azimuth vectors do not have the same length!"
+        );
+        if let CeoElement::Source {
+            size: _,
+            pupil_size,
+            pupil_sampling,
+            band,
+            zenith: _,
+            azimuth: _,
+            magnitude,
+        } = self.element
+        {
+            self.element = CeoElement::Source {
+                size: n,
+                pupil_size: pupil_size,
+                pupil_sampling: pupil_sampling,
+                band: band,
+                zenith: zenith,
+                azimuth: azimuth,
+                magnitude: if magnitude.len() == n {
+                    magnitude
+                } else {
+                    vec![magnitude[0]; n]
+                },
+            }
+        };
+        self
+    }
+    pub fn set_magnitude(mut self, magnitude: Vec<f32>) -> Self {
+        if let CeoElement::Source {
+            size,
+            pupil_size,
+            pupil_sampling,
+            band,
+            zenith,
+            azimuth,
+            magnitude: _,
+        } = self.element
+        {
+            assert_eq!(
+                magnitude.len(),
+                zenith.len(),
+                "Zenith and magnitude vectors do not have the same length!"
+            );
+            self.element = CeoElement::Source {
+                size: size,
+                pupil_size: pupil_size,
+                pupil_sampling: pupil_sampling,
+                band: band,
+                zenith: zenith,
+                azimuth: azimuth,
+                magnitude: magnitude,
+            }
+        };
+        self
+    }
+    pub fn build(self) -> Result<Source, String> {
+        match self.element {
+            CeoElement::Source {
+                size,
+                pupil_size,
+                pupil_sampling,
+                band,
+                zenith,
+                azimuth,
+                magnitude,
+            } => {
+                let mut src = Source {
+                    _c_: unsafe { mem::zeroed() },
+                    size: size as i32,
+                    pupil_size: pupil_size,
+                    pupil_sampling: pupil_sampling as i32,
+                    _wfe_rms: vec![0.0; size],
+                    _phase: vec![0.0; pupil_sampling * pupil_sampling * size],
+                    zenith: zenith,
+                    azimuth: azimuth,
+                    magnitude: magnitude,
+                };
+                unsafe {
+                    let origin = vector {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 25.0,
+                    };
+                    let src_band = CString::new(band.into_bytes()).unwrap();
+                    src._c_.setup7(
+                        src_band.into_raw(),
+                        src.magnitude.as_mut_ptr(),
+                        src.zenith.as_mut_ptr(),
+                        src.azimuth.as_mut_ptr(),
+                        f32::INFINITY,
+                        size as i32,
+                        pupil_size,
+                        pupil_sampling as i32,
+                        origin,
+                    );
+                }
+                Ok(src)
+            }
+            _ => Err("Building CEO SOURCE failed!".into()),
+        }
+    }
+}
+
 impl Source {
     /// Creates and empty `Source`
     pub fn empty() -> Source {
@@ -41,7 +237,9 @@ impl Source {
             pupil_sampling: 0,
             _wfe_rms: vec![],
             _phase: vec![],
-            magnitude: vec![]
+            zenith: vec![],
+            azimuth: vec![],
+            magnitude: vec![],
         }
     }
     /// Creates a new `Source` with the arguments:
@@ -56,6 +254,8 @@ impl Source {
             pupil_sampling,
             _wfe_rms: vec![0.0; size as usize],
             _phase: vec![0.0; (pupil_sampling * pupil_sampling * size) as usize],
+            zenith: vec![0.0; size as usize],
+            azimuth: vec![0.0; size as usize],
             magnitude: vec![0.0; size as usize],
         }
     }
@@ -121,7 +321,7 @@ impl Source {
     }
     pub fn opd2phase(&mut self) -> &mut Self {
         unsafe {
-//            self._c_.wavefront.reset();
+            //            self._c_.wavefront.reset();
             self._c_.opd2phase();
         }
         self
@@ -324,7 +524,11 @@ impl Source {
     }
     /// Returns the number of photon [m^-2.s^-1]
     pub fn n_photon(&mut self) -> Vec<f32> {
-        self.magnitude.clone().iter().map(|m| unsafe { self._c_.n_photon1(*m) }).collect()
+        self.magnitude
+            .clone()
+            .iter()
+            .map(|m| unsafe { self._c_.n_photon1(*m) })
+            .collect()
     }
     /// Returns the light collecting area
     pub fn light_collecting_area(&self) -> f32 {
@@ -340,13 +544,25 @@ impl Drop for Source {
     }
 }
 impl Default for Source {
-    fn default() -> Self { Self::empty() }
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Gmt;
+
+    #[test]
+    fn source_new() {
+        CEO::<element::SOURCE>::new()
+            .set_pupil_sampling(769)
+            .set_zenith_azimuth(vec![0f32; 3], vec![0f32; 3])
+            .set_magnitude(vec![7f32; 3])
+            .build()
+            .unwrap();
+    }
 
     #[test]
     fn source_piston() {
