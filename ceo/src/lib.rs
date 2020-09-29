@@ -53,14 +53,28 @@ pub enum CeoElement {
         azimuth: Vec<f32>,
         magnitude: Vec<f32>,
     },
+    Shackhartmann {
+        n_sensor: usize,
+        n_side_lenslet: usize,
+        n_px_lenslet: usize,
+        d: f64,
+        n_px_framelet: usize,
+        n_px_imagelet: Option<usize>,
+        osf: Option<usize>,
+    }
 }
 pub struct CEO<T> {
     element: CeoElement,
     t: std::marker::PhantomData<T>,
 }
 pub mod element {
+    pub enum ShackHartmann {
+        GEOMETRIC,
+        DIFFRACTIVE,
+    }
     pub struct GMT {}
     pub struct SOURCE {}
+    pub struct SHACKHARTMANN {}
 }
 
 pub trait Conversion<T> {
