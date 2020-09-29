@@ -61,6 +61,11 @@ pub enum CeoElement {
         n_px_framelet: usize,
         n_px_imagelet: Option<usize>,
         osf: Option<usize>,
+    },
+    PSSn {
+        r0_at_zenith: f64,
+        oscale: f64,
+        zenith_angle: f64,
     }
 }
 pub struct CEO<T> {
@@ -75,6 +80,7 @@ pub mod element {
     pub struct GMT {}
     pub struct SOURCE {}
     pub struct SHACKHARTMANN {}
+    pub struct PSSN {}
 }
 
 pub trait Conversion<T> {

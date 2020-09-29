@@ -1,5 +1,5 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{Cu, Propagation, Source};
+use super::{element, CeoElement, Cu, Propagation, Source, CEO};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
@@ -33,6 +33,89 @@ pub struct PSSn<S> {
     pub estimates: Vec<f32>,
     mode: std::marker::PhantomData<S>,
     pub otf: Vec<f32>,
+}
+impl CEO<element::PSSN> {
+    pub fn new() -> CEO<element::PSSN> {
+        CEO {
+            element: CeoElement::PSSn {
+                r0_at_zenith: 0.16,
+                oscale: 25.0,
+                zenith_angle: 30_f64.to_radians(),
+            },
+            t: std::marker::PhantomData,
+        }
+    }
+    pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
+        if let CeoElement::PSSn {
+            r0_at_zenith: _,
+            oscale,
+            zenith_angle,
+        } = self.element
+        {
+            self.element = CeoElement::PSSn {
+                r0_at_zenith: r0_at_zenith,
+                oscale: oscale,
+                zenith_angle: zenith_angle,
+            }
+        };
+        self
+    }
+    pub fn set_outer_scale(mut self, oscale: f64) -> Self {
+        if let CeoElement::PSSn {
+            r0_at_zenith,
+            oscale: _,
+            zenith_angle,
+        } = self.element
+        {
+            self.element = CeoElement::PSSn {
+                r0_at_zenith: r0_at_zenith,
+                oscale: oscale,
+                zenith_angle: zenith_angle,
+            }
+        };
+        self
+    }
+    pub fn set_zenith_angle(mut self, zenith_angle_degree: f64) -> Self {
+        if let CeoElement::PSSn {
+            r0_at_zenith,
+            oscale,
+            zenith_angle: _,
+        } = self.element
+        {
+            self.element = CeoElement::PSSn {
+                r0_at_zenith: r0_at_zenith,
+                oscale: oscale,
+                zenith_angle: zenith_angle_degree.to_radians(),
+            }
+        };
+        self
+    }
+    pub fn build<T>(self, src: &mut Source) -> Result<PSSn<T>,String> {
+        match self.element{
+            CeoElement::PSSn {
+                r0_at_zenith,
+                oscale,
+                zenith_angle,
+            } => {
+                let mut pssn = PSSn::<T> {
+                    _c_: unsafe { mem::zeroed() },
+                    r0_at_zenith: r0_at_zenith as f32,
+                    oscale: oscale as f32,
+                    zenith_angle: zenith_angle as f32,
+                    wavelength: src.wavelength() as f32,
+                    estimates: vec![],
+                    mode: std::marker::PhantomData,
+                    otf: Vec::new(),
+                };
+                unsafe {
+                    pssn._c_.setup(&mut src._c_, pssn.r0(), pssn.oscale);
+                }
+                pssn.estimates = vec![0.0; pssn._c_.N as usize];
+                Ok(pssn)
+            },
+            _ => Err("Failed building CEO PSSN!".into()),
+        }
+    }
 }
 impl<S> PSSn<S> {
     /// Creates a new `PSSn` with r0=16cm at zenith, L0=25m a zenith distance of 30 degrees
@@ -97,7 +180,7 @@ impl<S> PSSn<S> {
     pub fn r0(&self) -> f32 {
         (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
-    pub fn r0_at_z(r0_at_zenith: f32, zenith_angle:f32) -> f32 {
+    pub fn r0_at_z(r0_at_zenith: f32, zenith_angle: f32) -> f32 {
         (r0_at_zenith.powf(-5_f32 / 3_f32) / zenith_angle.cos()).powf(-3_f32 / 5_f32)
     }
     pub fn xotf(&mut self) -> &Self {
@@ -157,9 +240,9 @@ impl<T> Serialize for PSSn<T> {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("PSSn", 1)?;
-        state.serialize_field("r0",&self.r0())?;
-        state.serialize_field("L0",&self.oscale)?;
-        state.serialize_field("values",&self.estimates)?;
+        state.serialize_field("r0", &self.r0())?;
+        state.serialize_field("L0", &self.oscale)?;
+        state.serialize_field("values", &self.estimates)?;
         //state.serialize_field("otf",&self.otf)?;
         state.end()
     }
@@ -209,5 +292,17 @@ impl<S> Propagation for PSSn<S> {
     fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
         self.integrate(src);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pssn_new() {
+        use element::*;
+        let mut src = CEO::<SOURCE>::new().build().unwrap();
+        CEO::<PSSN>::new().build::<TelescopeError>(&mut src).unwrap();
     }
 }
