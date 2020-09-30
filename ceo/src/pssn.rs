@@ -1,5 +1,5 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{element, CeoElement, Cu, Propagation, Source, CEO};
+use super::{element, CeoElement, CeoError, Cu, Propagation, Source, CEO};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
@@ -90,8 +90,8 @@ impl CEO<element::PSSN> {
         };
         self
     }
-    pub fn build<T>(self, src: &mut Source) -> Result<PSSn<T>,String> {
-        match self.element{
+    pub fn build<T>(self, src: &mut Source) -> Result<PSSn<T>, CeoError<element::PSSN>> {
+        match self.element {
             CeoElement::PSSn {
                 r0_at_zenith,
                 oscale,
@@ -112,8 +112,8 @@ impl CEO<element::PSSN> {
                 }
                 pssn.estimates = vec![0.0; pssn._c_.N as usize];
                 Ok(pssn)
-            },
-            _ => Err("Failed building CEO PSSN!".into()),
+            }
+            _ => Err(CeoError(element::PSSN)),
         }
     }
 }
@@ -305,8 +305,10 @@ mod tests {
         let mut src = CEO::<SOURCE>::new().build().unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         src.through(&mut gmt).xpupil();
-        let mut pssn = CEO::<PSSN>::new().build::<TelescopeError>(&mut src).unwrap();
+        let mut pssn = CEO::<PSSN>::new()
+            .build::<TelescopeError>(&mut src)
+            .unwrap();
         src.through(&mut pssn);
-        println!("PSSN: {}",pssn.peek());
+        println!("PSSN: {}", pssn.peek());
     }
 }

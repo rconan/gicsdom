@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
-use super::{element, CeoElement, Mirror, Propagation, Source, CEO};
+use super::{element, CeoElement, CeoError, Mirror, Propagation, Source, CEO};
 
 /*
 struct RigidBody<'a> {
@@ -135,7 +135,7 @@ impl CEO<element::GMT> {
         };
         self
     }
-    pub fn build(self) -> Result<Gmt, String> {
+    pub fn build(self) -> Result<Gmt, CeoError<element::GMT>> {
         match self.element {
             CeoElement::Gmt { m1, m2 } => {
                 let mut gmt = Gmt {
@@ -167,7 +167,30 @@ impl CEO<element::GMT> {
                 }
                 Ok(gmt)
             }
-            _ => Err("Building CEO GMT failed!".into()),
+            _ => Err(CeoError(element::GMT)),
+        }
+    }
+    pub fn fail(self) -> Result<Gmt, CeoError<element::GMT>> {
+        match self.element {
+            CeoElement::PSSn {
+                r0_at_zenith: _,
+                oscale: _,
+                zenith_angle: _,
+            } => {
+                let gmt = Gmt {
+                    _c_m1_modes: unsafe { mem::zeroed() },
+                    _c_m2_modes: unsafe { mem::zeroed() },
+                    _c_m1: unsafe { mem::zeroed() },
+                    _c_m2: unsafe { mem::zeroed() },
+                    m1_n_mode: 0,
+                    m2_n_mode: 1,
+                    m2_max_n: 0,
+                    a1: vec![0.],
+                    a2: vec![0.],
+                };
+                Ok(gmt)
+            }
+            _ => Err(CeoError(element::GMT)),
         }
     }
 }
@@ -470,18 +493,23 @@ mod tests {
 
     #[test]
     fn gmt_new() {
-        CEO::<element::GMT>::new()
+        match CEO::<element::GMT>::new()
             .set_m1_n_mode(27)
             .set_m2_n_mode(123)
             .build()
-            .unwrap();
+        {
+            Ok(_) => println!("Success"),
+            Err(e) => println!("{}", e),
+        }
     }
 
     #[test]
     fn gmt_optical_alignment() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001).build().unwrap();
+            .set_pupil_sampling(1001)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         src.through(&mut gmt).xpupil();
         assert!(src.wfe_rms_10e(-9)[0] < 1.0);
@@ -491,7 +519,9 @@ mod tests {
     fn gmt_m1_rx_optical_sensitity() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001).build().unwrap();
+            .set_pupil_sampling(1001)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
@@ -509,7 +539,9 @@ mod tests {
     fn gmt_m1_ry_optical_sensitity() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001).build().unwrap();
+            .set_pupil_sampling(1001)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
@@ -527,7 +559,9 @@ mod tests {
     fn gmt_m2_rx_optical_sensitity() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001).build().unwrap();
+            .set_pupil_sampling(1001)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
@@ -545,7 +579,9 @@ mod tests {
     fn gmt_m2_ry_optical_sensitity() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001).build().unwrap();
+            .set_pupil_sampling(1001)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];

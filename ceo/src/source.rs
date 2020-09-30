@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, CeoElement, CuFloat, CEO};
+use super::{element, Centroiding, CeoElement, CeoError, CuFloat, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -179,7 +179,7 @@ impl CEO<element::SOURCE> {
         };
         self
     }
-    pub fn build(self) -> Result<Source, String> {
+    pub fn build(self) -> Result<Source, CeoError<element::SOURCE>> {
         match self.element {
             CeoElement::Source {
                 size,
@@ -222,7 +222,7 @@ impl CEO<element::SOURCE> {
                 }
                 Ok(src)
             }
-            _ => Err("Building CEO SOURCE failed!".into()),
+            _ => Err(CeoError(element::SOURCE)),
         }
     }
 }

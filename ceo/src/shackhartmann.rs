@@ -1,7 +1,7 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, CeoElement, Cu, Mask, Propagation, Source, CEO};
+use super::{element, CeoElement, CeoError, Cu, Mask, Propagation, Source, CEO};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -123,7 +123,10 @@ impl CEO<element::SHACKHARTMANN> {
         }
         self
     }
-    pub fn build<T: MDL>(self, wfs_model: element::ShackHartmann) -> Result<ShackHartmann<T>, String> {
+    pub fn build<T: MDL>(
+        self,
+        wfs_model: element::ShackHartmann,
+    ) -> Result<ShackHartmann<T>, CeoError<element::SHACKHARTMANN>> {
         match self.element {
             CeoElement::Shackhartmann {
                 n_sensor,
@@ -188,7 +191,7 @@ impl CEO<element::SHACKHARTMANN> {
                 }
                 Ok(wfs)
             }
-            _ => Err("Failed building CEO SHACKHARTMANN!".into()),
+            _ => Err(CeoError(element::SHACKHARTMANN)),
         }
     }
 }
@@ -431,16 +434,18 @@ mod tests {
 
     #[test]
     fn shack_hartmann_new() {
-        use element::{SHACKHARTMANN,SOURCE,GMT};
+        use element::{GMT, SHACKHARTMANN, SOURCE};
         let mut wfs: ShackHartmann<Geometric> = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
             .build(element::ShackHartmann::GEOMETRIC)
             .unwrap();
         let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(48*16+1).build().unwrap();
+            .set_pupil_sampling(48 * 16 + 1)
+            .build()
+            .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
         src.through(&mut gmt).xpupil().through(&mut wfs);
-        println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
+        println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
     }
 }

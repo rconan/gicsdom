@@ -1,4 +1,4 @@
-use std::{f32, f64, mem};
+use std::{error::Error, f32, f64, fmt, mem};
 
 pub mod atmosphere;
 //pub mod calibrations;
@@ -26,6 +26,17 @@ pub use self::source::Source;
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
+
+#[derive(Debug)]
+pub struct CeoError<T>(T);
+
+impl<T: std::fmt::Debug> Error for CeoError<T> {}
+
+impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CEO {:?} builder has failed!", self.0)
+    }
+}
 
 pub struct Mirror {
     mode_type: String,
@@ -66,7 +77,7 @@ pub enum CeoElement {
         r0_at_zenith: f64,
         oscale: f64,
         zenith_angle: f64,
-    }
+    },
 }
 pub struct CEO<T> {
     element: CeoElement,
@@ -77,10 +88,14 @@ pub mod element {
         GEOMETRIC,
         DIFFRACTIVE,
     }
-    pub struct GMT {}
-    pub struct SOURCE {}
-    pub struct SHACKHARTMANN {}
-    pub struct PSSN {}
+    #[derive(Debug)]
+    pub struct GMT;
+    #[derive(Debug)]
+    pub struct SOURCE;
+    #[derive(Debug)]
+    pub struct SHACKHARTMANN;
+    #[derive(Debug)]
+    pub struct PSSN;
 }
 
 pub trait Conversion<T> {
