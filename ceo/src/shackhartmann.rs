@@ -11,6 +11,9 @@ enum Model {
     Geometric,
     Diffractive,
 }
+pub trait MDL {}
+impl MDL for Geometric {}
+impl MDL for Diffractive {}
 
 /// Shack-Hartmann wavefront sensor model
 pub struct ShackHartmann<S> {
@@ -120,7 +123,7 @@ impl CEO<element::SHACKHARTMANN> {
         }
         self
     }
-    pub fn build<T>(self, wfs_model: element::ShackHartmann) -> Result<ShackHartmann<T>, String> {
+    pub fn build<T: MDL>(self, wfs_model: element::ShackHartmann) -> Result<ShackHartmann<T>, String> {
         match self.element {
             CeoElement::Shackhartmann {
                 n_sensor,
@@ -131,7 +134,7 @@ impl CEO<element::SHACKHARTMANN> {
                 n_px_imagelet,
                 osf,
             } => {
-                let mut wfs = ShackHartmann {
+                let mut wfs = ShackHartmann::<T> {
                     _c_: std::marker::PhantomData,
                     _c_geometric: unsafe { mem::zeroed() },
                     _c_diffractive: unsafe { mem::zeroed() },
@@ -428,11 +431,11 @@ mod tests {
 
     #[test]
     fn shack_hartmann_new() {
-        use element::*;
-        let mut wfs = CEO::<SHACKHARTMANN>::new()
+        use element::{SHACKHARTMANN,SOURCE,GMT};
+        let mut wfs: ShackHartmann<Geometric> = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
-            .build::<Geometric>(ShackHartmann::GEOMETRIC)
+            .build(element::ShackHartmann::GEOMETRIC)
             .unwrap();
         let mut src = CEO::<SOURCE>::new()
             .set_pupil_sampling(48*16+1).build().unwrap();
