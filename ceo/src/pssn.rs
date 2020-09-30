@@ -303,6 +303,10 @@ mod tests {
     fn pssn_new() {
         use element::*;
         let mut src = CEO::<SOURCE>::new().build().unwrap();
-        CEO::<PSSN>::new().build::<TelescopeError>(&mut src).unwrap();
+        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        src.through(&mut gmt).xpupil();
+        let mut pssn = CEO::<PSSN>::new().build::<TelescopeError>(&mut src).unwrap();
+        src.through(&mut pssn);
+        println!("PSSN: {}",pssn.peek());
     }
 }
