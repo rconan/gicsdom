@@ -1,25 +1,75 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, CeoElement, CeoError, Cu, Mask, Propagation, Source, CEO};
+use super::{element, CeoElement, CeoError, Cu, Mask, Propagation, Source, CEO, LensletArray, Detector};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
 
-enum Model {
-    None,
-    Geometric,
-    Diffractive,
+pub trait Model {
+    fn build(
+        &mut self,
+        n_side_lenslet: i32,
+        d: f32,
+        n_sensor: i32,
+        n_px_lenslet: i32,
+        osf: i32,
+        n_px: i32,
+        b: i32,
+    );
+    fn get_c_as_mut_ptr(&mut self) -> *mut f32;
+    fn drop(&mut self);
 }
-pub trait MDL {}
-impl MDL for Geometric {}
-impl MDL for Diffractive {}
+impl Model for Geometric {
+    fn build(
+        &mut self,
+        n_side_lenslet: i32,
+        d: f32,
+        n_sensor: i32,
+        _n_px_lenslet: i32,
+        _osf: i32,
+        _n_px: i32,
+        _b: i32,
+    ) {
+        unsafe {
+            self.setup(n_side_lenslet, d, n_sensor);
+        }
+    }
+    fn get_c_as_mut_ptr(&mut self) -> *mut f32 {
+        self.data_proc.d__c
+    }
+    fn drop(&mut self) {
+        unsafe { self.cleanup() };
+    }
+}
+impl Model for Diffractive {
+    fn drop(&mut self) {
+        unsafe {
+            self.cleanup();
+        }
+    }
+    fn get_c_as_mut_ptr(&mut self) -> *mut f32 {
+        self.data_proc.d__c
+    }
+    fn build(
+        &mut self,
+        n_side_lenslet: i32,
+        d: f32,
+        n_sensor: i32,
+        n_px_lenslet: i32,
+        osf: i32,
+        n_px: i32,
+        b: i32,
+    ) {
+        unsafe {
+            self.setup(n_side_lenslet, n_px_lenslet, d, osf, n_px, b, n_sensor);
+        }
+    }
+}
 
 /// Shack-Hartmann wavefront sensor model
-pub struct ShackHartmann<S> {
-    _c_: std::marker::PhantomData<S>,
-    _c_geometric: Geometric,
-    _c_diffractive: Diffractive,
+pub struct ShackHartmann<S: Model> {
+    _c_: S,
     /// The size of the square lenslet array
     pub n_side_lenslet: i32,
     /// The number of pixel per lenslet in the telescope pupil
@@ -32,19 +82,14 @@ pub struct ShackHartmann<S> {
     pub n_centroids: i32,
     /// The centroids
     pub centroids: Cu<f32>,
-    model: Model,
 }
 impl CEO<element::SHACKHARTMANN> {
     pub fn new() -> CEO<element::SHACKHARTMANN> {
         CEO {
             element: CeoElement::Shackhartmann {
                 n_sensor: 1,
-                n_side_lenslet: 1,
-                n_px_lenslet: 511,
-                d: 25.5,
-                n_px_framelet: 511,
-                n_px_imagelet: None,
-                osf: None,
+                lenslet_array: LensletArray(1,511,25.5),
+                detector: Detector(512,None,None),
             },
             t: std::marker::PhantomData,
         }
@@ -52,22 +97,14 @@ impl CEO<element::SHACKHARTMANN> {
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
         if let CeoElement::Shackhartmann {
             n_sensor: _,
-            n_side_lenslet,
-            n_px_lenslet,
-            d,
-            n_px_framelet,
-            n_px_imagelet,
-            osf,
+            lenslet_array,
+            detector,
         } = self.element
         {
             self.element = CeoElement::Shackhartmann {
                 n_sensor: n_sensor,
-                n_side_lenslet: n_side_lenslet,
-                n_px_lenslet: n_px_lenslet,
-                d: d,
-                n_px_framelet,
-                n_px_imagelet,
-                osf,
+                lenslet_array,
+                detector,
             }
         }
         self
@@ -75,22 +112,14 @@ impl CEO<element::SHACKHARTMANN> {
     pub fn set_lenslet_array(mut self, n_side_lenslet: usize, n_px_lenslet: usize, d: f64) -> Self {
         if let CeoElement::Shackhartmann {
             n_sensor,
-            n_side_lenslet: _,
-            n_px_lenslet: _,
-            d: _,
-            n_px_framelet,
-            n_px_imagelet,
-            osf,
+            lenslet_array:_,
+            detector,
         } = self.element
         {
             self.element = CeoElement::Shackhartmann {
-                n_sensor: n_sensor,
-                n_side_lenslet: n_side_lenslet,
-                n_px_lenslet: n_px_lenslet,
-                d: d,
-                n_px_framelet,
-                n_px_imagelet,
-                osf,
+                n_sensor,
+                lenslet_array: LensletArray(n_side_lenslet,n_px_lenslet,d),
+                detector,
             }
         }
         self
@@ -103,44 +132,28 @@ impl CEO<element::SHACKHARTMANN> {
     ) -> Self {
         if let CeoElement::Shackhartmann {
             n_sensor,
-            n_side_lenslet,
-            n_px_lenslet,
-            d,
-            n_px_framelet: _,
-            n_px_imagelet: _,
-            osf: _,
+            lenslet_array,
+            detector:_,
         } = self.element
         {
             self.element = CeoElement::Shackhartmann {
                 n_sensor: n_sensor,
-                n_side_lenslet: n_side_lenslet,
-                n_px_lenslet: n_px_lenslet,
-                d: d,
-                n_px_framelet,
-                n_px_imagelet,
-                osf,
+                lenslet_array,
+                detector: Detector(n_px_framelet,n_px_imagelet,osf),
             }
         }
         self
     }
-    pub fn build<T: MDL>(
-        self,
-        wfs_model: element::ShackHartmann,
-    ) -> Result<ShackHartmann<T>, CeoError<element::SHACKHARTMANN>> {
+    pub fn build<T: Model>(self) -> Result<ShackHartmann<T>, CeoError<element::SHACKHARTMANN>> {
         match self.element {
             CeoElement::Shackhartmann {
                 n_sensor,
-                n_side_lenslet,
-                n_px_lenslet,
-                d,
-                n_px_framelet,
-                n_px_imagelet,
-                osf,
+                lenslet_array,
+                detector,
             } => {
+                let LensletArray(n_side_lenslet,n_px_lenslet,d) = lenslet_array;
                 let mut wfs = ShackHartmann::<T> {
-                    _c_: std::marker::PhantomData,
-                    _c_geometric: unsafe { mem::zeroed() },
-                    _c_diffractive: unsafe { mem::zeroed() },
+                    _c_: unsafe { mem::zeroed() },
                     n_side_lenslet: n_side_lenslet as i32,
                     n_px_lenslet: n_px_lenslet as i32,
                     d,
@@ -149,46 +162,28 @@ impl CEO<element::SHACKHARTMANN> {
                     centroids: Cu::vector(
                         (n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize,
                     ),
-                    model: Model::None,
                 };
-                match wfs_model {
-                    element::ShackHartmann::GEOMETRIC => {
-                        wfs.n_centroids =
-                            wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
-                        unsafe {
-                            wfs._c_geometric
-                                .setup(wfs.n_side_lenslet, wfs.d as f32, wfs.n_sensor);
-                            wfs.centroids.from_ptr(wfs._c_geometric.data_proc.d__c);
-                        }
-                        wfs.model = Model::Geometric;
-                    }
-                    element::ShackHartmann::DIFFRACTIVE => {
-                        let n_px = match n_px_imagelet {
-                            Some(n_px_imagelet) => n_px_imagelet,
-                            None => n_px_framelet,
-                        };
-                        let b = n_px / n_px_framelet;
-                        let o = match osf {
-                            Some(osf) => osf,
-                            None => 2,
-                        };
-                        wfs.n_centroids =
-                            wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
-                        unsafe {
-                            wfs._c_diffractive.setup(
-                                wfs.n_side_lenslet,
-                                wfs.n_px_lenslet,
-                                wfs.d as f32,
-                                o as i32,
-                                n_px as i32,
-                                b as i32,
-                                wfs.n_sensor,
-                            );
-                            wfs.centroids.from_ptr(wfs._c_diffractive.data_proc.d__c);
-                        }
-                        wfs.model = Model::Diffractive;
-                    }
-                }
+                let Detector(n_px_framelet,n_px_imagelet,osf) = detector;
+                let n_px = match n_px_imagelet {
+                    Some(n_px_imagelet) => n_px_imagelet,
+                    None => n_px_framelet,
+                };
+                let b = n_px / n_px_framelet;
+                let o = match osf {
+                    Some(osf) => osf,
+                    None => 2,
+                };
+                wfs.n_centroids = wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
+                wfs._c_.build(
+                    wfs.n_side_lenslet,
+                    wfs.d as f32,
+                    wfs.n_sensor,
+                    wfs.n_px_lenslet,
+                    o as i32,
+                    n_px as i32,
+                    b as i32,
+                );
+                wfs.centroids.from_ptr(wfs._c_.get_c_as_mut_ptr());
                 Ok(wfs)
             }
             _ => Err(CeoError(element::SHACKHARTMANN)),
@@ -196,7 +191,7 @@ impl CEO<element::SHACKHARTMANN> {
     }
 }
 
-impl<S> ShackHartmann<S> {
+impl<S: Model> ShackHartmann<S> {
     /// Creates a new `ShackHartmann` as either `Geometric` or `Diffractive` type
     ///
     /// * `n_sensor` - the number of WFS
@@ -205,17 +200,17 @@ impl<S> ShackHartmann<S> {
     /// * `d` - the lenslet pitch [m]
     pub fn new(n_sensor: i32, n_side_lenslet: i32, n_px_lenslet: i32, d: f64) -> ShackHartmann<S> {
         ShackHartmann {
-            _c_: std::marker::PhantomData,
-            _c_geometric: unsafe { mem::zeroed() },
-            _c_diffractive: unsafe { mem::zeroed() },
+            _c_: unsafe { mem::zeroed() },
             n_side_lenslet,
             n_px_lenslet,
             d,
             n_sensor,
             n_centroids: 0,
             centroids: Cu::vector((n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize),
-            model: Model::None,
         }
+    }
+    pub fn drop(&mut self) {
+        self._c_.drop();
     }
 }
 impl ShackHartmann<Geometric> {
@@ -223,11 +218,10 @@ impl ShackHartmann<Geometric> {
     pub fn build(&mut self) -> &mut Self {
         self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
         unsafe {
-            self._c_geometric
+            self._c_
                 .setup(self.n_side_lenslet, self.d as f32, self.n_sensor);
-            self.centroids.from_ptr(self._c_geometric.data_proc.d__c);
+            self.centroids.from_ptr(self._c_.data_proc.d__c);
         }
-        self.model = Model::Geometric;
         self
     }
     pub fn guide_star_args(&self) -> (i32, f64, i32) {
@@ -247,22 +241,22 @@ impl ShackHartmann<Geometric> {
     /// Calibrates the `ShackHartmann` WFS reference slopes and valid lenslets
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_geometric.calibrate(&mut src._c_, threshold as f32);
+            self._c_.calibrate(&mut src._c_, threshold as f32);
         }
         self
     }
     pub fn process(&mut self) -> &mut Self {
         unsafe {
-            self._c_geometric.process();
+            self._c_.process();
         }
         self
     }
     pub fn get_data(&mut self) -> Cu<f32> {
-        let m = self._c_geometric.valid_lenslet.nnz as usize * 2usize;
+        let m = self._c_.valid_lenslet.nnz as usize * 2usize;
         let mut data: Cu<f32> = Cu::vector(m);
         data.malloc();
         unsafe {
-            self._c_geometric.get_valid_slopes(data.as_ptr());
+            self._c_.get_valid_slopes(data.as_ptr());
         }
         data
     }
@@ -271,56 +265,48 @@ impl ShackHartmann<Geometric> {
         let mut data: Cu<f32> = Cu::vector(m);
         data.malloc();
         unsafe {
-            self._c_geometric
+            self._c_
                 .masked_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
         }
         data
     }
     pub fn fold_into(&mut self, data: &mut Cu<f32>, lenslet_mask: &mut Mask) {
         unsafe {
-            self._c_geometric
+            self._c_
                 .folded_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
         }
     }
     pub fn n_valid_lenslet(&mut self) -> usize {
-        self._c_geometric.valid_lenslet.nnz as usize
+        self._c_.valid_lenslet.nnz as usize
     }
     pub fn reset(&mut self) -> &mut Self {
         unsafe {
-            self._c_geometric.reset();
+            self._c_.reset();
         }
         self
     }
     pub fn lenset_mask(&mut self) -> Cu<f32> {
         let mut mask: Cu<f32> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
-        mask.from_ptr(self._c_geometric.valid_lenslet.f);
+        mask.from_ptr(self._c_.valid_lenslet.f);
         mask
     }
     pub fn lenlet_flux(&mut self) -> Cu<f32> {
         let mut flux: Cu<f32> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
-        flux.from_ptr(self._c_geometric.data_proc.d__mass);
+        flux.from_ptr(self._c_.data_proc.d__mass);
         flux
     }
 }
-impl<S> Drop for ShackHartmann<S> {
+impl<S: Model> Drop for ShackHartmann<S> {
     fn drop(&mut self) {
-        match self.model {
-            Model::None => (),
-            Model::Geometric => {
-                unsafe { self._c_geometric.cleanup() };
-            }
-            Model::Diffractive => {
-                unsafe { self._c_diffractive.cleanup() };
-            }
-        }
+        self.drop();
     }
 }
 impl Propagation for ShackHartmann<Geometric> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_geometric.propagate(&mut src._c_);
+            self._c_.propagate(&mut src._c_);
         }
         self
     }
@@ -346,7 +332,7 @@ impl ShackHartmann<Diffractive> {
         };
         self.n_centroids = self.n_side_lenslet * self.n_side_lenslet * 2 * self.n_sensor;
         unsafe {
-            self._c_diffractive.setup(
+            self._c_.setup(
                 self.n_side_lenslet,
                 self.n_px_lenslet,
                 self.d as f32,
@@ -355,9 +341,8 @@ impl ShackHartmann<Diffractive> {
                 b,
                 self.n_sensor,
             );
-            self.centroids.from_ptr(self._c_diffractive.data_proc.d__c);
+            self.centroids.from_ptr(self._c_.data_proc.d__c);
         }
-        self.model = Model::Diffractive;
         self
     }
     pub fn new_guide_stars(&self) -> Source {
@@ -369,15 +354,14 @@ impl ShackHartmann<Diffractive> {
     }
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_diffractive
-                .calibrate(&mut src._c_, threshold as f32);
-            self._c_diffractive.camera.reset();
+            self._c_.calibrate(&mut src._c_, threshold as f32);
+            self._c_.camera.reset();
         }
         self
     }
     pub fn process(&mut self) -> &mut Self {
         unsafe {
-            self._c_diffractive.process();
+            self._c_.process();
         }
         self
     }
@@ -389,7 +373,7 @@ impl ShackHartmann<Diffractive> {
         noise_factor: f32,
     ) -> &mut Self {
         unsafe {
-            self._c_diffractive.camera.readout1(
+            self._c_.camera.readout1(
                 exposure_time,
                 readout_noise_rms,
                 n_background_photon,
@@ -400,7 +384,7 @@ impl ShackHartmann<Diffractive> {
     }
     pub fn reset(&mut self) -> &mut Self {
         unsafe {
-            self._c_diffractive.camera.reset();
+            self._c_.camera.reset();
         }
         self
     }
@@ -408,7 +392,7 @@ impl ShackHartmann<Diffractive> {
 impl Propagation for ShackHartmann<Diffractive> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_diffractive.propagate(&mut src._c_);
+            self._c_.propagate(&mut src._c_);
         }
         self
     }
@@ -433,12 +417,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shack_hartmann_new() {
-        use element::{GMT, SHACKHARTMANN, SOURCE};
-        let mut wfs: ShackHartmann<Geometric> = CEO::<SHACKHARTMANN>::new()
+    fn shack_hartmann_geometric_new() {
+        use element::*;
+        let mut wfs = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
-            .build(element::ShackHartmann::GEOMETRIC)
+            .build::<Geometric>()
+            .unwrap();
+        let mut src = CEO::<SOURCE>::new()
+            .set_pupil_sampling(48 * 16 + 1)
+            .build()
+            .unwrap();
+        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        src.through(&mut gmt).xpupil().through(&mut wfs);
+        println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+    }
+
+    #[test]
+    fn shack_hartmann_diffractive_new() {
+        use element::*;
+        let mut wfs = CEO::<SHACKHARTMANN>::new()
+            .set_n_sensor(1)
+            .set_lenslet_array(48, 16, 25.5 / 48f64)
+            .set_detector(8,Some(24),None)
+            .build::<Diffractive>()
             .unwrap();
         let mut src = CEO::<SOURCE>::new()
             .set_pupil_sampling(48 * 16 + 1)

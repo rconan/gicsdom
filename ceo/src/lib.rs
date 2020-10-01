@@ -18,7 +18,7 @@ pub use self::centroiding::Centroiding;
 pub use self::cu::Cu;
 pub use self::fwhm::Fwhm;
 pub use self::gmt::Gmt;
-pub use self::imaging::{Imaging, LensletArray};
+pub use self::imaging::{Imaging};
 pub use self::pssn::PSSn;
 pub use self::shackhartmann::ShackHartmann;
 pub use self::source::Propagation;
@@ -50,6 +50,8 @@ impl Default for Mirror {
         }
     }
 }
+pub struct LensletArray(usize,usize,f64); /// n_side_lenslet, n_px_lenslet, d
+pub struct Detector(usize,Option<usize>,Option<usize>); /// n_px_framelet, n_px_imagelet, osf
 pub enum CeoElement {
     Gmt {
         m1: Mirror,
@@ -66,12 +68,8 @@ pub enum CeoElement {
     },
     Shackhartmann {
         n_sensor: usize,
-        n_side_lenslet: usize,
-        n_px_lenslet: usize,
-        d: f64,
-        n_px_framelet: usize,
-        n_px_imagelet: Option<usize>,
-        osf: Option<usize>,
+        lenslet_array: LensletArray,
+        detector: Detector,
     },
     PSSn {
         r0_at_zenith: f64,
@@ -79,23 +77,29 @@ pub enum CeoElement {
         zenith_angle: f64,
     },
 }
-pub struct CEO<T> {
+pub trait CEOType {}
+pub struct CEO<T: CEOType> {
     element: CeoElement,
     t: std::marker::PhantomData<T>,
 }
 pub mod element {
+    use super::CEOType;
     pub enum ShackHartmann {
         GEOMETRIC,
         DIFFRACTIVE,
     }
     #[derive(Debug)]
     pub struct GMT;
+    impl CEOType for GMT {}
     #[derive(Debug)]
     pub struct SOURCE;
+    impl CEOType for SOURCE {}
     #[derive(Debug)]
     pub struct SHACKHARTMANN;
+    impl CEOType for SHACKHARTMANN {}
     #[derive(Debug)]
     pub struct PSSN;
+    impl CEOType for PSSN {}
 }
 
 pub trait Conversion<T> {
