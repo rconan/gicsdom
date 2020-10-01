@@ -1,7 +1,9 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, CeoElement, CeoError, Cu, Mask, Propagation, Source, CEO, LensletArray, Detector};
+use super::{
+    element, CeoElement, CeoError, Cu, Detector, LensletArray, Mask, Propagation, Source, CEO,
+};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -88,8 +90,8 @@ impl CEO<element::SHACKHARTMANN> {
         CEO {
             element: CeoElement::Shackhartmann {
                 n_sensor: 1,
-                lenslet_array: LensletArray(1,511,25.5),
-                detector: Detector(512,None,None),
+                lenslet_array: LensletArray(1, 511, 25.5),
+                detector: Detector(512, None, None),
             },
             t: std::marker::PhantomData,
         }
@@ -112,13 +114,13 @@ impl CEO<element::SHACKHARTMANN> {
     pub fn set_lenslet_array(mut self, n_side_lenslet: usize, n_px_lenslet: usize, d: f64) -> Self {
         if let CeoElement::Shackhartmann {
             n_sensor,
-            lenslet_array:_,
+            lenslet_array: _,
             detector,
         } = self.element
         {
             self.element = CeoElement::Shackhartmann {
                 n_sensor,
-                lenslet_array: LensletArray(n_side_lenslet,n_px_lenslet,d),
+                lenslet_array: LensletArray(n_side_lenslet, n_px_lenslet, d),
                 detector,
             }
         }
@@ -133,13 +135,13 @@ impl CEO<element::SHACKHARTMANN> {
         if let CeoElement::Shackhartmann {
             n_sensor,
             lenslet_array,
-            detector:_,
+            detector: _,
         } = self.element
         {
             self.element = CeoElement::Shackhartmann {
                 n_sensor: n_sensor,
                 lenslet_array,
-                detector: Detector(n_px_framelet,n_px_imagelet,osf),
+                detector: Detector(n_px_framelet, n_px_imagelet, osf),
             }
         }
         self
@@ -151,7 +153,7 @@ impl CEO<element::SHACKHARTMANN> {
                 lenslet_array,
                 detector,
             } => {
-                let LensletArray(n_side_lenslet,n_px_lenslet,d) = lenslet_array;
+                let LensletArray(n_side_lenslet, n_px_lenslet, d) = lenslet_array;
                 let mut wfs = ShackHartmann::<T> {
                     _c_: unsafe { mem::zeroed() },
                     n_side_lenslet: n_side_lenslet as i32,
@@ -163,7 +165,7 @@ impl CEO<element::SHACKHARTMANN> {
                         (n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize,
                     ),
                 };
-                let Detector(n_px_framelet,n_px_imagelet,osf) = detector;
+                let Detector(n_px_framelet, n_px_imagelet, osf) = detector;
                 let n_px = match n_px_imagelet {
                     Some(n_px_imagelet) => n_px_imagelet,
                     None => n_px_framelet,
@@ -414,6 +416,7 @@ impl From<ShackHartmann<Diffractive>> for Source {
 
 #[cfg(test)]
 mod tests {
+    #[macro_use]
     use super::*;
 
     #[test]
@@ -434,12 +437,26 @@ mod tests {
     }
 
     #[test]
+    fn shack_hartmann_geometric_new_with_macro() {
+        use element::*;
+        let mut wfs = crate::ceo!(
+            SHACKHARTMANN: Geometric,
+            set_n_sensor = [1],
+            set_lenslet_array = [48, 16, 25.5 / 48f64]
+        );
+        let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+        let mut gmt = crate::ceo!(GMT);
+        src.through(&mut gmt).xpupil().through(&mut wfs);
+        println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+    }
+
+    #[test]
     fn shack_hartmann_diffractive_new() {
         use element::*;
         let mut wfs = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
-            .set_detector(8,Some(24),None)
+            .set_detector(8, Some(24), None)
             .build::<Diffractive>()
             .unwrap();
         let mut src = CEO::<SOURCE>::new()
@@ -447,6 +464,21 @@ mod tests {
             .build()
             .unwrap();
         let mut gmt = CEO::<GMT>::new().build().unwrap();
+        src.through(&mut gmt).xpupil().through(&mut wfs);
+        println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+    }
+
+    #[test]
+    fn shack_hartmann_diffractive_new_with_macro() {
+        use element::*;
+        let mut wfs = crate::ceo!(
+            SHACKHARTMANN: Diffractive,
+            set_n_sensor = [1],
+            set_lenslet_array = [48, 16, 25.5 / 48f64],
+            set_detector = [8, Some(24), None]
+        );
+        let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+        let mut gmt = crate::ceo!(GMT);
         src.through(&mut gmt).xpupil().through(&mut wfs);
         println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
     }

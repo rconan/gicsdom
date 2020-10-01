@@ -18,7 +18,7 @@ pub use self::centroiding::Centroiding;
 pub use self::cu::Cu;
 pub use self::fwhm::Fwhm;
 pub use self::gmt::Gmt;
-pub use self::imaging::{Imaging};
+pub use self::imaging::Imaging;
 pub use self::pssn::PSSn;
 pub use self::shackhartmann::ShackHartmann;
 pub use self::source::Propagation;
@@ -27,6 +27,29 @@ pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
+/// One macro to rule them all, one macro to find them, one macro to bring them all and in the darkness bind them all
+#[macro_export]
+macro_rules! ceo {
+    ($element:ty) => {
+        CEO::<$element>::new().build().unwrap()
+    };
+    ($element:ty:$model:ty) => {
+        CEO::<$element>::new().build::<$model>().unwrap()
+    };
+    ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
+        CEO::<$element>::new()$(.$arg($($val),+))*.build().unwrap()
+    };
+    ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
+        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>().unwrap()
+    };
+}
+/*
+macro_rules! gmt {
+    ($($arg:ident = $val:expr),*) => {
+        ceo!(element::GMT,$($arg = $val),*)
+    };
+}
+*/
 #[derive(Debug)]
 pub struct CeoError<T>(T);
 
@@ -50,8 +73,10 @@ impl Default for Mirror {
         }
     }
 }
-pub struct LensletArray(usize,usize,f64); /// n_side_lenslet, n_px_lenslet, d
-pub struct Detector(usize,Option<usize>,Option<usize>); /// n_px_framelet, n_px_imagelet, osf
+/// n_side_lenslet, n_px_lenslet, d
+pub struct LensletArray(usize, usize, f64);
+/// n_px_framelet, n_px_imagelet, osf
+pub struct Detector(usize, Option<usize>, Option<usize>);
 pub enum CeoElement {
     Gmt {
         m1: Mirror,

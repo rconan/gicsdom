@@ -504,6 +504,11 @@ mod tests {
     }
 
     #[test]
+    fn gmt_new_with_macro() {
+        crate::ceo!(element::GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
+    }
+
+    #[test]
     fn gmt_optical_alignment() {
         use element::*;
         let mut src = CEO::<SOURCE>::new()
