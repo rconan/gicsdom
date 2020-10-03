@@ -1,9 +1,13 @@
 use bytes::Bytes;
+use indicatif::{ProgressBar, ProgressStyle};
 use log;
 use rusoto_core::Region;
+use rusoto_lambda::{InvocationRequest, Lambda, LambdaClient};
 use rusoto_s3::{ListObjectsV2Request, S3Client, S3};
 use serde_json::json;
 use std::str::FromStr;
+use std::thread::sleep;
+use std::time::Duration;
 
 pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>) -> Vec<String> {
     let region = Region::from_str(region);
@@ -40,4 +44,47 @@ pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>
         }
     }
     cfd_keys
+}
+
+pub async fn invoke(function_name: &str, keys: Vec<String>) {
+    let lambda_client = LambdaClient::new(Region::UsEast2);
+
+    let mut request = InvocationRequest {
+        function_name: function_name.to_string(),
+        invocation_type: Some("Event".to_string()),
+        ..Default::default()
+    };
+
+    let pause = Duration::from_secs(60);
+    let chunck_size = 250_usize;
+    for keys in keys.chunks(chunck_size) {
+        //println!("Processing {} of keys",keys.len());
+        let bar = ProgressBar::new(chunck_size as u64);
+        bar.set_style(
+            ProgressStyle::default_bar().template("[{bar:100.cyan/blue} {pos:>5}/{len:5}"),
+        );
+        for key in keys {
+            bar.inc(1);
+            let payload = json!({
+                "bucket": "gmto.starccm",
+                "key": key
+            });
+            request.payload = Some(Bytes::from(payload.to_string()));
+            let result = lambda_client.invoke(request.clone()).await;
+            match result {
+                Ok(_response) => (), //println!("Response: {:?}", response),
+                Err(error) => {
+                    println!("Error: {:?}", error);
+                    break;
+                }
+            }
+        }
+        bar.finish_and_clear();
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(1000);
+        pb.set_style(ProgressStyle::default_spinner());
+        //println!("Waiting for the 1st wave of lambdas to be executed ...");
+        sleep(pause);
+        pb.finish_and_clear();
+    }
 }

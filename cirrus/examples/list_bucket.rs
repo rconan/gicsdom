@@ -19,14 +19,13 @@ async fn main() {
     let mut args = env::args().skip(1);
     let region = args.next().unwrap();
     let bucket = args.next().unwrap();
-    let suffix = args.next().unwrap_or("none".to_owned());
-    let q = if suffix=="none" { None } else { Some(suffix.as_str()) };
+    let suffix = args.next();
 
     let cfd_keys = cirrus::list(
         &region,
         &bucket,
         "Baseline2020/b2019_0z_0az_cd_12ms/OPDData_OPD_Data_",
-        q,
+        suffix.as_deref(),
     )
     .await;
     let n_cfd_keys = cfd_keys.len();
