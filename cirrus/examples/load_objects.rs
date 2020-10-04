@@ -10,7 +10,7 @@ use std::io::BufWriter;
 async fn main() {
     SimpleLogger::new()
         .with_level(LevelFilter::Off)
-        .with_module_level("cirrus", LevelFilter::Info)
+        .with_module_level("cirrus", LevelFilter::Warn)
         .init()
         .unwrap();
 
@@ -29,12 +29,12 @@ async fn main() {
         cfd_keys[n_cfd_keys - 1]
     );
 
-    let n_opd = 10_usize;
+    let n_opd = 100_usize;
     let now = Instant::now();
     let opd = cirrus::load("us-west-2", "gmto.modeling", &cfd_keys[0..n_opd]).await;
     println!("Downloaded {} files in {}s",n_opd,now.elapsed().as_secs());
 
-    let mut file = File::create("OPD.pkl").unwrap();
+    let file = File::create("OPD.pkl").unwrap();
     let mut writer = BufWriter::with_capacity(1_000_000, file);
-    pickle::to_writer(&mut writer, &opd, true);
+    pickle::to_writer(&mut writer, &opd, true).unwrap();
 }
