@@ -1,13 +1,19 @@
 use bytes::Bytes;
+use bytes::BytesMut;
 use indicatif::{ProgressBar, ProgressStyle};
 use log;
 use rusoto_core::Region;
 use rusoto_lambda::{InvocationRequest, Lambda, LambdaClient};
-use rusoto_s3::{ListObjectsV2Request, S3Client, S3};
+use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, S3Client, S3};
 use serde_json::json;
+use serde_pickle as pickle;
+use std::io::{Cursor, Read, Result, Write};
 use std::str::FromStr;
 use std::thread::sleep;
 use std::time::Duration;
+
+use futures::TryStreamExt;
+use tokio::prelude::*;
 
 pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>) -> Vec<String> {
     let region = Region::from_str(region);
@@ -44,6 +50,41 @@ pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>
         }
     }
     cfd_keys
+}
+
+pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec<f32>> {
+    let region = Region::from_str(region);
+    let s3_client = S3Client::new(region.unwrap_or(Region::default()));
+
+    let mut data: Vec<Vec<f32>> = vec![];
+    for key in keys {
+        log::info!("Downloading {}...",key);
+        let request = GetObjectRequest {
+            bucket: bucket.to_string(),
+            key: key.clone(),
+            ..Default::default()
+        };
+        let result = s3_client.get_object(request).await;
+        match result {
+            Ok(response) => {
+                let stream = response.body.unwrap();
+                let body = stream
+                    .map_ok(|b| BytesMut::from(&b[..]))
+                    .try_concat()
+                    .await
+                    .unwrap();
+                let r = Cursor::new(body);
+                let obj: Vec<f32> = pickle::from_reader(r).unwrap();
+                //println!("data: {}", obj.len());
+                data.push(obj);
+            }
+            Err(error) => {
+                log::error!("Error: {:?}", error);
+                break;
+            }
+        }
+    }
+    data
 }
 
 pub async fn invoke(function_name: &str, keys: Vec<String>) {
