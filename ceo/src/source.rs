@@ -1,8 +1,10 @@
+use std::mem::{self, MaybeUninit};
+
+use std::f32;
 use std::ffi::CString;
-use std::{f32, mem};
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, CeoElement, CeoError, CuFloat, CEO};
+use super::{element, Centroiding, CeoElement, CeoError, Cu, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -220,6 +222,56 @@ impl CEO<element::SOURCE> {
                         origin,
                     );
                 }
+                Ok(src)
+            }
+            _ => Err(CeoError(element::SOURCE)),
+        }
+    }
+    pub fn alt_build(self) -> Result<Source, CeoError<element::SOURCE>> {
+        match self.element {
+            CeoElement::Source {
+                size,
+                pupil_size,
+                pupil_sampling,
+                band,
+                zenith,
+                azimuth,
+                magnitude,
+            } => {
+                let mut m = magnitude.clone();
+                let mut z = zenith.clone();
+                let mut a = azimuth.clone();
+                let mut src_c = MaybeUninit::<source>::uninit();
+                unsafe {
+                    let origin = vector {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 25.0,
+                    };
+                    let src_band = CString::new(band.into_bytes()).unwrap();
+                    src_c.as_mut_ptr().as_mut().unwrap().setup7(
+                        src_band.into_raw(),
+                        m.as_mut_ptr(),
+                        z.as_mut_ptr(),
+                        a.as_mut_ptr(),
+                        f32::INFINITY,
+                        size as i32,
+                        pupil_size,
+                        pupil_sampling as i32,
+                        origin,
+                    );
+                }
+                let src = Source {
+                    _c_: unsafe { src_c.assume_init() },
+                    size: size as i32,
+                    pupil_size: pupil_size,
+                    pupil_sampling: pupil_sampling as i32,
+                    _wfe_rms: vec![0.0; size],
+                    _phase: vec![0.0; pupil_sampling * pupil_sampling * size],
+                    zenith: z,
+                    azimuth: a,
+                    magnitude: m,
+                };
                 Ok(src)
             }
             _ => Err(CeoError(element::SOURCE)),
@@ -461,7 +513,7 @@ impl Source {
         }
     }
     /// Adds `phase` to the `Source` wavefront
-    pub fn add(&mut self, phase: &mut CuFloat) -> &mut Self {
+    pub fn add(&mut self, phase: &mut Cu<f32>) -> &mut Self {
         unsafe {
             self._c_.wavefront.add_phase(1.0, phase.as_mut_ptr());
         }
