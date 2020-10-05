@@ -27,7 +27,7 @@ async fn main() {
         "Baseline2020/b2019_0z_0az_cd_12ms/OPDData_OPD_Data_",
         suffix.as_deref(),
     )
-    .await;
+    .await.unwrap();
     let n_cfd_keys = cfd_keys.len();
     println!(
         "CFD keys #: {} ; [{},...,{}]",

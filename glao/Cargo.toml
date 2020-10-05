@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 ceo = { path = "../ceo" }
+cirrus = { path = "../cirrus" }
 serde = "^1.0"
 serde-pickle = "0.6"
 rayon = "1.4"

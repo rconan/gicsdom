@@ -14,7 +14,12 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
-pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>) -> Vec<String> {
+pub async fn list(
+    region: &str,
+    bucket: &str,
+    prefix: &str,
+    suffix: Option<&str>,
+) -> Result<Vec<String>, String> {
     let region = Region::from_str(region);
     let s3_client = S3Client::new(region.unwrap_or(Region::default()));
     let mut cfd_keys: Vec<String> = vec![];
@@ -39,16 +44,15 @@ pub async fn list(region: &str, bucket: &str, prefix: &str, suffix: Option<&str>
                 cfd_keys.append(&mut objects);
                 match response.next_continuation_token {
                     Some(token) => request.continuation_token = Some(token),
-                    None => break,
+                    None => break Ok(cfd_keys),
                 }
             }
             Err(error) => {
                 log::error!("Error: {:?}", error);
-                break;
+                break Err("List failed!".to_string());
             }
         }
     }
-    cfd_keys
 }
 
 pub async fn load_serial(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec<f32>> {
@@ -85,11 +89,10 @@ pub async fn load_serial(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec
     }
     data
 }
-pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec<f32>> {
+pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec<f32>>, String> {
     let region = Region::from_str(region);
     let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
 
-    let mut data: Vec<Vec<f32>> = vec![];
     let mut handle = vec![];
     for key in keys {
         log::info!("Downloading {}...", key);
@@ -123,15 +126,25 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec<f32>> 
             }
         }))
     }
+    let mut data: Vec<Vec<f32>> = vec![];
+    let mut data_ok = true;
     for h in handle {
         match h.await.unwrap() {
             Some(out) => {
                 data.push(out);
             }
-            None => log::warn!("No data!"),
+            None => {
+                log::warn!("No data!");
+                data_ok = false;
+                break;
+            }
         }
     }
-    data
+    if data_ok {
+        Ok(data)
+    } else {
+        Err("Corrupted data!".to_string())
+    }
 }
 
 pub async fn invoke(function_name: &str, keys: Vec<String>) {

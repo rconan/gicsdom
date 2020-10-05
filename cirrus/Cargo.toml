@@ -15,7 +15,7 @@ rusoto_core = "^0.45.0"
 rusoto_s3 = "^0.45.0"
 rusoto_lambda = "^0.45.0"
 simple_logger = "1.10.0"
-indicatif = {version = "*", features = ["rayon"]}
+indicatif = {version = "0.15.0", features = ["rayon"]}
 bytestream = "0.3.0"
 serde = "1.0"
 serde-pickle = "0.6"
