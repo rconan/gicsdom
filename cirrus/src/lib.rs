@@ -7,7 +7,8 @@ use rusoto_lambda::{
     CreateFunctionRequest, DeleteFunctionRequest, FunctionCode, InvocationRequest, Lambda,
     LambdaClient,
 };
-use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, S3Client, S3};
+use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3};
+use serde::Serialize;
 use serde_pickle as pickle;
 use std::boxed::Box;
 use std::error::Error;
@@ -139,6 +140,21 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
     data_ok
 }
 
+pub async fn dump<T: Serialize>(region: &str, bucket: &str, key: &str, data: &T) -> Result<String, Box<dyn Error>> {
+    let region = Region::from_str(region);
+    let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
+    let contents: Vec<u8> = Vec::new();
+    let mut r = Cursor::new(contents);
+    pickle::to_writer(&mut r, data, true)?;
+    let req = PutObjectRequest {
+        bucket: bucket.to_owned(),
+        key: key.to_owned(),
+        body: Some(r.into_inner().into()),
+        ..Default::default()
+    };
+    let result = s3_client.put_object(req).await?;
+    Ok(format!("{:?}",result))
+}
 pub struct AWSLambda {
     client: LambdaClient,
     function_name: String,
@@ -152,7 +168,12 @@ impl AWSLambda {
         }
     }
 
-    pub async fn create(self, bucket: &str, fun_key: &str, role: &str) -> Result<Self,Box<dyn Error>> {
+    pub async fn create(
+        self,
+        bucket: &str,
+        fun_key: &str,
+        role: &str,
+    ) -> Result<Self, Box<dyn Error>> {
         let request = CreateFunctionRequest {
             code: FunctionCode {
                 s3_bucket: Some(bucket.to_string()),
@@ -171,7 +192,7 @@ impl AWSLambda {
         Ok(self)
     }
 
-    pub async fn delete(self) -> Result<Self,Box<dyn Error>> {
+    pub async fn delete(self) -> Result<Self, Box<dyn Error>> {
         let request = DeleteFunctionRequest {
             function_name: self.function_name.clone(),
             ..Default::default()
@@ -180,7 +201,7 @@ impl AWSLambda {
         Ok(self)
     }
 
-    pub async fn invoke(self, payloads: &[String]) -> Result<Self,Box<dyn Error>> {
+    pub async fn invoke(self, payloads: &[String]) -> Result<Self, Box<dyn Error>> {
         let mut request = InvocationRequest {
             function_name: self.function_name.clone(),
             invocation_type: Some("Event".to_string()),
