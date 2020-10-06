@@ -128,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("CFD_CASES.yaml")?;
     let cfd_cases_2020: CfdCases = serde_yaml::from_reader(file)?;
     let cfd_case = &cfd_cases_2020.baseline_2020[job_idx];
-    println!("CFD CASE: {}", cfd_case);
+    println!("CFD CASE: {} with {} sample", cfd_case, n_sample);
 
     let mut src = Source::new(1, 25.5, 769);
     src.build("V", vec![0.0], vec![0.0], vec![0.0]);
@@ -160,6 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     src.through(&mut gmt).xpupil().through(&mut ds);
     t.push(ds.current_time);
     wfe_rms.push(src.wfe_rms_10e(-9)[0]);
+    let now = Instant::now();
     while let Some(_) = ds.next() {
         src.through(&mut gmt)
             .xpupil()
@@ -168,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         t.push(ds.current_time);
         wfe_rms.push(src.wfe_rms_10e(-9)[0]);
     }
-    println!("{} steps in {}ms", ds.step+1, now.elapsed().as_millis());
+    println!("{} steps in {}ms", ds.step+1, now.elapsed().as_secs());
     /*
     //println!("opd size: {}", ds.opd.unwrap().len());
     let w = t
