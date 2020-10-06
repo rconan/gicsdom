@@ -1,13 +1,16 @@
-use ceo::{Cu, Gmt, Propagation, Source};
+use ceo::{Cu, Gmt, Propagation, Source, Conversion};
 use cirrus;
-use std::time::Instant;
+use serde::{Deserialize, Serialize};
+use serde_yaml;
+use std::{time::Instant,fs::File,env};
+
 
 pub struct DomeSeeing {
     region: String,
     bucket: String,
     folder: String,
     case: String,
-    keys: Result<Vec<String>, String>,
+    keys: Result<Vec<String>, Box<dyn std::error::Error>>,
     opd: Option<Vec<Vec<f32>>>,
     step: usize,
     buffer: Cu<f32>,
@@ -73,9 +76,25 @@ impl Iterator for DomeSeeing {
     }
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct CfdCases {
+    #[serde(rename = "baseline 2020")]
+    baseline_2020: Vec<String>,
+}
+
 #[tokio::main]
-async fn main() {
-    let mut src = Source::new(1, 25.5, 512);
+async fn main() -> Result<(),Box<dyn std::error::Error>> {
+
+
+    let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?.parse::<usize>()?;
+
+    let file =
+        File::open("CFD_CASES.yaml")?;
+    let cfd_cases_2020: CfdCases = serde_yaml::from_reader(file)?;
+    let cfd_case = &cfd_cases_2020.baseline_2020[job_idx];
+    println!("CFD CASE: {}",cfd_case);
+
+    let mut src = Source::new(1, 25.5, 769);
     src.build("V", vec![0.0], vec![0.0], vec![0.0]);
     let mut gmt = Gmt::new();
     gmt.build(1, None);
@@ -86,7 +105,7 @@ async fn main() {
         "us-west-2",
         "gmto.modeling",
         "Baseline2020",
-        "b2019_0z_0az_cd_12ms",
+        &cfd_case,
     )
     .await;
 
@@ -109,8 +128,11 @@ async fn main() {
     while let Some(_) = ds.next() {
         src.through(&mut gmt).xpupil().through(&mut ds);
         wfe_rms.push(src.wfe_rms_10e(-9)[0]);
+
     }
     println!("{} steps in {}ms", ds.step, now.elapsed().as_millis());
     //println!("opd size: {}", ds.opd.unwrap().len());
     println!("Dome seeing WFE RMS: {:?}", &wfe_rms);
+
+    Ok(())
 }
