@@ -20,7 +20,7 @@ async fn main() {
         "Baseline2020/b2019_0z_0az_cd_12ms/OPDData_OPD_Data_",
         None,
     )
-    .await;
+    .await.unwrap();
     let n_cfd_keys = cfd_keys.len();
     println!(
         "CFD keys #: {} ; [{},...,{}]",
@@ -29,9 +29,9 @@ async fn main() {
         cfd_keys[n_cfd_keys - 1]
     );
 
-    let n_opd = 100_usize;
+    let n_opd = 10_usize;
     let now = Instant::now();
-    let opd = cirrus::load("us-west-2", "gmto.modeling", &cfd_keys[0..n_opd]).await;
+    let opd = cirrus::load("us-west-2", "gmto.modeling", &cfd_keys[0..n_opd]).await.unwrap();
     println!("Downloaded {} files in {}s",n_opd,now.elapsed().as_secs());
 
     let file = File::create("OPD.pkl").unwrap();

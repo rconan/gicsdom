@@ -1,18 +1,17 @@
 use bytes::Bytes;
 use bytes::BytesMut;
 use futures::TryStreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
 use log;
 use rusoto_core::Region;
-use rusoto_lambda::{InvocationRequest, Lambda, LambdaClient};
+use rusoto_lambda::{
+    CreateFunctionRequest, DeleteFunctionRequest, FunctionCode, InvocationRequest, Lambda,
+    LambdaClient,
+};
 use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, S3Client, S3};
-use serde_json::json;
 use serde_pickle as pickle;
 use std::io::Cursor;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::Duration;
 
 pub async fn list(
     region: &str,
@@ -49,7 +48,7 @@ pub async fn list(
             }
             Err(error) => {
                 log::error!("Error: {:?}", error);
-                break Err("List failed!".to_string());
+                break Err(format!("{}", error));
             }
         }
     }
@@ -114,64 +113,102 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
                         .unwrap();
                     let r = Cursor::new(body);
                     let obj: Vec<f32> = pickle::from_reader(r).unwrap();
-                    Some(obj)
+                    Ok(obj)
                     //println!("data: {}", obj.len());
                     //data.push(obj);
                 }
-                Err(error) => {
-                    log::error!("Error: {:?}", error);
-                    None
+                Err(e) => {
+                    log::error!("Error: {:?}", e);
+                    Err(e)
                     //break;
                 }
             }
         }))
     }
     let mut data: Vec<Vec<f32>> = vec![];
-    let mut data_ok = true;
+    let mut data_ok = Ok(vec![]);
     for h in handle {
         match h.await.unwrap() {
-            Some(out) => {
+            Ok(out) => {
                 data.push(out);
             }
-            None => {
-                log::warn!("No data!");
-                data_ok = false;
+            Err(e) => {
+                log::error!("Error: {:?}", e);
+                data_ok = Err(format!("{}", e));
                 break;
             }
         }
     }
-    if data_ok {
-        Ok(data)
-    } else {
-        Err("Corrupted data!".to_string())
+    if data_ok.is_ok() {
+        data_ok = Ok(data);
     }
+    data_ok
 }
 
-pub async fn invoke(function_name: &str, keys: Vec<String>) {
-    let lambda_client = LambdaClient::new(Region::UsEast2);
+pub struct AWSLambda {
+    client: LambdaClient,
+    function_name: String,
+}
+impl AWSLambda {
+    pub fn new(region: &str, function_name: &str) -> Self {
+        let aws_region = Region::from_str(region).unwrap_or(Region::default());
+        AWSLambda {
+            client: LambdaClient::new(aws_region),
+            function_name: function_name.to_string(),
+        }
+    }
 
-    let mut request = InvocationRequest {
-        function_name: function_name.to_string(),
-        invocation_type: Some("Event".to_string()),
-        ..Default::default()
-    };
+    pub async fn create(self, bucket: &str, fun_key: &str, role: &str) -> Self {
+        let request = CreateFunctionRequest {
+            code: FunctionCode {
+                s3_bucket: Some(bucket.to_string()),
+                s3_key: Some(fun_key.to_string()),
+                ..Default::default()
+            },
+            function_name: self.function_name.clone(),
+            handler: "lambda_function.lambda_handler".to_string(),
+            memory_size: Some(3000),
+            runtime: "python3.6".to_string(),
+            role: role.to_string(),
+            timeout: Some(180),
+            ..Default::default()
+        };
 
-    let pause = Duration::from_secs(60);
-    let chunck_size = 250_usize;
-    for keys in keys.chunks(chunck_size) {
-        //println!("Processing {} of keys",keys.len());
-        let bar = ProgressBar::new(chunck_size as u64);
-        bar.set_style(
-            ProgressStyle::default_bar().template("[{bar:100.cyan/blue} {pos:>5}/{len:5}"),
-        );
-        for key in keys {
-            bar.inc(1);
-            let payload = json!({
-                "bucket": "gmto.starccm",
-                "key": key
-            });
+        let result = self.client.create_function(request).await;
+        match result {
+            Ok(_response) => (), //println!("Response: {:?}", response),
+            Err(error) => {
+                println!("Error: {:?}", error);
+            }
+        };
+        self
+    }
+
+    pub async fn delete(self) -> Self {
+        let request = DeleteFunctionRequest {
+            function_name: self.function_name.clone(),
+            ..Default::default()
+        };
+        let result = self.client.delete_function(request).await;
+        match result {
+            Ok(_response) => (), //println!("Response: {:?}", response),
+            Err(error) => {
+                println!("Error: {:?}", error);
+            }
+        };
+        self
+    }
+
+    pub async fn invoke(self, payloads: &[String]) -> Self {
+        let mut request = InvocationRequest {
+            function_name: self.function_name.clone(),
+            invocation_type: Some("Event".to_string()),
+            ..Default::default()
+        };
+
+        for payload in payloads {
             request.payload = Some(Bytes::from(payload.to_string()));
-            let result = lambda_client.invoke(request.clone()).await;
+            let result = self.client.invoke(request.clone()).await;
             match result {
                 Ok(_response) => (), //println!("Response: {:?}", response),
                 Err(error) => {
@@ -180,12 +217,6 @@ pub async fn invoke(function_name: &str, keys: Vec<String>) {
                 }
             }
         }
-        bar.finish_and_clear();
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(1000);
-        pb.set_style(ProgressStyle::default_spinner());
-        //println!("Waiting for the 1st wave of lambdas to be executed ...");
-        sleep(pause);
-        pb.finish_and_clear();
+        self
     }
 }
