@@ -123,6 +123,7 @@ struct Results {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?.parse::<usize>()?;
+    let n_sample = env::var("N_SAMPLE")?.parse::<usize>()?;
 
     let file = File::open("CFD_CASES.yaml")?;
     let cfd_cases_2020: CfdCases = serde_yaml::from_reader(file)?;
@@ -138,7 +139,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pssn: PSSn<ceo::pssn::TelescopeError> = PSSn::new();
     pssn.build(&mut src);
 
-    let n_sample = 2000;
     let mut ds = DomeSeeing::new("us-west-2", "gmto.modeling", "Baseline2020", &cfd_case).await;
     let now = Instant::now();
     ds.get_keys().await?.load_opd(Some(n_sample)).await?;
