@@ -49,15 +49,15 @@ async fn main() {
             let t_cfd_case = String::from(cfd_case);
             handle.push(tokio::spawn(async move {
                 let function_name = format!("{}_{}_{}", lambda_name, t_cfd_case, k);
-                cirrus::AWSLambda::new("us-east-2", &function_name)
-                    .create(
+                cirrus::AWSLambda::new("us-east-2", &function_name).delete().await;
+                    /*.create(
                         "gmto.starccm",
                         "CFD769.zip",
                         "arn:aws:iam::378722409401:role/EC2LambdaRole",
                     )
                     .await
                     .invoke(t_payloads.as_slice())
-                    .await;
+                    .await;*/
             }));
         }
     }

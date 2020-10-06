@@ -9,6 +9,8 @@ use rusoto_lambda::{
 };
 use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, S3Client, S3};
 use serde_pickle as pickle;
+use std::boxed::Box;
+use std::error::Error;
 use std::io::Cursor;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -18,7 +20,7 @@ pub async fn list(
     bucket: &str,
     prefix: &str,
     suffix: Option<&str>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, Box<dyn Error>> {
     let region = Region::from_str(region);
     let s3_client = S3Client::new(region.unwrap_or(Region::default()));
     let mut cfd_keys: Vec<String> = vec![];
@@ -29,27 +31,19 @@ pub async fn list(
         ..Default::default()
     };
     loop {
-        let result = s3_client.list_objects_v2(request.clone()).await;
-        match result {
-            Ok(response) => {
-                let mut objects = response
-                    .contents
-                    .unwrap()
-                    .iter()
-                    .map(|x| x.key.as_ref().cloned().unwrap())
-                    .filter(|x| suffix.map_or_else(|| true, |v| x.ends_with(v)))
-                    .collect::<Vec<String>>();
-                log::info!("Keys #: {}", objects.len());
-                cfd_keys.append(&mut objects);
-                match response.next_continuation_token {
-                    Some(token) => request.continuation_token = Some(token),
-                    None => break Ok(cfd_keys),
-                }
-            }
-            Err(error) => {
-                log::error!("Error: {:?}", error);
-                break Err(format!("{}", error));
-            }
+        let response = s3_client.list_objects_v2(request.clone()).await?;
+        let mut objects = response
+            .contents
+            .unwrap()
+            .iter()
+            .map(|x| x.key.as_ref().cloned().unwrap())
+            .filter(|x| suffix.map_or_else(|| true, |v| x.ends_with(v)))
+            .collect::<Vec<String>>();
+        log::info!("Keys #: {}", objects.len());
+        cfd_keys.append(&mut objects);
+        match response.next_continuation_token {
+            Some(token) => request.continuation_token = Some(token),
+            None => break Ok(cfd_keys),
         }
     }
 }
@@ -158,7 +152,7 @@ impl AWSLambda {
         }
     }
 
-    pub async fn create(self, bucket: &str, fun_key: &str, role: &str) -> Self {
+    pub async fn create(self, bucket: &str, fun_key: &str, role: &str) -> Result<Self,Box<dyn Error>> {
         let request = CreateFunctionRequest {
             code: FunctionCode {
                 s3_bucket: Some(bucket.to_string()),
@@ -173,50 +167,29 @@ impl AWSLambda {
             timeout: Some(180),
             ..Default::default()
         };
-
-        let result = self.client.create_function(request).await;
-        match result {
-            Ok(_response) => (), //println!("Response: {:?}", response),
-            Err(error) => {
-                println!("Error: {:?}", error);
-            }
-        };
-        self
+        self.client.create_function(request).await?;
+        Ok(self)
     }
 
-    pub async fn delete(self) -> Self {
+    pub async fn delete(self) -> Result<Self,Box<dyn Error>> {
         let request = DeleteFunctionRequest {
             function_name: self.function_name.clone(),
             ..Default::default()
         };
-        let result = self.client.delete_function(request).await;
-        match result {
-            Ok(_response) => (), //println!("Response: {:?}", response),
-            Err(error) => {
-                println!("Error: {:?}", error);
-            }
-        };
-        self
+        self.client.delete_function(request).await?;
+        Ok(self)
     }
 
-    pub async fn invoke(self, payloads: &[String]) -> Self {
+    pub async fn invoke(self, payloads: &[String]) -> Result<Self,Box<dyn Error>> {
         let mut request = InvocationRequest {
             function_name: self.function_name.clone(),
             invocation_type: Some("Event".to_string()),
             ..Default::default()
         };
-
         for payload in payloads {
             request.payload = Some(Bytes::from(payload.to_string()));
-            let result = self.client.invoke(request.clone()).await;
-            match result {
-                Ok(_response) => (), //println!("Response: {:?}", response),
-                Err(error) => {
-                    println!("Error: {:?}", error);
-                    break;
-                }
-            }
+            self.client.invoke(request.clone()).await?;
         }
-        self
+        Ok(self)
     }
 }
