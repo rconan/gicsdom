@@ -87,50 +87,63 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
     let region = Region::from_str(region);
     let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
 
-    let mut handle = vec![];
-    for key in keys {
-        log::info!("Downloading {}...", key);
-        let request = GetObjectRequest {
-            bucket: bucket.to_string(),
-            key: key.clone(),
-            ..Default::default()
-        };
-        let s3_client = s3_client.clone();
-        handle.push(tokio::spawn(async move {
-            let result = s3_client.get_object(request).await;
-            match result {
-                Ok(response) => {
-                    let stream = response.body.unwrap();
-                    let body = stream
-                        .map_ok(|b| BytesMut::from(&b[..]))
-                        .try_concat()
-                        .await
-                        .unwrap();
-                    let r = Cursor::new(body);
-                    let obj: Vec<f32> = pickle::from_reader(r).unwrap();
-                    Ok(obj)
-                    //println!("data: {}", obj.len());
-                    //data.push(obj);
+    let mut data: Vec<Vec<f32>> = vec![];
+    let mut data_ok = Ok(vec![]);
+    let chunk_size = 100;
+    let n_retry = 10;
+    let mut k_retry = 0;
+    let n_chunk = (keys.len() as f64/chunk_size as f64).ceil() as usize;
+
+    for (k,c_keys) in keys.chunks(chunk_size).enumerate() {
+        let mut handle = vec![];
+        log::info!("Downloading chunk #{:02}/{:02}...", k+1,n_chunk);
+        for key in c_keys {
+            let request = GetObjectRequest {
+                bucket: bucket.to_string(),
+                key: key.clone(),
+                ..Default::default()
+            };
+            let s3_client = s3_client.clone();
+            handle.push(tokio::spawn(async move {
+                loop {
+                    let result = s3_client.get_object(request.clone()).await;
+                    match result {
+                        Ok(response) => {
+                            let stream = response.body.unwrap();
+                            let body = stream
+                                .map_ok(|b| BytesMut::from(&b[..]))
+                                .try_concat()
+                                .await
+                                .unwrap();
+                            let r = Cursor::new(body);
+                            let obj: Vec<f32> = pickle::from_reader(r).unwrap();
+                            break Ok(obj);
+                            //println!("data: {}", obj.len());
+                            //data.push(obj);
+                        }
+                        Err(e) => {
+                            log::error!("{:?}", e);
+                            k_retry += 1;
+                            if k_retry <= n_retry {
+                                log::info!("{}/{} retry", k_retry, n_retry);
+                            } else {
+                                break Err(e);
+                            };
+                        }
+                    }
+                }
+            }))
+        }
+        for h in handle {
+            match h.await.unwrap() {
+                Ok(out) => {
+                    data.push(out);
                 }
                 Err(e) => {
                     log::error!("Error: {:?}", e);
-                    Err(e)
-                    //break;
+                    data_ok = Err(format!("{}", e));
+                    break;
                 }
-            }
-        }))
-    }
-    let mut data: Vec<Vec<f32>> = vec![];
-    let mut data_ok = Ok(vec![]);
-    for h in handle {
-        match h.await.unwrap() {
-            Ok(out) => {
-                data.push(out);
-            }
-            Err(e) => {
-                log::error!("Error: {:?}", e);
-                data_ok = Err(format!("{}", e));
-                break;
             }
         }
     }
@@ -140,7 +153,12 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
     data_ok
 }
 
-pub async fn dump<T: Serialize>(region: &str, bucket: &str, key: &str, data: &T) -> Result<String, Box<dyn Error>> {
+pub async fn dump<T: Serialize>(
+    region: &str,
+    bucket: &str,
+    key: &str,
+    data: &T,
+) -> Result<String, Box<dyn Error>> {
     let region = Region::from_str(region);
     let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
     let contents: Vec<u8> = Vec::new();
@@ -153,7 +171,7 @@ pub async fn dump<T: Serialize>(region: &str, bucket: &str, key: &str, data: &T)
         ..Default::default()
     };
     let result = s3_client.put_object(req).await?;
-    Ok(format!("{:?}",result))
+    Ok(format!("{:?}", result))
 }
 pub struct AWSLambda {
     client: LambdaClient,

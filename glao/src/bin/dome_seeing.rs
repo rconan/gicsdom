@@ -1,7 +1,9 @@
 use ceo::{Cu, Gmt, PSSn, Propagation, Source};
 use cirrus;
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
+use simple_logger::SimpleLogger;
 use std::boxed::Box;
 use std::{env, fs::File, time::Instant};
 
@@ -122,6 +124,12 @@ struct Results {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    SimpleLogger::new()
+        .with_level(LevelFilter::Off)
+        .with_module_level("cirrus", LevelFilter::Info)
+        .init()
+        .unwrap();
+
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?.parse::<usize>()?;
     let n_sample = env::var("N_SAMPLE")?.parse::<usize>()?;
 
@@ -169,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         t.push(ds.current_time);
         wfe_rms.push(src.wfe_rms_10e(-9)[0]);
     }
-    println!("{} steps in {}ms", ds.step+1, now.elapsed().as_secs());
+    println!("{} steps in {}s", ds.step + 1, now.elapsed().as_secs());
     /*
     //println!("opd size: {}", ds.opd.unwrap().len());
     let w = t
