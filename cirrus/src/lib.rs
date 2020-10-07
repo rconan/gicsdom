@@ -91,7 +91,6 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
     let mut data_ok = Ok(vec![]);
     let chunk_size = 100;
     let n_retry = 10;
-    let mut k_retry = 0;
     let n_chunk = (keys.len() as f64/chunk_size as f64).ceil() as usize;
 
     for (k,c_keys) in keys.chunks(chunk_size).enumerate() {
@@ -105,6 +104,7 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
             };
             let s3_client = s3_client.clone();
             handle.push(tokio::spawn(async move {
+                let mut k_retry = 0;
                 loop {
                     let result = s3_client.get_object(request.clone()).await;
                     match result {
