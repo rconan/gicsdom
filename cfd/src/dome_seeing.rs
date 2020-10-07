@@ -10,6 +10,7 @@ pub struct DomeSeeing {
     pub n_keys: usize,
     first: usize,
     pub opd: Vec<Vec<f32>>,
+    n_src: usize,
     step: usize,
     pub n_step: usize,
     buffer: Cu<f32>,
@@ -18,7 +19,14 @@ pub struct DomeSeeing {
     pub current_time: f64,
 }
 impl DomeSeeing {
-    pub fn new(region: &str, bucket: &str, folder: &str, case: &str, rate: Option<usize>) -> Self {
+    pub fn new(
+        region: &str,
+        bucket: &str,
+        folder: &str,
+        case: &str,
+        n_src: usize,
+        rate: Option<usize>,
+    ) -> Self {
         DomeSeeing {
             region: region.to_owned(),
             bucket: bucket.to_owned(),
@@ -28,6 +36,7 @@ impl DomeSeeing {
             n_keys: 0,
             first: 0,
             opd: vec![],
+            n_src,
             step: 0,
             n_step: 0,
             buffer: Cu::new(),
@@ -66,8 +75,8 @@ impl DomeSeeing {
         self.first = self.n_keys - n_last.unwrap_or(self.n_keys);
         let keys = &self.keys[self.first..];
         self.opd = cirrus::load::<Vec<f32>>(&self.region, &self.bucket, keys).await?;
-        self.n_step = self.opd.len()*self.rate;
-        self.buffer = Cu::vector(self.opd[0].len());
+        self.n_step = self.opd.len() * self.rate;
+        self.buffer = Cu::vector(self.opd[0].len() * self.n_src);
         self.buffer.malloc();
         Ok(self)
     }
@@ -77,7 +86,11 @@ impl Propagation for DomeSeeing {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         let idx = self.step / self.rate;
         self.current_time = self.time[self.first + idx];
-        src.add(&mut self.buffer.to_dev(&mut self.opd[idx]));
+        let mut opd = (0..src.size as usize)
+            .map(|_| self.opd[idx].clone())
+            .flatten()
+            .collect::<Vec<f32>>();
+        src.add(&mut self.buffer.to_dev(&mut opd));
         self
     }
     fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
