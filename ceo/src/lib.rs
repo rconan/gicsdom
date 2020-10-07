@@ -28,6 +28,45 @@ pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
 /// One macro to rule them all, one macro to find them, one macro to bring them all and in the darkness bind them all
+///
+/// # Examples
+///
+///  * GMT
+///
+/// ```
+/// let gmt = crate::ceo!(element::GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
+/// ```
+///
+///  * Geometric Shack-Hartmann
+///
+/// ```
+/// use element::*;
+/// let mut wfs = crate::ceo!(
+///     SHACKHARTMANN: Geometric,
+///     set_n_sensor = [1],
+///     set_lenslet_array = [48, 16, 25.5 / 48f64]
+/// );
+/// let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+/// let mut gmt = crate::ceo!(GMT);
+/// src.through(&mut gmt).xpupil().through(&mut wfs);
+/// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+/// ```
+///
+///  * Diffractive Shack-Hartmann
+///
+/// ```
+/// use element::*;
+/// let mut wfs = crate::ceo!(
+///     SHACKHARTMANN: Diffractive,
+///     set_n_sensor = [1],
+///     set_lenslet_array = [48, 16, 25.5 / 48f64],
+///     set_detector = [8, Some(24), None]
+/// );
+/// let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+/// let mut gmt = crate::ceo!(GMT);
+/// src.through(&mut gmt).xpupil().through(&mut wfs);
+/// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+/// ```
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {

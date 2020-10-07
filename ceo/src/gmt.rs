@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
 use super::{element, CeoElement, CeoError, Mirror, Propagation, Source, CEO};
@@ -165,6 +165,44 @@ impl CEO<element::GMT> {
                         .setup(m2_mode_type.into_raw(), 7, gmt.m2_n_mode as i32);
                     gmt._c_m2.setup1(&mut gmt._c_m2_modes);
                 }
+                Ok(gmt)
+            }
+            _ => Err(CeoError(element::GMT)),
+        }
+    }
+    pub fn alt_build(self) -> Result<Gmt, CeoError<element::GMT>> {
+        match self.element {
+            CeoElement::Gmt { m1, m2 } => {
+                let mut m1_modes_c = MaybeUninit::<modes>::uninit();
+                let mut m2_modes_c = MaybeUninit::<modes>::uninit();
+                let mut m1_c = MaybeUninit::<gmt_m1>::uninit();
+                let mut m2_c = MaybeUninit::<gmt_m2>::uninit();
+
+                let m1_mode_type = CString::new(m1.mode_type.into_bytes()).unwrap();
+                unsafe {
+                    m1_modes_c.as_mut_ptr().as_mut().unwrap()
+                        .setup(m1_mode_type.into_raw(), 7, m1.n_mode as i32);
+                    m1_c.as_mut_ptr().as_mut().unwrap().setup1(m1_modes_c.as_mut_ptr());
+                }
+
+                let m2_mode_type = CString::new(m2.mode_type.into_bytes()).unwrap();
+                unsafe {
+                    m2_modes_c.as_mut_ptr().as_mut().unwrap()
+                        .setup(m2_mode_type.into_raw(), 7, m2.n_mode as i32);
+                    m2_c.as_mut_ptr().as_mut().unwrap().setup1(m2_modes_c.as_mut_ptr());
+                }
+
+                let gmt = Gmt {
+                    _c_m1_modes: unsafe { m1_modes_c.assume_init() },
+                    _c_m2_modes: unsafe { m2_modes_c.assume_init() },
+                    _c_m1: unsafe { m1_c.assume_init() },
+                    _c_m2: unsafe { m2_c.assume_init() },
+                    m1_n_mode: m1.n_mode,
+                    m2_n_mode: m2.n_mode,
+                    m2_max_n: 0,
+                    a1: vec![0.0; 7 * m1.n_mode],
+                    a2: vec![0.0; 7 * m2.n_mode],
+                };
                 Ok(gmt)
             }
             _ => Err(CeoError(element::GMT)),

@@ -24,7 +24,7 @@ pub trait Propagation {
 pub struct Source {
     pub _c_: source,
     /// The number of sources
-    size: i32,
+    pub size: i32,
     /// The diameter of the entrance pupil [m]
     pub pupil_size: f64,
     /// The sampling of the entrance pupil [px]

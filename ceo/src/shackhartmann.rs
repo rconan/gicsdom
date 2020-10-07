@@ -416,7 +416,6 @@ impl From<ShackHartmann<Diffractive>> for Source {
 
 #[cfg(test)]
 mod tests {
-    #[macro_use]
     use super::*;
 
     #[test]
