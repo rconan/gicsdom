@@ -1,7 +1,10 @@
 use crate::system::{GlaoField, System};
 use ceo::{
-    pssn::AtmosphereTelescopeError as ATE, Atmosphere, Conversion, Cu, Gmt, Mask, PSSn, Source,
+    pssn::AtmosphereTelescopeError as ATE,
+    pssn::TelescopeError as TE,
+    Atmosphere, Conversion, Cu, Gmt, Mask, PSSn, Source,
 };
+use cfd::DomeSeeing;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::{Deserialize as Dserde, Serialize as Sserde};
 use serde_pickle as pickle;
@@ -26,9 +29,9 @@ pub struct ScienceField {
     n_px: usize,
     zenith: Vec<f32>,
     azimuth: Vec<f32>,
-    src: Source,
-    atm_pssn: ceo::PSSn<ATE>,
-    pub pssn: ceo::PSSn<ATE>,
+    pub src: Source,
+    atm_pssn: ceo::PSSn<TE>,
+    pub pssn: ceo::PSSn<TE>,
     pub pssn_nsample_tol: Option<(usize, f32)>,
     fwhms: Fwhms,
 }
@@ -154,12 +157,12 @@ impl Serialize for ScienceField {
 }
 
 pub struct GlaoSys<'a, 'b> {
-    sys: System,
+    pub sys: System,
     lenslet_mask: Mask,
     calib: Cu<f32>,
     step: usize,
     atm: &'a mut Atmosphere,
-    science: &'b mut ScienceField,
+    pub science: &'b mut ScienceField,
     d_mean_c: ceo::Cu<f32>,
     x: ceo::Cu<f32>,
     pub s12: Option<((usize, usize), (usize, usize))>,
@@ -283,6 +286,49 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
                 a[i][1] = v;
             });
         }
+    }
+    pub fn get_science(&mut self, disturbances: &mut DomeSeeing) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        let (_gs, gmt, _wfs) = self.sys.devices();
+        let wfe_rms = self
+            .science
+            .src
+            .through(gmt)
+            .xpupil()
+            .through(disturbances)
+            .through(&mut self.science.pssn)
+            .wfe_rms_10e(-9);
+        (
+            wfe_rms,
+            self.science.src.segment_wfe_rms_10e(-9),
+            self.science.src.segment_piston_10e(-9),
+        )
+    }
+    pub fn closed_loop(
+        &mut self,
+        disturbances: &mut DomeSeeing,
+        kl_coefs: &mut Vec<Vec<f64>>,
+        gain: f64,
+    ) {
+        let (gs, gmt, wfs) = self.sys.devices();
+
+        wfs.reset();
+        gs.through(gmt).xpupil().through(disturbances).through(wfs);
+        wfs.process()
+            .fold_into(&mut self.d_mean_c, &mut self.lenslet_mask);
+
+        self.calib.qr_solve_as_ptr(&mut self.x, &mut self.d_mean_c);
+        let h_x = self.x.from_dev();
+        let mut k = 0;
+        for s in kl_coefs.iter_mut() {
+            for a in s.iter_mut().skip(1) {
+                *a -= gain * h_x[k] as f64;
+                k += 1;
+            }
+        }
+
+        let mut b = kl_coefs.clone().into_iter().flatten().collect::<Vec<f64>>();
+        gmt.set_m2_modes(&mut b);
+
     }
 }
 
