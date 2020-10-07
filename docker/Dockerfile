@@ -21,7 +21,7 @@ RUN cargo build --release
 #COPY ceo ceo/CEO/gmtMirrors
 #COPY data .
 
-#CMD ["./target/release/fiducial"]
+#CMD ["./target/release/dome_seeing"]
 
 FROM nvidia/cuda:10.1-runtime
 
@@ -38,6 +38,7 @@ RUN groupadd $APP_USER \
     && mkdir -p ${APP}
 
 COPY --from=ceo-build /usr/src/gicsdom/target/release/fiducial ${APP}/fiducial
+COPY --from=ceo-build /usr/src/gicsdom/target/release/dome_seeing ${APP}/dome_seeing
 
 RUN chown -R $APP_USER:$APP_USER ${APP}
 
@@ -47,4 +48,4 @@ WORKDIR ${APP}
 COPY ceo ceo/CEO/gmtMirrors
 COPY data .
 
-CMD ["./fiducial"]
+CMD ["./dome_seeing"]
