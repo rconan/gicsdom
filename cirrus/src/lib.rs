@@ -83,19 +83,22 @@ pub async fn load_serial(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec
     }
     data
 }
-pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec<f32>>, String> {
+pub async fn load<T: 'static + serde::de::DeserializeOwned + std::marker::Send>(
+    region: &str,
+    bucket: &str,
+    keys: &[String],
+) -> Result<Vec<T>, Box<dyn Error>> {
     let region = Region::from_str(region);
     let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
 
-    let mut data: Vec<Vec<f32>> = vec![];
-    let mut data_ok = Ok(vec![]);
+    let mut data: Vec<T> = vec![];
     let chunk_size = 100;
-    let n_retry = 10;
-    let n_chunk = (keys.len() as f64/chunk_size as f64).ceil() as usize;
+    let n_retry = 10usize;
+    let n_chunk = (keys.len() as f64 / chunk_size as f64).ceil() as usize;
 
-    for (k,c_keys) in keys.chunks(chunk_size).enumerate() {
+    for (k, c_keys) in keys.chunks(chunk_size).enumerate() {
         let mut handle = vec![];
-        log::info!("Downloading chunk #{:02}/{:02}...", k+1,n_chunk);
+        log::info!("Downloading chunk #{:02}/{:02}...", k + 1, n_chunk);
         for key in c_keys {
             let request = GetObjectRequest {
                 bucket: bucket.to_string(),
@@ -104,7 +107,7 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
             };
             let s3_client = s3_client.clone();
             handle.push(tokio::spawn(async move {
-                let mut k_retry = 0;
+                let mut k_retry = 0usize;
                 loop {
                     let result = s3_client.get_object(request.clone()).await;
                     match result {
@@ -116,10 +119,8 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
                                 .await
                                 .unwrap();
                             let r = Cursor::new(body);
-                            let obj: Vec<f32> = pickle::from_reader(r).unwrap();
+                            let obj: T = pickle::from_reader(r).unwrap();
                             break Ok(obj);
-                            //println!("data: {}", obj.len());
-                            //data.push(obj);
                         }
                         Err(e) => {
                             log::error!("{:?}", e);
@@ -135,22 +136,10 @@ pub async fn load(region: &str, bucket: &str, keys: &[String]) -> Result<Vec<Vec
             }))
         }
         for h in handle {
-            match h.await.unwrap() {
-                Ok(out) => {
-                    data.push(out);
-                }
-                Err(e) => {
-                    log::error!("Error: {:?}", e);
-                    data_ok = Err(format!("{}", e));
-                    break;
-                }
-            }
+            data.push(h.await.unwrap()?);
         }
     }
-    if data_ok.is_ok() {
-        data_ok = Ok(data);
-    }
-    data_ok
+    Ok(data)
 }
 
 pub async fn dump<T: Serialize>(
