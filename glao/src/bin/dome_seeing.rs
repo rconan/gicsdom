@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
-    let n_sample = 5; /*env::var("N_SAMPLE")?
+    let n_sample = 2; /*env::var("N_SAMPLE")?
                            .parse::<usize>()
                        .expect("N_SAMPLE parsing failed!");*/
     let upload_results = false;
@@ -52,7 +52,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "gmto.modeling",
         "Baseline2020",
         &cfd_case,
-        Some(4),
+        1,
+        Some(20),
     );
     let now = Instant::now();
     ds.get_keys().await?.load_opd(Some(n_sample)).await?;
