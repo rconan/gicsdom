@@ -130,8 +130,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init()
         .unwrap();
 
-    let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?.parse::<usize>()?;
-    let n_sample = env::var("N_SAMPLE")?.parse::<usize>()?;
+    let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
+        .parse::<usize>()
+        .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
+    let n_sample = 2000;/*env::var("N_SAMPLE")?
+        .parse::<usize>()
+        .expect("N_SAMPLE parsing failed!");*/
 
     let file = File::open("CFD_CASES.yaml")?;
     let cfd_cases_2020: CfdCases = serde_yaml::from_reader(file)?;
