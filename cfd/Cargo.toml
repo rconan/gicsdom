@@ -1,5 +1,5 @@
 [package]
-name = "glao"
+name = "cfd"
 version = "0.1.0"
 authors = ["Rod Conan <rconan@gmto.org>"]
 edition = "2018"
@@ -9,16 +9,5 @@ edition = "2018"
 [dependencies]
 ceo = { path = "../ceo" }
 cirrus = { path = "../cirrus" }
-cfd = { path = "../cfd" }
+serde_yaml = "0.8.13"
 serde = "^1.0"
-serde-pickle = "0.6"
-rayon = "1.4"
-csv = "1.1.3"
-libm = "0.2.1"
-roots = "0.0.6"
-log = "0.4.11"
-simple_logger = "1.9.0"
-ndarray = "0.13"
-ndarray-npy = "0.6.0"
-tokio = "0.2.22"
-indicatif = {version = "0.15.0", features = ["rayon"]}
