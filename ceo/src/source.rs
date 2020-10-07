@@ -424,6 +424,12 @@ impl Source {
         }
         segment_wfe_std
     }
+    pub fn segment_wfe_rms_10e(&mut self, exp: i32) -> Vec<f32> {
+        self.segment_wfe_rms()
+            .iter()
+            .map(|x| x * 10_f32.powi(-exp))
+            .collect()
+    }
     pub fn segment_piston(&mut self) -> Vec<f32> {
         let mut mask = vec![0i32; self._c_.rays.N_RAY_TOTAL as usize];
         unsafe {
