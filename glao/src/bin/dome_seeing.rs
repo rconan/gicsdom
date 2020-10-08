@@ -30,13 +30,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
-    let n_sample = 2; /*env::var("N_SAMPLE")?
+    let duration = 2; /*env::var("N_SAMPLE")?
                            .parse::<usize>()
+    
                        .expect("N_SAMPLE parsing failed!");*/
     let upload_results = false;
 
     let cfd_case = &cfd::get_cases()?[job_idx];
-    println!("CFD CASE: {} with {} sample", cfd_case, n_sample);
+    println!("CFD CASE: {} with {} duration", cfd_case, duration);
 
     let mut src = Source::new(1, 25.5, 769);
     src.build("V", vec![0.0], vec![0.0], vec![0.0]);
@@ -52,11 +53,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "gmto.modeling",
         "Baseline2020",
         &cfd_case,
-        1,
-        Some(20),
+        duration,
+        Some(40),
     );
     let now = Instant::now();
-    ds.get_keys().await?.load_opd(Some(n_sample)).await?;
+    ds.get_keys().await?.load_opd().await?;
     let keys = &ds.keys;
     println!(
         "CFD keys #: {} ; [{},...,{}]",

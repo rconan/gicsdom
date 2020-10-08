@@ -32,14 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
-    let n_sample = 2; /*env::var("N_SAMPLE")?
+    let duration = 2; /*env::var("N_SAMPLE")?
                                             .parse::<usize>()
                       .expect("N_SAMPLE parsing failed!");*/
     let rate = 40;
     let upload_results = true;
 
     let cfd_case = &cfd::get_cases()?[job_idx];
-    println!("CFD CASE: {} with {} sample", cfd_case, n_sample);
+    println!("CFD CASE: {} with {} duration", cfd_case, duration);
 
     let n_px = 769;
 
@@ -57,11 +57,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "gmto.modeling",
         "Baseline2020",
         &cfd_case,
-        4,
+        duration,
         Some(rate),
     );
     let now = Instant::now();
-    ds.get_keys().await?.load_opd(Some(n_sample)).await?;
+    ds.get_keys().await?.load_opd().await?;
     let keys = &ds.keys;
     println!(
         "CFD keys #: {} ; [{},...,{}]",
@@ -90,9 +90,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wfe.push(glao_4gs.get_science(&mut ds));
         glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
         //println!(" {:5.0} {:?} {:?}", wfe.0[0], wfe.1, wfe.2);
-        if ds.next().is_none() {
-            break;
-        };
         match ds.next() {
             Some(p) => {
                 if p == rate {
@@ -104,6 +101,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
     }
     let pssn = &mut glao_4gs.science.pssn;
+
+    println!("len t: {}",t.len());
     /*
     let mut fwhm = ceo::Fwhm::new();
     fwhm.build(&mut glao_4gs.science.src);
