@@ -161,7 +161,7 @@ pub struct GlaoSys<'a, 'b> {
     lenslet_mask: Mask,
     calib: Cu<f32>,
     step: usize,
-    atm: &'a mut Atmosphere,
+    pub atm: &'a mut Atmosphere,
     pub science: &'b mut ScienceField,
     d_mean_c: ceo::Cu<f32>,
     x: ceo::Cu<f32>,
@@ -294,8 +294,9 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             .src
             .through(gmt)
             .xpupil()
-            .through(disturbances)
-            .through(&mut self.science.pssn)
+            //.through(disturbances)
+            .through(self.atm)
+            //.through(&mut self.science.pssn)
             .wfe_rms_10e(-9);
         (
             wfe_rms,
