@@ -525,6 +525,13 @@ impl Source {
         }
         self
     }
+    /// Adds `phase` to the `Source` wavefront
+    pub fn add_same(&mut self, phase: &mut Cu<f32>) -> &mut Self {
+        unsafe {
+            self._c_.wavefront.add_same_phase(1.0, phase.as_mut_ptr());
+        }
+        self
+    }
     /// Returns the wavefront phase [m] in the exit pupil of the telescope
     pub fn phase(&mut self) -> &Vec<f32> {
         unsafe {
