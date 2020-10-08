@@ -81,7 +81,6 @@ impl DomeSeeing {
 impl Propagation for DomeSeeing {
     /// Ray traces a `Source` through `Gmt`, ray tracing stops at the exit pupil
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
-        self.current_time = self.step as f64 * self.sampling_time;
         let idx = self.step / self.rate;
         let k = self.step % self.rate;
         if k > 0 {
@@ -106,6 +105,7 @@ impl Iterator for DomeSeeing {
     type Item = usize;
     fn next(&mut self) -> Option<Self::Item> {
         self.step += 1;
+        self.current_time = self.step as f64 * self.sampling_time;
         if self.step < self.n_step {
             Some(self.step)
         } else {
