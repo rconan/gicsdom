@@ -86,11 +86,7 @@ impl Propagation for DomeSeeing {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         let idx = self.step / self.rate;
         self.current_time = self.time[self.first + idx];
-        let mut opd = (0..src.size as usize)
-            .map(|_| self.opd[idx].clone())
-            .flatten()
-            .collect::<Vec<f32>>();
-        src.add(&mut self.buffer.to_dev(&mut opd));
+        src.add_same(&mut self.buffer.to_dev(&mut self.opd[idx]));
         self
     }
     fn time_propagate(&mut self, _secs: f64, src: &mut Source) -> &mut Self {
