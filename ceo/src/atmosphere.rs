@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::atmosphere;
@@ -69,7 +70,7 @@ impl Atmosphere {
         }
         self
     }
-   
+
     pub fn raytrace_build(
         &mut self,
         r_not: f32,
@@ -83,21 +84,44 @@ impl Atmosphere {
         n_width_px: i32,
         field_size: f32,
         duration: f32,
+        filepath: Option<&str>,
+        n_duration: Option<i32>,
     ) -> &mut Self {
-        unsafe {
-            self._c_.setup1(
-                r_not,
-                l_not,
-                n_layer,
-                altitude.as_mut_ptr(),
-                xi0.as_mut_ptr(),
-                wind_speed.as_mut_ptr(),
-                wind_direction.as_mut_ptr(),
-                width,
-                n_width_px,
-                field_size,
-                duration,
-            );
+        match filepath {
+            Some(file) => unsafe {
+                self._c_.setup2(
+                    r_not,
+                    l_not,
+                    n_layer,
+                    altitude.as_mut_ptr(),
+                    xi0.as_mut_ptr(),
+                    wind_speed.as_mut_ptr(),
+                    wind_direction.as_mut_ptr(),
+                    width,
+                    n_width_px,
+                    field_size,
+                    duration,
+                    CString::new(file.to_owned().into_bytes())
+                        .unwrap()
+                        .into_raw(),
+                    n_duration.unwrap_or(1),
+                );
+            },
+            None => unsafe {
+                self._c_.setup1(
+                    r_not,
+                    l_not,
+                    n_layer,
+                    altitude.as_mut_ptr(),
+                    xi0.as_mut_ptr(),
+                    wind_speed.as_mut_ptr(),
+                    wind_direction.as_mut_ptr(),
+                    width,
+                    n_width_px,
+                    field_size,
+                    duration,
+                );
+            },
         }
         self.built = false;
         self
@@ -151,8 +175,8 @@ impl Atmosphere {
     }
 }
 impl Propagation for Atmosphere {
-    
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
+        println!("secs: {}", secs);
         unsafe {
             let n_xy = src.pupil_sampling;
             let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
@@ -178,7 +202,8 @@ impl Propagation for Atmosphere {
                     secs as f32,
                     self.k_duration,
                 );
-                */
+                 */
+                self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             }
         }
         self

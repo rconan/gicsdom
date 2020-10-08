@@ -32,25 +32,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
-    let duration = 2; /*env::var("N_SAMPLE")?
+    let duration = 1; /*env::var("N_SAMPLE")?
                                             .parse::<usize>()
                       .expect("N_SAMPLE parsing failed!");*/
     let rate = 40;
-    let upload_results = true;
+    let upload_results = false;
 
     let cfd_case = &cfd::get_cases()?[job_idx];
     println!("CFD CASE: {} with {} duration", cfd_case, duration);
 
     let n_px = 769;
 
+    let secz = 1f32 / 30f32.to_radians().cos();
+    let turb_cn2_height = [275, 425, 1250, 4000, 8000, 13000]
+        .iter()
+        .map(|x| *x as f32 * secz)
+        .collect::<Vec<f32>>();
+    let turb_cn2_xi0 = [0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751];
+    let wind_speed = [5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187];
+    let wind_direction = [0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462];
     let mut atm = ceo::Atmosphere::new();
     //let mut science =
     //    ScienceField::delaunay_21("Vs", n_px, None);
     let mut science = ScienceField::on_axis("Vs", n_px, None);
     science.build();
+    atm.raytrace_build(
+        science.pssn.r0(),
+        science.pssn.oscale,
+        6,
+        turb_cn2_height,
+        turb_cn2_xi0.to_vec(),
+        wind_speed.to_vec(),
+        wind_direction.to_vec(),
+        25.5,
+        n_px as i32,
+        10f32.from_arcmin(),
+        20f32,
+        Some("glao_fiducial_atmosphere.bin"),
+        Some(1),
+    );
     let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
     let n_kl = 70;
-    glao_4gs.build(6f32.from_arcmin(), n_kl, 0.5).calibration();
+    glao_4gs.build(6f32.from_arcmin(), n_kl, 0.5); //.calibration();
 
     let mut ds = cfd::DomeSeeing::new(
         "us-west-2",
@@ -87,13 +110,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut wfe: Vec<(Vec<f32>, Vec<f32>, Vec<f32>)> = vec![];
     loop {
         t.push(ds.current_time);
+        glao_4gs.atm.secs = ds.current_time.clone();
         wfe.push(glao_4gs.get_science(&mut ds));
-        glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
-        //println!(" {:5.0} {:?} {:?}", wfe.0[0], wfe.1, wfe.2);
+        //glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
+        println!(
+            " {:5.0} {:?} {:?}",
+            wfe.last().unwrap().0[0],
+            wfe.last().unwrap().1,
+            wfe.last().unwrap().2
+        );
         match ds.next() {
             Some(p) => {
                 if p == rate {
-                    println!("Step #{}: reset PSSn!",p);
+                    println!("Step #{}: reset PSSn!", p);
                     glao_4gs.science.pssn.reset();
                 }
             }
@@ -102,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let pssn = &mut glao_4gs.science.pssn;
 
-    println!("len t: {}",t.len());
+    println!("len t: {}", t.len());
     /*
     let mut fwhm = ceo::Fwhm::new();
     fwhm.build(&mut glao_4gs.science.src);
@@ -130,6 +159,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cirrus::dump("us-west-2", "gmto.modeling", &key, &results).await?;
     } else {
         //println!("opd size: {}", ds.opd.unwrap().len());
+        println!(
+            "WFE: {:#?}",
+            wfe.iter()
+                .zip(t.iter())
+                .map(|x| format!("[{:5.3}: {:6.0}]", x.1, (x.0).0[0]))
+                .collect::<Vec<String>>()
+        );
         println!("PSSn: {:.?}", pssn.peek().estimates);
         /*
         let w = t
