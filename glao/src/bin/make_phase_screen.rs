@@ -29,6 +29,6 @@ fn main() {
         10f32.from_arcmin(),
         20f32,
         Some("glao_fiducial_atmosphere.bin"),
-        Some(1)
+        Some(20)
     );
 }
