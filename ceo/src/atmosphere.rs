@@ -176,7 +176,6 @@ impl Atmosphere {
 }
 impl Propagation for Atmosphere {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
-        println!("secs: {}", secs);
         unsafe {
             let n_xy = src.pupil_sampling;
             let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
