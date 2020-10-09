@@ -39,6 +39,7 @@ RUN groupadd $APP_USER \
 
 COPY --from=ceo-build /usr/src/gicsdom/target/release/fiducial ${APP}/fiducial
 COPY --from=ceo-build /usr/src/gicsdom/target/release/dome_seeing ${APP}/dome_seeing
+COPY --from=ceo-build /usr/src/gicsdom/target/release/glao_dome_seeing ${APP}/glao_dome_seeing
 
 RUN chown -R $APP_USER:$APP_USER ${APP}
 
@@ -47,5 +48,6 @@ WORKDIR ${APP}
 
 COPY ceo ceo/CEO/gmtMirrors
 COPY data .
+RUN mkdir cfd && mv CFD_CASES.yaml cfd/
 
-CMD ["./dome_seeing"]
+CMD ["./glao_dome_seeing"]

@@ -1,7 +1,7 @@
 AWS=docker run --rm -it -v ~/.aws:/root/.aws amazon/aws-cli
 
-ceo:
-	cd ../CEO; git archive --format=tar.gz HEAD > ../docker/ceo.tar.gz
+ceoa:
+	cd ../ceo/CEO; git archive --format=tar.gz HEAD > ../../docker/ceo.tar.gz
 
 gicsdom:
 	cd ../; git archive --format=tar.gz HEAD > docker/gicsdom.tar.gz
