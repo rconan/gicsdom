@@ -1,10 +1,12 @@
 use ceo::Conversion;
 //use cirrus;
+use log;
 use cfd;
 use glao::glao_sys::{GlaoSys, ScienceField};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
+use std::process::Command;
 use std::{env, time::Instant};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -36,20 +38,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init()
         .unwrap();
 
-    let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")?
+    log::info!("Hello there!");
+
+    let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")
+        .expect("AWS_BATCH_JOB_ARRAY_INDEX env var missing")
         .parse::<usize>()
-        .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed!");
-    let duration = 1999; /*env::var("N_SAMPLE")?
-                                              .parse::<usize>()
-                        .expect("N_SAMPLE parsing failed!");*/
-    let rate = 40;
-    let upload_results = true;
-    let glao_loop = match env::var("LOOP")?.as_str() {
+        .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed");
+
+    match env::var("DATA_SRC")
+        .expect("DATA_SRC env var missing")
+        .as_str()
+    {
+        "REMOTE" => {
+            println!("Dowloading simulation data ...");
+            let output = Command::new("/usr/local/bin/aws")
+                .arg("s3")
+                .arg("sync")
+                .arg("s3://gmto.modeling/GLAO/Data")
+                .arg(".")
+                .output()
+                .expect("failed to execute process");
+        }
+        "LOCAL" => (),
+        _ => (),
+    };
+
+    let glao_loop = match env::var("LOOP").expect("LOOP env var missing").as_str() {
         "OPEN" => Some(Loop::Open),
         "CLOSED" => Some(Loop::Closed),
         _ => None,
     }
-    .expect("LOOP env var missing!");
+    .expect("LOOP is either OPEN or CLOSED");
+
+    let duration = 1999; /*env::var("N_SAMPLE")?
+                                               .parse::<usize>()
+                         .expect("N_SAMPLE parsing failed!");*/
+    let rate = 40;
+    let upload_results = true;
 
     let cfd_case = &cfd::get_cases()?[job_idx];
     println!("CFD CASE: {} with {} duration", cfd_case, duration);
@@ -65,8 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wind_speed = [5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187];
     let wind_direction = [0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462];
     let mut atm = ceo::Atmosphere::new();
-    let mut science =
-        ScienceField::delaunay_21("Vs", n_px, None);
+    let mut science = ScienceField::delaunay_21("Vs", n_px, None);
     //let mut science = ScienceField::on_axis("Vs", n_px, None);
     println!("Building the science field ...");
     science.build();

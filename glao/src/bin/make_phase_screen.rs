@@ -26,7 +26,7 @@ fn main() {
         wind_direction.to_vec(),
         25.5,
         n_px as i32,
-        10f32.from_arcmin(),
+        20f32.from_arcmin(),
         20f32,
         Some("glao_fiducial_atmosphere.bin"),
         Some(20)
