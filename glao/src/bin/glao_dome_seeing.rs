@@ -81,10 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wind_direction.to_vec(),
         25.5,
         n_px as i32,
-        10f32.from_arcmin(),
+        20f32.from_arcmin(),
         20f32,
         Some("glao_fiducial_atmosphere.bin"),
-        Some(1),
+        Some(20),
     );
     println!("Building the GLAO system ...");
     let mut glao_4gs = GlaoSys::default(&mut atm, &mut science);
