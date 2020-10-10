@@ -70,16 +70,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        CEO::<$element>::new().build().unwrap()
+        CEO::<$element>::new().build()
     };
     ($element:ty:$model:ty) => {
-        CEO::<$element>::new().build::<$model>().unwrap()
+        CEO::<$element>::new().build::<$model>()
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build().unwrap()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build()
     };
     ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>().unwrap()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
     };
 }
 /*
@@ -100,69 +100,65 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
     }
 }
 
-pub struct Mirror {
-    mode_type: String,
-    n_mode: usize,
-}
-impl Default for Mirror {
-    fn default() -> Self {
-        Mirror {
-            mode_type: String::new(),
-            n_mode: 0,
-        }
-    }
-}
-/// n_side_lenslet, n_px_lenslet, d
-pub struct LensletArray(usize, usize, f64);
-/// n_px_framelet, n_px_imagelet, osf
-pub struct Detector(usize, Option<usize>, Option<usize>);
-pub enum CeoElement {
-    Gmt {
-        m1: Mirror,
-        m2: Mirror,
-    },
-    Source {
-        size: usize,
-        pupil_size: f64,
-        pupil_sampling: usize,
-        band: String,
-        zenith: Vec<f32>,
-        azimuth: Vec<f32>,
-        magnitude: Vec<f32>,
-    },
-    Shackhartmann {
-        n_sensor: usize,
-        lenslet_array: LensletArray,
-        detector: Detector,
-    },
-    PSSn {
-        r0_at_zenith: f64,
-        oscale: f64,
-        zenith_angle: f64,
-    },
-}
 pub trait CEOType {}
 pub struct CEO<T: CEOType> {
-    element: CeoElement,
-    t: std::marker::PhantomData<T>,
+    args: T,
 }
 pub mod element {
     use super::CEOType;
+    #[derive(Debug)]
+    pub struct Mirror {
+        pub mode_type: String,
+        pub n_mode: usize,
+    }
+    impl Default for Mirror {
+        fn default() -> Self {
+            Mirror {
+                mode_type: String::new(),
+                n_mode: 0,
+            }
+        }
+    }
+    /// n_side_lenslet, n_px_lenslet, d
+    #[derive(Debug)]
+    pub struct LensletArray(pub usize, pub usize, pub f64);
+    /// n_px_framelet, n_px_imagelet, osf
+    #[derive(Debug)]
+    pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
     pub enum ShackHartmann {
         GEOMETRIC,
         DIFFRACTIVE,
     }
     #[derive(Debug)]
-    pub struct GMT;
+    pub struct GMT {
+        pub m1: Mirror,
+        pub m2: Mirror,
+    }
     impl CEOType for GMT {}
     #[derive(Debug)]
-    pub struct SOURCE;
+    pub struct SOURCE {
+        pub size: usize,
+        pub pupil_size: f64,
+        pub pupil_sampling: usize,
+        pub band: String,
+        pub zenith: Vec<f32>,
+        pub azimuth: Vec<f32>,
+        pub magnitude: Vec<f32>,
+    }
     impl CEOType for SOURCE {}
     #[derive(Debug)]
-    pub struct SHACKHARTMANN;
+    pub struct SHACKHARTMANN {
+        pub n_sensor: usize,
+        pub lenslet_array: LensletArray,
+        pub detector: Detector,
+    }
     impl CEOType for SHACKHARTMANN {}
     #[derive(Debug)]
-    pub struct PSSN;
+    pub struct PSSN {
+        pub r0_at_zenith: f64,
+        pub oscale: f64,
+        pub zenith_angle: f64,
+    }
     impl CEOType for PSSN {}
 }
 

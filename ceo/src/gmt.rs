@@ -1,8 +1,8 @@
 use std::ffi::CString;
-use std::mem::{self, MaybeUninit};
+use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
-use super::{element, CeoElement, CeoError, Mirror, Propagation, Source, CEO};
+use super::{element, Propagation, Source, CEO};
 
 /*
 struct RigidBody<'a> {
@@ -57,182 +57,93 @@ struct Mirror<'a> {
 /// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
 /// ```
 pub struct Gmt {
-    _c_m1_modes: modes,
-    _c_m2_modes: modes,
-    _c_m1: gmt_m1,
-    _c_m2: gmt_m2,
+    pub _c_m1_modes: modes,
+    pub _c_m2_modes: modes,
+    pub _c_m1: gmt_m1,
+    pub _c_m2: gmt_m2,
     /// M1 number of bending modes per segment
     pub m1_n_mode: usize,
     /// M2 number of bending modes per segment
     pub m2_n_mode: usize,
     /// M2 largest Zernike radial order per segment
     pub m2_max_n: usize,
-    a1: Vec<f64>,
-    a2: Vec<f64>,
+    pub a1: Vec<f64>,
+    pub a2: Vec<f64>,
 }
-
 impl CEO<element::GMT> {
     pub fn new() -> CEO<element::GMT> {
         CEO {
-            element: CeoElement::Gmt {
-                m1: Mirror {
+            args: element::GMT {
+                m1: element::Mirror {
                     mode_type: "bending modes".into(),
                     n_mode: 0,
                 },
-                m2: Mirror {
+                m2: element::Mirror {
                     mode_type: "Karhunen-Loeve".into(),
                     n_mode: 0,
                 },
             },
-            t: std::marker::PhantomData,
         }
     }
     pub fn set_m1(mut self, mode_type: &str, n_mode: usize) -> Self {
-        if let CeoElement::Gmt { m1: _, m2 } = self.element {
-            self.element = CeoElement::Gmt {
-                m1: Mirror {
-                    mode_type: mode_type.into(),
-                    n_mode: n_mode,
-                },
-                m2: m2,
-            };
+        self.args.m1 = element::Mirror {
+            mode_type: mode_type.into(),
+            n_mode: n_mode,
         };
         self
     }
     pub fn set_m1_n_mode(mut self, n_mode: usize) -> Self {
-        if let CeoElement::Gmt { m1, m2 } = self.element {
-            self.element = CeoElement::Gmt {
-                m1: Mirror {
-                    mode_type: m1.mode_type,
-                    n_mode: n_mode,
-                },
-                m2: m2,
-            };
-        }
+        self.args.m1 = element::Mirror {
+            mode_type: self.args.m1.mode_type,
+            n_mode: n_mode,
+        };
         self
     }
     pub fn set_m2(mut self, mode_type: &str, n_mode: usize) -> Self {
-        if let CeoElement::Gmt { m1, m2: _ } = self.element {
-            self.element = CeoElement::Gmt {
-                m1: m1,
-                m2: Mirror {
-                    mode_type: mode_type.into(),
-                    n_mode: n_mode,
-                },
-            };
+        self.args.m2 = element::Mirror {
+            mode_type: mode_type.into(),
+            n_mode: n_mode,
         };
         self
     }
     pub fn set_m2_n_mode(mut self, n_mode: usize) -> Self {
-        if let CeoElement::Gmt { m1, m2 } = self.element {
-            self.element = CeoElement::Gmt {
-                m1: m1,
-                m2: Mirror {
-                    mode_type: m2.mode_type,
-                    n_mode: n_mode,
-                },
-            };
+        self.args.m2 = element::Mirror {
+            mode_type: self.args.m2.mode_type,
+            n_mode: n_mode,
         };
         self
     }
-    pub fn build(self) -> Result<Gmt, CeoError<element::GMT>> {
-        match self.element {
-            CeoElement::Gmt { m1, m2 } => {
-                let mut gmt = Gmt {
-                    _c_m1_modes: unsafe { mem::zeroed() },
-                    _c_m2_modes: unsafe { mem::zeroed() },
-                    _c_m1: unsafe { mem::zeroed() },
-                    _c_m2: unsafe { mem::zeroed() },
-                    m1_n_mode: 0,
-                    m2_n_mode: 1,
-                    m2_max_n: 0,
-                    a1: vec![0.],
-                    a2: vec![0.],
-                };
-                let m1_mode_type = CString::new(m1.mode_type.into_bytes()).unwrap();
-                gmt.m1_n_mode = m1.n_mode;
-                gmt.a1 = vec![0.0; 7 * gmt.m1_n_mode as usize];
-                unsafe {
-                    gmt._c_m1_modes
-                        .setup(m1_mode_type.into_raw(), 7, gmt.m1_n_mode as i32);
-                    gmt._c_m1.setup1(&mut gmt._c_m1_modes);
-                }
-                let m2_mode_type = CString::new(m2.mode_type.into_bytes()).unwrap();
-                gmt.m2_n_mode = m2.n_mode;
-                gmt.a2 = vec![0.0; 7 * gmt.m2_n_mode as usize];
-                unsafe {
-                    gmt._c_m2_modes
-                        .setup(m2_mode_type.into_raw(), 7, gmt.m2_n_mode as i32);
-                    gmt._c_m2.setup1(&mut gmt._c_m2_modes);
-                }
-                Ok(gmt)
-            }
-            _ => Err(CeoError(element::GMT)),
+    pub fn build(self) -> Gmt {
+        let mut gmt = Gmt {
+            _c_m1_modes: unsafe { mem::zeroed() },
+            _c_m2_modes: unsafe { mem::zeroed() },
+            _c_m1: unsafe { mem::zeroed() },
+            _c_m2: unsafe { mem::zeroed() },
+            m1_n_mode: 0,
+            m2_n_mode: 0,
+            m2_max_n: 0,
+            a1: vec![0.],
+            a2: vec![0.],
+        };
+        let m1_mode_type = CString::new(self.args.m1.mode_type.into_bytes()).unwrap();
+        gmt.m1_n_mode = self.args.m1.n_mode;
+        gmt.a1 = vec![0.0; 7 * gmt.m1_n_mode as usize];
+        unsafe {
+            gmt._c_m1_modes
+                .setup(m1_mode_type.into_raw(), 7, gmt.m1_n_mode as i32);
+            gmt._c_m1.setup1(&mut gmt._c_m1_modes);
         }
-    }
-    pub fn alt_build(self) -> Result<Gmt, CeoError<element::GMT>> {
-        match self.element {
-            CeoElement::Gmt { m1, m2 } => {
-                let mut m1_modes_c = MaybeUninit::<modes>::uninit();
-                let mut m2_modes_c = MaybeUninit::<modes>::uninit();
-                let mut m1_c = MaybeUninit::<gmt_m1>::uninit();
-                let mut m2_c = MaybeUninit::<gmt_m2>::uninit();
-
-                let m1_mode_type = CString::new(m1.mode_type.into_bytes()).unwrap();
-                unsafe {
-                    m1_modes_c.as_mut_ptr().as_mut().unwrap()
-                        .setup(m1_mode_type.into_raw(), 7, m1.n_mode as i32);
-                    m1_c.as_mut_ptr().as_mut().unwrap().setup1(m1_modes_c.as_mut_ptr());
-                }
-
-                let m2_mode_type = CString::new(m2.mode_type.into_bytes()).unwrap();
-                unsafe {
-                    m2_modes_c.as_mut_ptr().as_mut().unwrap()
-                        .setup(m2_mode_type.into_raw(), 7, m2.n_mode as i32);
-                    m2_c.as_mut_ptr().as_mut().unwrap().setup1(m2_modes_c.as_mut_ptr());
-                }
-
-                let gmt = Gmt {
-                    _c_m1_modes: unsafe { m1_modes_c.assume_init() },
-                    _c_m2_modes: unsafe { m2_modes_c.assume_init() },
-                    _c_m1: unsafe { m1_c.assume_init() },
-                    _c_m2: unsafe { m2_c.assume_init() },
-                    m1_n_mode: m1.n_mode,
-                    m2_n_mode: m2.n_mode,
-                    m2_max_n: 0,
-                    a1: vec![0.0; 7 * m1.n_mode],
-                    a2: vec![0.0; 7 * m2.n_mode],
-                };
-                Ok(gmt)
-            }
-            _ => Err(CeoError(element::GMT)),
+        let m2_mode_type = CString::new(self.args.m2.mode_type.into_bytes()).unwrap();
+        gmt.m2_n_mode = self.args.m2.n_mode;
+        gmt.a2 = vec![0.0; 7 * gmt.m2_n_mode as usize];
+        unsafe {
+            gmt._c_m2_modes
+                .setup(m2_mode_type.into_raw(), 7, gmt.m2_n_mode as i32);
+            gmt._c_m2.setup1(&mut gmt._c_m2_modes);
         }
-    }
-    pub fn fail(self) -> Result<Gmt, CeoError<element::GMT>> {
-        match self.element {
-            CeoElement::PSSn {
-                r0_at_zenith: _,
-                oscale: _,
-                zenith_angle: _,
-            } => {
-                let gmt = Gmt {
-                    _c_m1_modes: unsafe { mem::zeroed() },
-                    _c_m2_modes: unsafe { mem::zeroed() },
-                    _c_m1: unsafe { mem::zeroed() },
-                    _c_m2: unsafe { mem::zeroed() },
-                    m1_n_mode: 0,
-                    m2_n_mode: 1,
-                    m2_max_n: 0,
-                    a1: vec![0.],
-                    a2: vec![0.],
-                };
-                Ok(gmt)
-            }
-            _ => Err(CeoError(element::GMT)),
-        }
+        gmt
     }
 }
-
 impl Gmt {
     /// Creates a new `Gmt`
     pub fn new() -> Gmt {
@@ -527,18 +438,13 @@ impl Propagation for Gmt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Centroiding, Gmt, Imaging};
 
     #[test]
     fn gmt_new() {
-        match CEO::<element::GMT>::new()
+        CEO::<element::GMT>::new()
             .set_m1_n_mode(27)
             .set_m2_n_mode(123)
-            .build()
-        {
-            Ok(_) => println!("Success"),
-            Err(e) => println!("{}", e),
-        }
+            .build();
     }
 
     #[test]
@@ -549,11 +455,8 @@ mod tests {
     #[test]
     fn gmt_optical_alignment() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001)
-            .build()
-            .unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().set_pupil_sampling(1001).build();
+        let mut gmt = CEO::<GMT>::new().build();
         src.through(&mut gmt).xpupil();
         assert!(src.wfe_rms_10e(-9)[0] < 1.0);
     }
@@ -561,11 +464,8 @@ mod tests {
     #[test]
     fn gmt_m1_rx_optical_sensitity() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001)
-            .build()
-            .unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().set_pupil_sampling(1001).build();
+        let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
         gmt.update(Some(&rt), None, None);
@@ -581,11 +481,8 @@ mod tests {
     #[test]
     fn gmt_m1_ry_optical_sensitity() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001)
-            .build()
-            .unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().set_pupil_sampling(1001).build();
+        let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
         gmt.update(Some(&rt), None, None);
@@ -601,11 +498,8 @@ mod tests {
     #[test]
     fn gmt_m2_rx_optical_sensitity() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001)
-            .build()
-            .unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().set_pupil_sampling(1001).build();
+        let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
         gmt.update(None, Some(&rt), None);
@@ -621,11 +515,8 @@ mod tests {
     #[test]
     fn gmt_m2_ry_optical_sensitity() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new()
-            .set_pupil_sampling(1001)
-            .build()
-            .unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().set_pupil_sampling(1001).build();
+        let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
         gmt.update(None, Some(&rt), None);
@@ -638,6 +529,7 @@ mod tests {
         assert!(delta.iter().all(|x| (x - 0.25).abs() < 1e-2));
     }
 
+    /*
     #[test]
     fn gmt_lenslet_gradients() {
         let pupil_size = 25.5f64;
@@ -688,4 +580,5 @@ mod tests {
         let s_any_nan = s.iter().any(|x| x.is_nan());
         assert!(!s_any_nan);
     }
+    */
 }

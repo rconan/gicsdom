@@ -1,10 +1,10 @@
-use std::mem::{self, MaybeUninit};
+use std::mem;
 
 use std::f32;
 use std::ffi::CString;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, CeoElement, CeoError, Cu, CEO};
+use super::{element, Centroiding, Cu, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -35,11 +35,10 @@ pub struct Source {
     pub azimuth: Vec<f32>,
     pub magnitude: Vec<f32>,
 }
-
 impl CEO<element::SOURCE> {
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
-            element: CeoElement::Source {
+            args: element::SOURCE {
                 size: 1,
                 pupil_size: 25.5,
                 pupil_sampling: 512,
@@ -48,237 +47,63 @@ impl CEO<element::SOURCE> {
                 azimuth: vec![0f32],
                 magnitude: vec![0f32],
             },
-            t: std::marker::PhantomData,
         }
     }
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
-        if let CeoElement::Source {
-            size,
-            pupil_size,
-            pupil_sampling: _,
-            band,
-            zenith,
-            azimuth,
-            magnitude,
-        } = self.element
-        {
-            self.element = CeoElement::Source {
-                size: size,
-                pupil_size: pupil_size,
-                pupil_sampling: pupil_sampling,
-                band: band,
-                zenith: zenith,
-                azimuth: azimuth,
-                magnitude: magnitude,
-            }
-        };
+        self.args.pupil_sampling = pupil_sampling;
         self
     }
     pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
-        if let CeoElement::Source {
-            size,
-            pupil_size: _,
-            pupil_sampling,
-            band,
-            zenith,
-            azimuth,
-            magnitude,
-        } = self.element
-        {
-            self.element = CeoElement::Source {
-                size: size,
-                pupil_size: pupil_size,
-                pupil_sampling: pupil_sampling,
-                band: band,
-                zenith: zenith,
-                azimuth: azimuth,
-                magnitude: magnitude,
-            }
-        };
+        self.args.pupil_size = pupil_size;
         self
     }
     pub fn set_band(mut self, band: &str) -> Self {
-        if let CeoElement::Source {
-            size,
-            pupil_size,
-            pupil_sampling,
-            band: _,
-            zenith,
-            azimuth,
-            magnitude,
-        } = self.element
-        {
-            self.element = CeoElement::Source {
-                size: size,
-                pupil_size: pupil_size,
-                pupil_sampling: pupil_sampling,
-                band: band.into(),
-                zenith: zenith,
-                azimuth: azimuth,
-                magnitude: magnitude,
-            }
-        };
+        self.args.band = band.to_owned();
         self
     }
     pub fn set_zenith_azimuth(mut self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
-        let n = zenith.len();
-        assert_eq!(
-            n,
-            azimuth.len(),
-            "Zenith and azimuth vectors do not have the same length!"
-        );
-        if let CeoElement::Source {
-            size: _,
-            pupil_size,
-            pupil_sampling,
-            band,
-            zenith: _,
-            azimuth: _,
-            magnitude,
-        } = self.element
-        {
-            self.element = CeoElement::Source {
-                size: n,
-                pupil_size: pupil_size,
-                pupil_sampling: pupil_sampling,
-                band: band,
-                zenith: zenith,
-                azimuth: azimuth,
-                magnitude: if magnitude.len() == n {
-                    magnitude
-                } else {
-                    vec![magnitude[0]; n]
-                },
-            }
-        };
+        self.args.zenith = zenith;
+        self.args.azimuth = azimuth;
         self
     }
     pub fn set_magnitude(mut self, magnitude: Vec<f32>) -> Self {
-        if let CeoElement::Source {
-            size,
-            pupil_size,
-            pupil_sampling,
-            band,
-            zenith,
-            azimuth,
-            magnitude: _,
-        } = self.element
-        {
-            assert_eq!(
-                magnitude.len(),
-                zenith.len(),
-                "Zenith and magnitude vectors do not have the same length!"
-            );
-            self.element = CeoElement::Source {
-                size: size,
-                pupil_size: pupil_size,
-                pupil_sampling: pupil_sampling,
-                band: band,
-                zenith: zenith,
-                azimuth: azimuth,
-                magnitude: magnitude,
-            }
-        };
+        self.args.magnitude = magnitude;
         self
     }
-    pub fn build(self) -> Result<Source, CeoError<element::SOURCE>> {
-        match self.element {
-            CeoElement::Source {
-                size,
-                pupil_size,
-                pupil_sampling,
-                band,
-                zenith,
-                azimuth,
-                magnitude,
-            } => {
-                let mut src = Source {
-                    _c_: unsafe { mem::zeroed() },
-                    size: size as i32,
-                    pupil_size: pupil_size,
-                    pupil_sampling: pupil_sampling as i32,
-                    _wfe_rms: vec![0.0; size],
-                    _phase: vec![0.0; pupil_sampling * pupil_sampling * size],
-                    zenith: zenith,
-                    azimuth: azimuth,
-                    magnitude: magnitude,
-                };
-                unsafe {
-                    let origin = vector {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 25.0,
-                    };
-                    let src_band = CString::new(band.into_bytes()).unwrap();
-                    src._c_.setup7(
-                        src_band.into_raw(),
-                        src.magnitude.as_mut_ptr(),
-                        src.zenith.as_mut_ptr(),
-                        src.azimuth.as_mut_ptr(),
-                        f32::INFINITY,
-                        size as i32,
-                        pupil_size,
-                        pupil_sampling as i32,
-                        origin,
-                    );
-                }
-                Ok(src)
-            }
-            _ => Err(CeoError(element::SOURCE)),
+    pub fn build(self) -> Source {
+        let mut src = Source {
+            _c_: unsafe { mem::zeroed() },
+            size: self.args.size as i32,
+            pupil_size: self.args.pupil_size,
+            pupil_sampling: self.args.pupil_sampling as i32,
+            _wfe_rms: vec![0.0; self.args.size],
+            _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
+            zenith: self.args.zenith,
+            azimuth: self.args.azimuth,
+            magnitude: self.args.magnitude,
+        };
+        unsafe {
+            let origin = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 25.0,
+            };
+            let src_band = CString::new(self.args.band.into_bytes()).unwrap();
+            src._c_.setup7(
+                src_band.into_raw(),
+                src.magnitude.as_mut_ptr(),
+                src.zenith.as_mut_ptr(),
+                src.azimuth.as_mut_ptr(),
+                f32::INFINITY,
+                self.args.size as i32,
+                self.args.pupil_size,
+                self.args.pupil_sampling as i32,
+                origin,
+            );
         }
-    }
-    pub fn alt_build(self) -> Result<Source, CeoError<element::SOURCE>> {
-        match self.element {
-            CeoElement::Source {
-                size,
-                pupil_size,
-                pupil_sampling,
-                band,
-                zenith,
-                azimuth,
-                magnitude,
-            } => {
-                let mut m = magnitude.clone();
-                let mut z = zenith.clone();
-                let mut a = azimuth.clone();
-                let mut src_c = MaybeUninit::<source>::uninit();
-                unsafe {
-                    let origin = vector {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 25.0,
-                    };
-                    let src_band = CString::new(band.into_bytes()).unwrap();
-                    src_c.as_mut_ptr().as_mut().unwrap().setup7(
-                        src_band.into_raw(),
-                        m.as_mut_ptr(),
-                        z.as_mut_ptr(),
-                        a.as_mut_ptr(),
-                        f32::INFINITY,
-                        size as i32,
-                        pupil_size,
-                        pupil_sampling as i32,
-                        origin,
-                    );
-                }
-                let src = Source {
-                    _c_: unsafe { src_c.assume_init() },
-                    size: size as i32,
-                    pupil_size: pupil_size,
-                    pupil_sampling: pupil_sampling as i32,
-                    _wfe_rms: vec![0.0; size],
-                    _phase: vec![0.0; pupil_sampling * pupil_sampling * size],
-                    zenith: z,
-                    azimuth: a,
-                    magnitude: m,
-                };
-                Ok(src)
-            }
-            _ => Err(CeoError(element::SOURCE)),
-        }
+        src
     }
 }
-
 impl Source {
     /// Creates and empty `Source`
     pub fn empty() -> Source {
@@ -618,16 +443,6 @@ impl Default for Source {
 mod tests {
     use super::*;
     use crate::Gmt;
-
-    #[test]
-    fn source_new() {
-        CEO::<element::SOURCE>::new()
-            .set_pupil_sampling(769)
-            .set_zenith_azimuth(vec![0f32; 3], vec![0f32; 3])
-            .set_magnitude(vec![7f32; 3])
-            .build()
-            .unwrap();
-    }
 
     #[test]
     fn source_piston() {

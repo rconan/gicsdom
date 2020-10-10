@@ -1,5 +1,5 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{element, CeoElement, CeoError, Cu, Propagation, Source, CEO};
+use super::{element, Cu, Propagation, Source, CEO};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
@@ -24,97 +24,54 @@ use std::{fmt, mem};
 pub struct TelescopeError;
 pub struct AtmosphereTelescopeError;
 pub struct PSSn<S> {
-    _c_: ceo_pssn,
+    pub _c_: ceo_pssn,
     pub r0_at_zenith: f32,
     pub oscale: f32,
     pub zenith_angle: f32,
     pub wavelength: f32,
     /// PSSn estimates
     pub estimates: Vec<f32>,
-    mode: std::marker::PhantomData<S>,
+    pub mode: std::marker::PhantomData<S>,
     pub otf: Vec<f32>,
 }
 impl CEO<element::PSSN> {
     pub fn new() -> CEO<element::PSSN> {
         CEO {
-            element: CeoElement::PSSn {
+            args: element::PSSN {
                 r0_at_zenith: 0.16,
                 oscale: 25.0,
                 zenith_angle: 30_f64.to_radians(),
             },
-            t: std::marker::PhantomData,
         }
     }
     pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
-        if let CeoElement::PSSn {
-            r0_at_zenith: _,
-            oscale,
-            zenith_angle,
-        } = self.element
-        {
-            self.element = CeoElement::PSSn {
-                r0_at_zenith: r0_at_zenith,
-                oscale: oscale,
-                zenith_angle: zenith_angle,
-            }
-        };
+        self.args.r0_at_zenith = r0_at_zenith;
         self
     }
     pub fn set_outer_scale(mut self, oscale: f64) -> Self {
-        if let CeoElement::PSSn {
-            r0_at_zenith,
-            oscale: _,
-            zenith_angle,
-        } = self.element
-        {
-            self.element = CeoElement::PSSn {
-                r0_at_zenith: r0_at_zenith,
-                oscale: oscale,
-                zenith_angle: zenith_angle,
-            }
-        };
+        self.args.oscale = oscale;
         self
     }
     pub fn set_zenith_angle(mut self, zenith_angle_degree: f64) -> Self {
-        if let CeoElement::PSSn {
-            r0_at_zenith,
-            oscale,
-            zenith_angle: _,
-        } = self.element
-        {
-            self.element = CeoElement::PSSn {
-                r0_at_zenith: r0_at_zenith,
-                oscale: oscale,
-                zenith_angle: zenith_angle_degree.to_radians(),
-            }
-        };
+        self.args.zenith_angle = zenith_angle_degree.to_radians();
         self
     }
-    pub fn build<T>(self, src: &mut Source) -> Result<PSSn<T>, CeoError<element::PSSN>> {
-        match self.element {
-            CeoElement::PSSn {
-                r0_at_zenith,
-                oscale,
-                zenith_angle,
-            } => {
-                let mut pssn = PSSn::<T> {
-                    _c_: unsafe { mem::zeroed() },
-                    r0_at_zenith: r0_at_zenith as f32,
-                    oscale: oscale as f32,
-                    zenith_angle: zenith_angle as f32,
-                    wavelength: src.wavelength() as f32,
-                    estimates: vec![],
-                    mode: std::marker::PhantomData,
-                    otf: Vec::new(),
-                };
-                unsafe {
-                    pssn._c_.setup(&mut src._c_, pssn.r0(), pssn.oscale);
-                }
-                pssn.estimates = vec![0.0; pssn._c_.N as usize];
-                Ok(pssn)
-            }
-            _ => Err(CeoError(element::PSSN)),
+    pub fn build<T>(self, src: &mut Source) -> PSSn<T> {
+        let mut pssn = PSSn::<T> {
+            _c_: unsafe { mem::zeroed() },
+            r0_at_zenith: self.args.r0_at_zenith as f32,
+            oscale: self.args.oscale as f32,
+            zenith_angle: self.args.zenith_angle as f32,
+            wavelength: src.wavelength() as f32,
+            estimates: vec![],
+            mode: std::marker::PhantomData,
+            otf: Vec::new(),
+        };
+        unsafe {
+            pssn._c_.setup(&mut src._c_, pssn.r0(), pssn.oscale);
         }
+        pssn.estimates = vec![0.0; pssn._c_.N as usize];
+        pssn
     }
 }
 impl<S> PSSn<S> {
@@ -302,12 +259,10 @@ mod tests {
     #[test]
     fn pssn_new() {
         use element::*;
-        let mut src = CEO::<SOURCE>::new().build().unwrap();
-        let mut gmt = CEO::<GMT>::new().build().unwrap();
+        let mut src = CEO::<SOURCE>::new().build();
+        let mut gmt = CEO::<GMT>::new().build();
         src.through(&mut gmt).xpupil();
-        let mut pssn = CEO::<PSSN>::new()
-            .build::<TelescopeError>(&mut src)
-            .unwrap();
+        let mut pssn = CEO::<PSSN>::new().build::<TelescopeError>(&mut src);
         src.through(&mut pssn);
         println!("PSSN: {}", pssn.peek());
     }
