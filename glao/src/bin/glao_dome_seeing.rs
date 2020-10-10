@@ -53,6 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Dowloading simulation data ...");
             let output = Command::new("/usr/local/bin/aws")
                 .arg("s3")
+                .arg("--no-progress")
                 .arg("sync")
                 .arg("s3://gmto.modeling/GLAO/Data")
                 .arg(".")
