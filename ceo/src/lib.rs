@@ -104,6 +104,11 @@ pub trait CEOType {}
 pub struct CEO<T: CEOType> {
     args: T,
 }
+macro_rules! impl_ceotype {
+    ($($element:ty),+) => {
+        $(impl CEOType for $element {})+
+    };
+}
 pub mod element {
     use super::CEOType;
     #[derive(Debug)]
@@ -125,16 +130,11 @@ pub mod element {
     /// n_px_framelet, n_px_imagelet, osf
     #[derive(Debug)]
     pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
-    pub enum ShackHartmann {
-        GEOMETRIC,
-        DIFFRACTIVE,
-    }
     #[derive(Debug)]
     pub struct GMT {
         pub m1: Mirror,
         pub m2: Mirror,
     }
-    impl CEOType for GMT {}
     #[derive(Debug)]
     pub struct SOURCE {
         pub size: usize,
@@ -145,21 +145,19 @@ pub mod element {
         pub azimuth: Vec<f32>,
         pub magnitude: Vec<f32>,
     }
-    impl CEOType for SOURCE {}
     #[derive(Debug)]
     pub struct SHACKHARTMANN {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
     }
-    impl CEOType for SHACKHARTMANN {}
     #[derive(Debug)]
     pub struct PSSN {
         pub r0_at_zenith: f64,
         pub oscale: f64,
         pub zenith_angle: f64,
     }
-    impl CEOType for PSSN {}
+    impl_ceotype!(GMT,SOURCE,SHACKHARTMANN,PSSN);
 }
 
 pub trait Conversion<T> {
