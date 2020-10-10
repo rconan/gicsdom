@@ -35,7 +35,7 @@ pub async fn list(
         let response = s3_client.list_objects_v2(request.clone()).await?;
         let mut objects = response
             .contents
-            .unwrap()
+            .ok_or("Key not found!")?
             .iter()
             .map(|x| x.key.as_ref().cloned().unwrap())
             .filter(|x| suffix.map_or_else(|| true, |v| x.ends_with(v)))
@@ -128,7 +128,7 @@ pub async fn load<T: 'static + serde::de::DeserializeOwned + std::marker::Send>(
                             if k_retry <= n_retry {
                                 log::info!("{}/{} retry", k_retry, n_retry);
                             } else {
-                                break Err(e);
+                                break Err(Box::new(e));
                             };
                         }
                     }
