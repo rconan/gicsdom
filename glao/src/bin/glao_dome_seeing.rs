@@ -199,24 +199,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Calibrating the GLAO system ...");
             glao_4gs.calibration();
             loop {
-                t.push(ds.current_time + 30f64);
+                t.push(ds.current_time);
                 glao_4gs.atm.secs = ds.current_time.clone();
                 wfe.push(glao_4gs.get_science(&mut ds));
                 glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
                 /*
-                println!(
-                    "{:9.3} {:5.0} {:?} {:?}",
-                    ds.current_time,
-                    wfe.last().unwrap().0[0],
-                    wfe.last().unwrap().1,
-                    wfe.last().unwrap().2
-                );
                 */
                 match ds.next() {
                     Some(p) => {
                         if p == rate {
                             println!("Step #{}: reset PSSn!", p);
                             glao_4gs.science.pssn.reset();
+                        }
+                        if p%200==0 {
+                            println!(
+                                "{:9.3} {:5.0} {:?} {:?}",
+                                ds.current_time,
+                                wfe.last().unwrap().0[0],
+                                wfe.last().unwrap().1,
+                                wfe.last().unwrap().2
+                            );
                         }
                     }
                     None => break,
