@@ -1,8 +1,8 @@
 use ceo::Conversion;
 //use cirrus;
-use log;
 use cfd;
 use glao::glao_sys::{GlaoSys, ScienceField};
+use log;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
@@ -44,6 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AWS_BATCH_JOB_ARRAY_INDEX env var missing")
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed");
+    let index_offset = env::var("N_INDEX_OFFSET").unwrap_or("N_0".to_owned())[2..]
+        .parse::<usize>()
+        .expect("N_INDEX_OFFSET parsing failed");
 
     match env::var("DATA_SRC")
         .expect("DATA_SRC env var missing")
@@ -71,13 +74,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .expect("LOOP is either OPEN or CLOSED");
 
-    let duration = 1999; /*env::var("N_SAMPLE")?
-                                               .parse::<usize>()
-                         .expect("N_SAMPLE parsing failed!");*/
+    let duration = env::var("DURATION")
+        .expect("DURATION env var missing")
+        .parse::<usize>()
+        .expect("DURATION parsing failed!");
+
     let rate = 40;
     let upload_results = true;
 
-    let cfd_case = &cfd::get_cases()?[job_idx];
+    let cfd_case = &cfd::get_cases()?[job_idx + index_offset];
     println!("CFD CASE: {} with {} duration", cfd_case, duration);
 
     let n_px = 769;
@@ -91,11 +96,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wind_speed = [5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187];
     let wind_direction = [0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462];
     let mut atm = ceo::Atmosphere::new();
-    let mut science = ScienceField::delaunay_21("Vs", n_px, None);
-    //let mut science = ScienceField::on_axis("Vs", n_px, None);
+    //let mut science = ScienceField::delaunay_21("Vs", n_px, None);
+    let mut science = ScienceField::on_axis("Vs", n_px, None);
     println!("Building the science field ...");
     science.build();
     println!("Building the atmosphere ...");
+    /*
+    atm.build(
+        science.pssn.r0(),
+        science.pssn.oscale,
+        6,
+        turb_cn2_height,
+        turb_cn2_xi0.to_vec(),
+        wind_speed.to_vec(),
+        wind_direction.to_vec(),
+    );
+    */
     atm.raytrace_build(
         science.pssn.r0(),
         science.pssn.oscale,
@@ -168,7 +184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 wfe.last().unwrap().1,
                 wfe.last().unwrap().2
             );
-            */
+             */
             match ds.next() {
                 Some(p) => {
                     if p == rate {
@@ -183,18 +199,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Calibrating the GLAO system ...");
             glao_4gs.calibration();
             loop {
-                t.push(ds.current_time);
+                t.push(ds.current_time + 30f64);
                 glao_4gs.atm.secs = ds.current_time.clone();
                 wfe.push(glao_4gs.get_science(&mut ds));
                 glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
                 /*
-                    println!(
-                    " {:5.0} {:?} {:?}",
+                println!(
+                    "{:9.3} {:5.0} {:?} {:?}",
+                    ds.current_time,
                     wfe.last().unwrap().0[0],
                     wfe.last().unwrap().1,
                     wfe.last().unwrap().2
                 );
-                     */
+                */
                 match ds.next() {
                     Some(p) => {
                         if p == rate {
@@ -235,7 +252,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pssn: glao_4gs.science.pssn.peek().estimates.clone(),
         };
         let key = format!(
-            "{}/{}/glao_{}_dome_seeing.pkl",
+            "{}/{}/glao_{}_dome_seeing_dbg.pkl",
             "Baseline2020",
             cfd_case,
             match glao_loop {
@@ -243,7 +260,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Loop::Closed => "closed",
             }
         );
-        println!("Uploading results to: s3:/gmto.modeling/{}", key);
+        println!("Uploading results to: s3://gmto.modeling/{}", key);
         cirrus::dump("us-west-2", "gmto.modeling", &key, &results).await?;
     } else {
         //println!("opd size: {}", ds.opd.unwrap().len());
