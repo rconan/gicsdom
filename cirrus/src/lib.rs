@@ -149,7 +149,7 @@ pub async fn dump<T: Serialize>(
     data: &T,
 ) -> Result<String, Box<dyn Error>> {
     let region = Region::from_str(region);
-    let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
+    let s3_client = S3Client::new(region.unwrap_or(Region::default()));
     let contents: Vec<u8> = Vec::new();
     let mut r = Cursor::new(contents);
     pickle::to_writer(&mut r, data, true)?;
