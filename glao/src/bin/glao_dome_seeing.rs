@@ -48,25 +48,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<usize>()
         .expect("N_INDEX_OFFSET parsing failed");
 
-    match env::var("DATA_SRC")
-        .expect("DATA_SRC env var missing")
-        .as_str()
-    {
-        "REMOTE" => {
-            println!("Dowloading simulation data ...");
-            let output = Command::new("/usr/local/bin/aws")
-                .arg("s3")
-                .arg("--no-progress")
-                .arg("sync")
-                .arg("s3://gmto.modeling/GLAO/Data")
-                .arg(".")
-                .output()
-                .expect("failed to execute process");
-        }
-        "LOCAL" => (),
-        _ => (),
-    };
-
     let glao_loop = match env::var("LOOP").expect("LOOP env var missing").as_str() {
         "OPEN" => Some(Loop::Open),
         "CLOSED" => Some(Loop::Closed),
