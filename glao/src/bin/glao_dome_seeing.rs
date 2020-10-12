@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         n_px as i32,
         20f32.from_arcmin(),
         20f32,
-        Some("glao_fiducial_atmosphere.bin"),
+        Some("/data/glao_fiducial_atmosphere.bin"),
         Some(20),
     );
     println!("Building the GLAO system ...");
