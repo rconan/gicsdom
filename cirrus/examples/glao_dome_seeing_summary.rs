@@ -31,10 +31,10 @@ async fn main() {
     let cfd_cases: CfdCases = serde_yaml::from_reader(file).unwrap();
 
     println!(
-        " {:<24} {:^6} {:>6} {:>8} {:>6} {:>6} {:>6} {:>9}",
-        "CFD case", "#", "dt", "T", "max", "min", "mean", "PSSn"
+        " {:<24} {:^6} {:>6} {:>8} {:>6} {:>6} {:>6} {:>9} {:>8}",
+        "CFD case", "#", "dt", "T", "max", "min", "mean", "PSSn", "FWHM"
     );
-    for cfd_case in cfd_cases.baseline_2020.iter().take(60) {
+    for cfd_case in cfd_cases.baseline_2020.iter().take(32) {
         let key = format!("{}/{}/glao_closed_dome_seeing.pkl", "Baseline2020", cfd_case);
         match cirrus::list("us-west-2", "gmto.modeling", &key, None).await {
             Ok(keys) => {
@@ -53,7 +53,7 @@ async fn main() {
                 let wfe_rms_mean: f32 =
                     (wfe_rms.iter().map(|x| x * x).sum::<f32>() / n_sample as f32).sqrt();
                 println!(
-                    " {:<24} {:>6} {:>6.2} {:>8.2} {:>6.0} {:>6.0} {:>6.0} {:>9.5}",
+                    " {:<24} {:>6} {:>6.3} {:>8.3} {:>6.0} {:>6.0} {:>6.0} {:>9.5} {:>8.3}",
                     cfd_case,
                     n_sample,
                     dt,
@@ -61,7 +61,8 @@ async fn main() {
                     wfe_rms_max,
                     wfe_rms_min,
                     wfe_rms_mean,
-                    data.pssn[0]
+                    data.pssn[12],
+                    data.fwhm[12]
                 );
             }
             Err(_) => {
