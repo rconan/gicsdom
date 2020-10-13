@@ -6,7 +6,6 @@ use log;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
-use std::process::Command;
 use std::{env, time::Instant};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
