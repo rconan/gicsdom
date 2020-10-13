@@ -16,3 +16,8 @@ push:
 	$(AWS) ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 378722409401.dkr.ecr.us-west-2.amazonaws.com
 	docker tag gmto.im/gicsdom:latest 378722409401.dkr.ecr.us-west-2.amazonaws.com/gmto.im/gicsdom:latest
 	docker push 378722409401.dkr.ecr.us-west-2.amazonaws.com/gmto.im/gicsdom:latest
+
+push_ohio:
+	$(AWS) ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 378722409401.dkr.ecr.us-east-2.amazonaws.com
+	docker tag gmto.im/gicsdom:latest 378722409401.dkr.ecr.us-east-2.amazonaws.com/gmto.im/gicsdom:latest
+	docker push 378722409401.dkr.ecr.us-east-2.amazonaws.com/gmto.im/gicsdom:latest
