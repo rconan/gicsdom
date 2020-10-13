@@ -38,8 +38,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init()
         .unwrap();
 
-    log::info!("Hello there!");
-
     let job_idx = env::var("AWS_BATCH_JOB_ARRAY_INDEX")
         .expect("AWS_BATCH_JOB_ARRAY_INDEX env var missing")
         .parse::<usize>()
@@ -77,8 +75,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wind_speed = [5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187];
     let wind_direction = [0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462];
     let mut atm = ceo::Atmosphere::new();
-    //let mut science = ScienceField::delaunay_21("Vs", n_px, None);
-    let mut science = ScienceField::on_axis("Vs", n_px, None);
+    let mut science = ScienceField::delaunay_21("Vs", n_px, None);
+    //let mut science = ScienceField::on_axis("Vs", n_px, None);
     println!("Building the science field ...");
     science.build();
     println!("Building the atmosphere ...");
@@ -192,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("Step #{}: reset PSSn!", p);
                             glao_4gs.science.pssn.reset();
                         }
-                        if p%200==0 {
+                        if p%800==0 {
                             println!(
                                 "{:9.3} {:5.0} {:?} {:?}",
                                 ds.current_time,
@@ -235,7 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pssn: glao_4gs.science.pssn.peek().estimates.clone(),
         };
         let key = format!(
-            "{}/{}/glao_{}_dome_seeing_dbg.pkl",
+            "{}/{}/glao_{}_dome_seeing.pkl",
             "Baseline2020",
             cfd_case,
             match glao_loop {
