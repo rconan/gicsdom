@@ -1,3 +1,11 @@
+//!
+//! # CEO wrapper crate
+//!
+//!The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
+//! The simplest method to build CEO element is to use the [`ceo!`][macro] macro builder
+//!
+//! [macro]: macro.ceo.html
+
 use std::{error::Error, f32, f64, fmt, mem};
 
 pub mod atmosphere;
@@ -12,21 +20,34 @@ pub mod pssn;
 pub mod shackhartmann;
 pub mod source;
 
+#[doc(inline)]
 pub use self::atmosphere::Atmosphere;
 //pub use self::calibrations::Calibration;
+#[doc(inline)]
 pub use self::centroiding::Centroiding;
+#[doc(inline)]
 pub use self::cu::Cu;
+#[doc(inline)]
 pub use self::fwhm::Fwhm;
+#[doc(inline)]
 pub use self::gmt::Gmt;
+#[doc(inline)]
 pub use self::imaging::Imaging;
+#[doc(inline)]
 pub use self::pssn::PSSn;
+#[doc(inline)]
 pub use self::shackhartmann::ShackHartmann;
+#[doc(inline)]
 pub use self::source::Propagation;
+#[doc(inline)]
 pub use self::source::Source;
+#[doc(hidden)]
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
+/// CEO macro builder
+///
 /// One macro to rule them all, one macro to find them, one macro to bring them all and in the darkness bind them all
 ///
 /// # Examples
@@ -100,7 +121,19 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
     }
 }
 
+/// CEO builder type trait
+///
+/// Only structures in the [`element`][element] module implement the trait
+///
+/// [element]: element/index.html
 pub trait CEOType {}
+/// CEO builder pattern
+///
+/// `CEO` is a generic builder pattern for all CEO elements.
+/// It will accept only the structures of the [`element`][element] module that implements the [`CEOtype`][ceotype] trait.
+///
+/// [element]: element/index.html
+/// [ceotype]: trait.CEOType.html
 #[derive(Debug)]
 pub struct CEO<T: CEOType> {
     args: T,
@@ -112,6 +145,7 @@ macro_rules! impl_ceotype {
 }
 pub mod element {
     use super::CEOType;
+    #[doc(hidden)]
     #[derive(Debug)]
     pub struct Mirror {
         pub mode_type: String,
@@ -126,17 +160,21 @@ pub mod element {
         }
     }
     /// n_side_lenslet, n_px_lenslet, d
+    #[doc(hidden)]
     #[derive(Debug)]
     pub struct LensletArray(pub usize, pub usize, pub f64);
     /// n_px_framelet, n_px_imagelet, osf
+    #[doc(hidden)]
     #[derive(Debug)]
     pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
+    /// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
     #[derive(Debug)]
     pub struct GMT {
         pub m1: Mirror,
         pub m2: Mirror,
     }
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
     pub struct SOURCE {
         pub size: usize,
         pub pupil_size: f64,
@@ -147,18 +185,21 @@ pub mod element {
         pub magnitude: Vec<f32>,
     }
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
     pub struct SHACKHARTMANN {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
     }
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
     pub struct PSSN {
         pub r0_at_zenith: f64,
         pub oscale: f64,
         pub zenith_angle: f64,
     }
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
     pub struct FIELDDELAUNAY21 {
         pub src: super::CEO<SOURCE>,
     }

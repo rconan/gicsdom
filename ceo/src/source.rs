@@ -14,14 +14,13 @@ pub trait Propagation {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self;
 }
 
-/// Wrapper for CEO source
+/// CEO optical source model
 ///
 /// # Examples
 ///
 /// ```
-/// use gicsdom::ceo::Source;
-/// let mut src = Source::new(1,25.5,401);
-/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
+/// use ceo::{ceo,element::SOURCE};
+/// let mut src = ceo!(SOURCE);
 /// ```
 pub struct Source {
     pub _c_: source,
@@ -38,11 +37,13 @@ pub struct Source {
     pub magnitude: Vec<f32>,
 }
 #[derive(Debug, Deserialize, Serialize, Default)]
-pub struct GlaoField {
+struct GlaoField {
     pub zenith_arcmin: Vec<f32>,
     pub azimuth_degree: Vec<f32>,
 }
+/// ## `Source` builder
 impl CEO<element::FIELDDELAUNAY21> {
+    /// Create a new source builder
     pub fn new() -> CEO<element::FIELDDELAUNAY21> {
         let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
         let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
@@ -67,23 +68,28 @@ impl CEO<element::FIELDDELAUNAY21> {
             },
         }
     }
+    /// Set the sampling of the pupil in pixels
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
         self.args.src.args.pupil_sampling = pupil_sampling;
         self
     }
+    /// Set the pupil size in meters
     pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
         self.args.src.args.pupil_size = pupil_size;
         self
     }
+    /// Set the photometric band
     pub fn set_band(mut self, band: &str) -> Self {
         self.args.src.args.band = band.to_owned();
         self
     }
+    /// Build the source object
     pub fn build(self) -> Source {
         self.args.src.build()
     }
 }
 impl CEO<element::SOURCE> {
+    /// Create a new source builder
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
             args: element::SOURCE {
@@ -97,22 +103,27 @@ impl CEO<element::SOURCE> {
             },
         }
     }
+    /// Set the number of sources
     pub fn set_size(mut self, size: usize) -> Self {
         self.args.size = size;
         self
     }
+    /// Set the sampling of the pupil in pixels
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
         self.args.pupil_sampling = pupil_sampling;
         self
     }
+    /// Set the pupil size in meters
     pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
         self.args.pupil_size = pupil_size;
         self
     }
+    /// Set the photometric band
     pub fn set_band(mut self, band: &str) -> Self {
         self.args.band = band.to_owned();
         self
     }
+    /// Set the source zenith and azimuth angles
     pub fn set_zenith_azimuth(mut self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
         assert_eq!(
             self.args.size,
@@ -130,6 +141,7 @@ impl CEO<element::SOURCE> {
         self.args.azimuth = azimuth;
         self
     }
+    /// Set the source magnitude
     pub fn set_magnitude(mut self, magnitude: Vec<f32>) -> Self {
         assert_eq!(
             self.args.size,
@@ -140,6 +152,7 @@ impl CEO<element::SOURCE> {
         self.args.magnitude = magnitude;
         self
     }
+    /// Build the source object
     pub fn build(self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },

@@ -43,16 +43,14 @@ struct Mirror<'a> {
 }
  */
 
-/// Wrapper for CEO gmt_m1 and gmt_m2
+/// # CEO GMT M1 and M2 model
 ///
 /// # Examples
 ///
 /// ```
-/// use gicsdom::ceo;
-/// let mut src = ceo::Source::new(1,25.5,401);
-/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
-/// let mut gmt = ceo::Gmt::new();
-/// gmt.build(27,None);
+/// use ceo:{ceo,element::{GMT,SOURCE}};
+/// let mut src = ceo!(SOURCE);
+/// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil();
 /// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
 /// ```
@@ -70,6 +68,7 @@ pub struct Gmt {
     pub a1: Vec<f64>,
     pub a2: Vec<f64>,
 }
+/// ## `Gmt` builder
 impl CEO<element::GMT> {
     pub fn new() -> CEO<element::GMT> {
         CEO {
