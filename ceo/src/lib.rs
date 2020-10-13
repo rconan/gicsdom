@@ -70,16 +70,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        CEO::<$element>::new().build()
+        crate::CEO::<$element>::new().build()
     };
     ($element:ty:$model:ty) => {
-        CEO::<$element>::new().build::<$model>()
+        crate::CEO::<$element>::new().build::<$model>()
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build()
+        crate::CEO::<$element>::new()$(.$arg($($val),+))*.build()
     };
     ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
+        crate::CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
     };
 }
 /*
@@ -101,6 +101,7 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
 }
 
 pub trait CEOType {}
+#[derive(Debug)]
 pub struct CEO<T: CEOType> {
     args: T,
 }
@@ -157,7 +158,11 @@ pub mod element {
         pub oscale: f64,
         pub zenith_angle: f64,
     }
-    impl_ceotype!(GMT,SOURCE,SHACKHARTMANN,PSSN);
+    #[derive(Debug)]
+    pub struct FIELDDELAUNAY21 {
+        pub src: super::CEO<SOURCE>,
+    }
+    impl_ceotype!(GMT, SOURCE, SHACKHARTMANN, PSSN, FIELDDELAUNAY21);
 }
 
 pub trait Conversion<T> {
