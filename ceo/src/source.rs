@@ -1,10 +1,12 @@
-use std::mem;
-
+use serde::{Deserialize, Serialize};
+use serde_pickle as pickle;
 use std::f32;
 use std::ffi::CString;
+use std::fs::File;
+use std::mem;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, Cu, CEO};
+use super::{element, Centroiding, Conversion, Cu, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -35,6 +37,52 @@ pub struct Source {
     pub azimuth: Vec<f32>,
     pub magnitude: Vec<f32>,
 }
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct GlaoField {
+    pub zenith_arcmin: Vec<f32>,
+    pub azimuth_degree: Vec<f32>,
+}
+impl CEO<element::FIELDDELAUNAY21> {
+    pub fn new() -> CEO<element::FIELDDELAUNAY21> {
+        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
+        let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
+        let n_src = field.zenith_arcmin.len();
+        assert_eq!(n_src, 21);
+        CEO {
+            args: element::FIELDDELAUNAY21 {
+                src: CEO::<element::SOURCE>::new()
+                    .set_size(n_src)
+                    .set_zenith_azimuth(
+                        field
+                            .zenith_arcmin
+                            .iter()
+                            .map(|x| x.from_arcmin())
+                            .collect::<Vec<f32>>(),
+                        field
+                            .azimuth_degree
+                            .iter()
+                            .map(|x| x.to_radians())
+                            .collect::<Vec<f32>>(),
+                    ),
+            },
+        }
+    }
+    pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
+        self.args.src.args.pupil_sampling = pupil_sampling;
+        self
+    }
+    pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
+        self.args.src.args.pupil_size = pupil_size;
+        self
+    }
+    pub fn set_band(mut self, band: &str) -> Self {
+        self.args.src.args.band = band.to_owned();
+        self
+    }
+    pub fn build(self) -> Source {
+        self.args.src.build()
+    }
+}
 impl CEO<element::SOURCE> {
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
@@ -49,6 +97,10 @@ impl CEO<element::SOURCE> {
             },
         }
     }
+    pub fn set_size(mut self, size: usize) -> Self {
+        self.args.size = size;
+        self
+    }
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
         self.args.pupil_sampling = pupil_sampling;
         self
@@ -62,11 +114,29 @@ impl CEO<element::SOURCE> {
         self
     }
     pub fn set_zenith_azimuth(mut self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
+        assert_eq!(
+            self.args.size,
+            zenith.len(),
+            "zenith vector must be of length {}",
+            self.args.size
+        );
+        assert_eq!(
+            self.args.size,
+            azimuth.len(),
+            "azimuth vector must be of length {}",
+            self.args.size
+        );
         self.args.zenith = zenith;
         self.args.azimuth = azimuth;
         self
     }
     pub fn set_magnitude(mut self, magnitude: Vec<f32>) -> Self {
+        assert_eq!(
+            self.args.size,
+            magnitude.len(),
+            "azimuth vector must be of length {}",
+            self.args.size
+        );
         self.args.magnitude = magnitude;
         self
     }
