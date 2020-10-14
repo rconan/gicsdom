@@ -3,8 +3,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::atmosphere;
-use super::Propagation;
-use super::Source;
+use super::{element, Propagation, Source, CEO};
 
 #[derive(Deserialize, Debug)]
 struct GmtAtmosphere {
@@ -33,6 +32,119 @@ pub struct Atmosphere {
     //filename: String,
     //k_duration: i32,
     built: bool,
+}
+/// ## `Atmosphere` builder
+impl CEO<element::ATMOSPHERE> {
+    /// Create a new `Atmosphere` builder
+    pub fn new() -> CEO<element::ATMOSPHERE> {
+        CEO {
+            args: element::ATMOSPHERE {
+                r0_at_zenith: 0.16,
+                oscale: 25.5,
+                zenith_angle: 30f64.to_radians(),
+                turbulence: element::TurbulenceProfile::default(),
+                ray_tracing: None,
+            },
+        }
+    }
+    /// Set r0 value taken at pointing the zenith in meters
+    pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
+        self.args.r0_at_zenith = r0_at_zenith;
+        self
+    }
+    /// Set outer scale value in meters
+    pub fn set_oscale(mut self, oscale: f64) -> Self {
+        self.args.oscale = oscale;
+        self
+    }
+    /// Set zenith angle value in radians
+    pub fn set_zenith_angle(mut self, zenith_angle: f64) -> Self {
+        self.args.zenith_angle = zenith_angle;
+        self
+    }
+    /// Set parameters for atmosphere ray tracing
+    pub fn set_ray_tracing(
+        mut self,
+        width: f32,
+        n_width_px: i32,
+        field_size: f32,
+        duration: f32,
+        filepath: Option<String>,
+        n_duration: Option<i32>,
+    ) -> Self {
+        self.args.ray_tracing = Some(element::RayTracing {
+            width,
+            n_width_px,
+            field_size,
+            duration,
+            filepath,
+            n_duration,
+        });
+        self
+    }
+    /// Build the `Atmosphere`
+    pub fn build(mut self) -> Atmosphere {
+        let mut atm = Atmosphere {
+            _c_: unsafe { mem::zeroed() },
+            r0_at_zenith: self.args.r0_at_zenith,
+            oscale: self.args.oscale,
+            zenith_angle: self.args.zenith_angle,
+            secs: 0.0,
+            //filename: String::new(),
+            //k_duration: 0,
+            built: true,
+        };
+        match self.args.ray_tracing {
+            None => unsafe {
+                atm._c_.setup(
+                    self.args.r0_at_zenith as f32,
+                    self.args.oscale as f32,
+                    self.args.turbulence.n_layer as i32,
+                    self.args.turbulence.altitude.as_mut_ptr(),
+                    self.args.turbulence.xi0.as_mut_ptr(),
+                    self.args.turbulence.wind_speed.as_mut_ptr(),
+                    self.args.turbulence.wind_direction.as_mut_ptr(),
+                );
+            },
+            Some(rtc) => match rtc.filepath {
+                Some(file) => unsafe {
+                    atm._c_.setup2(
+                        self.args.r0_at_zenith as f32,
+                        self.args.oscale as f32,
+                        self.args.turbulence.n_layer as i32,
+                        self.args.turbulence.altitude.as_mut_ptr(),
+                        self.args.turbulence.xi0.as_mut_ptr(),
+                        self.args.turbulence.wind_speed.as_mut_ptr(),
+                        self.args.turbulence.wind_direction.as_mut_ptr(),
+                        rtc.width,
+                        rtc.n_width_px,
+                        rtc.field_size,
+                        rtc.duration,
+                        CString::new(file.to_owned().into_bytes())
+                            .unwrap()
+                            .into_raw(),
+                        rtc.n_duration.unwrap_or(1),
+                    );
+                },
+                None => unsafe {
+                    atm._c_.setup1(
+                        self.args.r0_at_zenith as f32,
+                        self.args.oscale as f32,
+                        self.args.turbulence.n_layer as i32,
+                        self.args.turbulence.altitude.as_mut_ptr(),
+                        self.args.turbulence.xi0.as_mut_ptr(),
+                        self.args.turbulence.wind_speed.as_mut_ptr(),
+                        self.args.turbulence.wind_direction.as_mut_ptr(),
+                        rtc.width,
+                        rtc.n_width_px,
+                        rtc.field_size,
+                        rtc.duration,
+                    );
+                },
+            },
+        }
+        atm
+    }
 }
 impl Atmosphere {
     pub fn new() -> Atmosphere {
@@ -174,6 +286,13 @@ impl Atmosphere {
         }
     }
 }
+impl Drop for Atmosphere {
+    fn drop(&mut self){
+        unsafe {
+            self._c_.cleanup();
+        }
+    }
+}
 impl Propagation for Atmosphere {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
         unsafe {
@@ -202,7 +321,8 @@ impl Propagation for Atmosphere {
                     self.k_duration,
                 );
                  */
-                self._c_.rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
+                self._c_
+                    .rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
             }
         }
         self
@@ -212,55 +332,14 @@ impl Propagation for Atmosphere {
     }
 }
 
-/*
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn ceo_built_atmosphere() {
-        let mut gmt = Gmt::new(0, None);
-        gmt.build();
-        let mut wfs = ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
-        wfs.build(8, Some(24), None);
-        let mut src = wfs.new_guide_stars();
-        src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
-        let mut atm = Atmosphere::new();
-        atm.build(0.15, 25.);
-        let n = 10;
-        let mut wfe_rms = (0..n)
-            .into_iter()
-            .map(|i| {
-                atm.secs = i as f64;
-                src.through(&mut gmt).xpupil().through(&mut atm);
-                src.wfe_rms_10e(-9)[0]
-            })
-            .collect::<Vec<f32>>();
-        wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: {:?}nm", wfe_rms);
-    }
-    #[test]
-    fn ceo_load_atmosphere() {
-        let mut gmt = Gmt::new(0, None);
-        gmt.build();
-        let mut wfs = ShackHartmann::new(1, 48, 16, 25.5 / 48.0);
-        wfs.build(8, Some(24), None);
-        let mut src = wfs.new_guide_stars();
-        src.build("V", vec![0.0f32], vec![0.0f32], vec![0.0f32]);
-        let mut atm = Atmosphere::new();
-        atm.load_from_json("/home/ubuntu/DATA/gmtAtmosphereL025_1579821046.json")
-            .unwrap();
-        let n = 10;
-        let mut wfe_rms = (0..n)
-            .into_iter()
-            .map(|i| {
-                atm.secs = i as f64;
-                src.through(&mut gmt).xpupil().through(&mut atm);
-                src.wfe_rms_10e(-9)[0]
-            })
-            .collect::<Vec<f32>>();
-        wfe_rms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("WFE RMS: {:?}nm", wfe_rms);
+    fn atmosphere_new() {
+        crate::ceo!(element::ATMOSPHERE);
     }
 }
-*/
+
