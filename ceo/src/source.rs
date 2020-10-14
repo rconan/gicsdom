@@ -23,7 +23,7 @@ pub trait Propagation {
 /// let mut src = ceo!(SOURCE);
 /// ```
 pub struct Source {
-    pub _c_: source,
+    _c_: source,
     /// The number of sources
     pub size: i32,
     /// The diameter of the entrance pupil [m]
@@ -41,9 +41,9 @@ struct GlaoField {
     pub zenith_arcmin: Vec<f32>,
     pub azimuth_degree: Vec<f32>,
 }
-/// ## `Source` builder
+/// ## `Source` builder for a 21 source field
 impl CEO<element::FIELDDELAUNAY21> {
-    /// Create a new source builder
+    /// Create a new `Source` builder
     pub fn new() -> CEO<element::FIELDDELAUNAY21> {
         let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
         let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
@@ -88,8 +88,9 @@ impl CEO<element::FIELDDELAUNAY21> {
         self.args.src.build()
     }
 }
+/// ## `Source` builder
 impl CEO<element::SOURCE> {
-    /// Create a new source builder
+    /// Create a new `Source` builder
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
             args: element::SOURCE {
@@ -152,7 +153,7 @@ impl CEO<element::SOURCE> {
         self.args.magnitude = magnitude;
         self
     }
-    /// Build the source object
+    /// Build the `Source`
     pub fn build(self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },
@@ -258,6 +259,9 @@ impl Source {
             );
         }
         self
+    }
+    pub fn as_raw_mut_ptr(&mut self) -> &mut source {
+        &mut self._c_
     }
     /// Returns the `Source` wavelength [m]
     pub fn wavelength(&mut self) -> f64 {

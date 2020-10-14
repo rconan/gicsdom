@@ -182,7 +182,7 @@ impl Propagation for Imaging {
     /// Fourier propagates the wavefront to the focal plane onto the detector
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.propagate(&mut src._c_);
+            self._c_.propagate(src.as_raw_mut_ptr());
         }
         self
     }

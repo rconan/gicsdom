@@ -418,8 +418,8 @@ impl Propagation for Gmt {
     /// Ray traces a `Source` through `Gmt`, ray tracing stops at the exit pupil
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            src._c_.reset_rays();
-            let rays: &mut bundle = &mut src._c_.rays;
+            src.as_raw_mut_ptr().reset_rays();
+            let rays: &mut bundle = &mut src.as_raw_mut_ptr().rays;
             self._c_m2.blocking(rays);
             self._c_m1.trace(rays);
             rays.gmt_truss_onaxis();

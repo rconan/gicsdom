@@ -31,7 +31,7 @@ pub struct Atmosphere {
     pub secs: f64,
     //filename: String,
     //k_duration: i32,
-    built: bool,
+    propagate_ptr: fn(&mut Atmosphere, &mut Source, f32),
 }
 /// ## `Atmosphere` builder
 impl CEO<element::ATMOSPHERE> {
@@ -92,12 +92,13 @@ impl CEO<element::ATMOSPHERE> {
             secs: 0.0,
             //filename: String::new(),
             //k_duration: 0,
-            built: true,
+            propagate_ptr: |_, _, _| (),
         };
+        let r0 = (atm.r0_at_zenith.powf(-5.0 / 3.0) / atm.zenith_angle.cos()).powf(-3.0 / 5.0);
         match self.args.ray_tracing {
             None => unsafe {
                 atm._c_.setup(
-                    self.args.r0_at_zenith as f32,
+                    r0 as f32,
                     self.args.oscale as f32,
                     self.args.turbulence.n_layer as i32,
                     self.args.turbulence.altitude.as_mut_ptr(),
@@ -105,11 +106,17 @@ impl CEO<element::ATMOSPHERE> {
                     self.args.turbulence.wind_speed.as_mut_ptr(),
                     self.args.turbulence.wind_direction.as_mut_ptr(),
                 );
+                atm.propagate_ptr = |a, s, t| {
+                    let n_xy = s.pupil_sampling;
+                    let d_xy = (s.pupil_size / (n_xy - 1) as f64) as f32;
+                    a._c_
+                        .get_phase_screen4(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
+                };
             },
             Some(rtc) => match rtc.filepath {
                 Some(file) => unsafe {
                     atm._c_.setup2(
-                        self.args.r0_at_zenith as f32,
+                        r0 as f32,
                         self.args.oscale as f32,
                         self.args.turbulence.n_layer as i32,
                         self.args.turbulence.altitude.as_mut_ptr(),
@@ -125,10 +132,16 @@ impl CEO<element::ATMOSPHERE> {
                             .into_raw(),
                         rtc.n_duration.unwrap_or(1),
                     );
+                    atm.propagate_ptr = |a, s, t| {
+                        let n_xy = s.pupil_sampling;
+                        let d_xy = (s.pupil_size / (n_xy - 1) as f64) as f32;
+                        a._c_
+                            .rayTracing1(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
+                    };
                 },
                 None => unsafe {
                     atm._c_.setup1(
-                        self.args.r0_at_zenith as f32,
+                        r0 as f32,
                         self.args.oscale as f32,
                         self.args.turbulence.n_layer as i32,
                         self.args.turbulence.altitude.as_mut_ptr(),
@@ -140,6 +153,12 @@ impl CEO<element::ATMOSPHERE> {
                         rtc.field_size,
                         rtc.duration,
                     );
+                    atm.propagate_ptr = |a, s, t| {
+                        let n_xy = s.pupil_sampling;
+                        let d_xy = (s.pupil_size / (n_xy - 1) as f64) as f32;
+                        a._c_
+                            .rayTracing1(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
+                    };
                 },
             },
         }
@@ -156,7 +175,7 @@ impl Atmosphere {
             secs: 0.0,
             //filename: String::new(),
             //k_duration: 0,
-            built: true,
+            propagate_ptr: |_, _, _| (),
         }
     }
     pub fn build(
@@ -180,6 +199,12 @@ impl Atmosphere {
                 wind_direction.as_mut_ptr(),
             );
         }
+        self.propagate_ptr = |a, s, t| unsafe {
+            let n_xy = s.pupil_sampling;
+            let d_xy = (s.pupil_size / (n_xy - 1) as f64) as f32;
+            a._c_
+                .get_phase_screen4(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
+        };
         self
     }
 
@@ -235,7 +260,12 @@ impl Atmosphere {
                 );
             },
         }
-        self.built = false;
+        self.propagate_ptr = |a, s, t| unsafe {
+            let n_xy = s.pupil_sampling;
+            let d_xy = (s.pupil_size / (n_xy - 1) as f64) as f32;
+            a._c_
+                .rayTracing1(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
+        };
         self
     }
     pub fn gmt_build(&mut self, r_not: f32, l_not: f32) -> &mut Self {
@@ -244,39 +274,6 @@ impl Atmosphere {
         }
         self
     }
-    /*
-    pub fn load_from_json(&mut self, json_file: &str) -> Result<&mut Self, Box<dyn Error>> {
-        let mut filename = json_file.to_string();
-        filename.push_str(".json");
-        let path = Path::new(&filename);
-        let file = File::open(path).expect(&format!("{}", path.display()));
-        let reader = BufReader::new(file);
-        let gmt_atm_args: GmtAtmosphere = serde_json::from_reader(reader)?;
-        let ps_path = CString::new(gmt_atm_args.filename.clone()).unwrap();
-        unsafe {
-            self._c_.gmt_setup6(
-                gmt_atm_args.r0,
-                gmt_atm_args.l_not,
-                gmt_atm_args.length,
-                gmt_atm_args.nxy_pupil,
-                gmt_atm_args.fov,
-                gmt_atm_args.duration,
-                ps_path.into_raw(),
-                gmt_atm_args.n_duration,
-                gmt_atm_args.seed,
-            );
-        }
-        self.filename = String::from(gmt_atm_args.filename);
-        self.built = false;
-        let ps_path = CString::new(format!("{}", self.filename)).unwrap();
-        println!("{:?}", ps_path);
-        unsafe {
-            self._c_
-                .duration_loading(ps_path.into_raw(), self.k_duration);
-        }
-        Ok(self)
-    }
-    */
     pub fn set_r0(&mut self, new_r0: f64) {
         self._c_.r0 = new_r0 as f32;
     }
@@ -287,7 +284,7 @@ impl Atmosphere {
     }
 }
 impl Drop for Atmosphere {
-    fn drop(&mut self){
+    fn drop(&mut self) {
         unsafe {
             self._c_.cleanup();
         }
@@ -295,43 +292,13 @@ impl Drop for Atmosphere {
 }
 impl Propagation for Atmosphere {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self {
-        unsafe {
-            let n_xy = src.pupil_sampling;
-            let d_xy = (src.pupil_size / (n_xy - 1) as f64) as f32;
-            if self.built {
-                self._c_
-                    .get_phase_screen4(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
-            } else {
-                /*
-                let k_duration = (secs / self._c_.layers_duration as f64) as i32;
-                if k_duration > self.k_duration {
-                    let ps_path = CString::new(format!("{}", self.filename)).unwrap();
-                    //println!("{:?}",ps_path);
-                    self._c_.duration_loading(ps_path.into_raw(), k_duration);
-                    self.k_duration = k_duration;
-                }
-
-                self._c_.ray_tracing(
-                    &mut src._c_,
-                    d_xy,
-                    n_xy,
-                    d_xy,
-                    n_xy,
-                    secs as f32,
-                    self.k_duration,
-                );
-                 */
-                self._c_
-                    .rayTracing1(&mut src._c_, d_xy, n_xy, d_xy, n_xy, secs as f32);
-            }
-        }
+        (self.propagate_ptr)(self, src, secs as f32);
         self
     }
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         self.time_propagate(self.secs, src)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -342,4 +309,3 @@ mod tests {
         crate::ceo!(element::ATMOSPHERE);
     }
 }
-
