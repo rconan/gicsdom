@@ -113,9 +113,7 @@ macro_rules! gmt {
 */
 #[derive(Debug)]
 pub struct CeoError<T>(T);
-
 impl<T: std::fmt::Debug> Error for CeoError<T> {}
-
 impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CEO {:?} builder has failed!", self.0)
@@ -352,58 +350,37 @@ pub trait Conversion<T> {
     fn to_arcsec(self) -> T;
     fn to_mas(self) -> T;
 }
-impl Conversion<f64> for f64 {
-    /// Converts angle in arcminute to radian
-    fn from_arcmin(self) -> f64 {
-        self.to_radians() / 60.
-    }
-    /// Converts angle in arcsecond to radian
-    fn from_arcsec(self) -> f64 {
-        self.from_arcmin() / 60.
-    }
-    /// Converts angle in milli-arcsecond to radian
-    fn from_mas(self) -> f64 {
-        self.from_arcsec() * 1e-3
-    }
-    /// Converts angle in radian to arcminute
-    fn to_arcmin(self) -> f64 {
-        60.0 * self.to_degrees()
-    }
-    /// Converts angle in radian to arcsecond
-    fn to_arcsec(self) -> f64 {
-        60.0 * self.to_arcmin()
-    }
-    /// Converts angle in radian to mill-arcsecond
-    fn to_mas(self) -> f64 {
-        1e3 * self.to_arcsec()
-    }
+macro_rules! impl_conversion {
+    ($($name:ty),+) => {
+        $(impl Conversion<$name> for $name {
+            /// Converts angle in arcminute to radian
+            fn from_arcmin(self) -> $name {
+                self.to_radians() / 60.
+            }
+            /// Converts angle in arcsecond to radian
+            fn from_arcsec(self) -> $name {
+                self.from_arcmin() / 60.
+            }
+            /// Converts angle in milli-arcsecond to radian
+            fn from_mas(self) -> $name {
+                self.from_arcsec() * 1e-3
+            }
+            /// Converts angle in radian to arcminute
+            fn to_arcmin(self) -> $name {
+                60.0 * self.to_degrees()
+            }
+            /// Converts angle in radian to arcsecond
+            fn to_arcsec(self) -> $name {
+                60.0 * self.to_arcmin()
+            }
+            /// Converts angle in radian to mill-arcsecond
+            fn to_mas(self) -> $name {
+                1e3 * self.to_arcsec()
+            }
+        })+
+    };
 }
-impl Conversion<f32> for f32 {
-    /// Converts angle in arcminute to radian
-    fn from_arcmin(self) -> f32 {
-        self.to_radians() / 60.
-    }
-    /// Converts angle in arcsecond to radian
-    fn from_arcsec(self) -> f32 {
-        self.from_arcmin() / 60.
-    }
-    /// Converts angle in milli-arcsecond to radian
-    fn from_mas(self) -> f32 {
-        self.from_arcsec() * 1e-3
-    }
-    /// Converts angle in radian to arcminute
-    fn to_arcmin(self) -> f32 {
-        60.0 * self.to_degrees()
-    }
-    /// Converts angle in radian to arcsecond
-    fn to_arcsec(self) -> f32 {
-        60.0 * self.to_arcmin()
-    }
-    /// Converts angle in radian to mill-arcsecond
-    fn to_mas(self) -> f32 {
-        1e3 * self.to_arcsec()
-    }
-}
+impl_conversion!(f64, f32);
 
 pub fn set_gpu(id: i32) {
     unsafe {
