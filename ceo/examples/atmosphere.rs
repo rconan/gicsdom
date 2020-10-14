@@ -1,4 +1,4 @@
-use ceo::{ceo, element::*};
+use ceo::{ceo, element::*, CEO};
 
 fn main() {
     let mut gmt = ceo!(GMT);
@@ -8,6 +8,10 @@ fn main() {
     for k in 0..10 {
         atm.secs = k as f64 * dt;
         src.through(&mut gmt).xpupil().through(&mut atm);
-        println!("T: {:02}s -> WFE RMS: {:.0}nm", atm.secs, src.wfe_rms_10e(-9)[0]);
+        println!(
+            "T: {:02}s -> WFE RMS: {:.0}nm",
+            atm.secs,
+            src.wfe_rms_10e(-9)[0]
+        );
     }
 }

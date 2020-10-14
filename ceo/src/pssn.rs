@@ -3,24 +3,8 @@ use super::{element, Cu, Propagation, Source, CEO};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
-/// Wrapper for CEO PSSn
+/// CEO PSSn estimator
 ///
-/// # Examples
-///
-/// ```
-/// use gicsdom::ceo;
-/// let mut src = ceo::Source::new(1,25.5,401);
-/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
-/// let mut gmt = ceo::Gmt::new();
-/// gmt.build(27,None);
-/// src.through(&mut gmt).xpupil();
-/// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
-/// let mut pssn = ceo::PSSn::new();
-/// pssn.build(&mut src);
-/// println!("PSSn: {:?}",pssn.reset(&mut src).estimates);
-/// ```
-///
-// NEW PSSN
 pub struct TelescopeError;
 pub struct AtmosphereTelescopeError;
 pub struct PSSn<S> {

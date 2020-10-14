@@ -63,7 +63,7 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*};
+/// use ceo::{ceo, element::*, shackhartmann::Geometric};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Geometric,
 ///     set_n_sensor = [1],
@@ -78,7 +78,7 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*};
+/// use ceo::{ceo, element::*, shackhartmann::Diffractive};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Diffractive,
 ///     set_n_sensor = [1],
@@ -93,16 +93,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        ceo::CEO::<$element>::new().build()
+        CEO::<$element>::new().build()
     };
     ($element:ty:$model:ty) => {
-        ceo::CEO::<$element>::new().build::<$model>()
+        CEO::<$element>::new().build::<$model>()
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        ceo::CEO::<$element>::new()$(.$arg($($val),+))*.build()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build()
     };
     ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        ceo::CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
     };
 }
 /*
