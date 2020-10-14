@@ -21,11 +21,7 @@ pub struct PSSn<S> {
 impl CEO<element::PSSN> {
     pub fn new() -> CEO<element::PSSN> {
         CEO {
-            args: element::PSSN {
-                r0_at_zenith: 0.16,
-                oscale: 25.0,
-                zenith_angle: 30_f64.to_radians(),
-            },
+            args: element::PSSN::default()
         }
     }
     pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {

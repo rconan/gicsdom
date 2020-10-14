@@ -38,13 +38,7 @@ impl CEO<element::ATMOSPHERE> {
     /// Create a new `Atmosphere` builder
     pub fn new() -> CEO<element::ATMOSPHERE> {
         CEO {
-            args: element::ATMOSPHERE {
-                r0_at_zenith: 0.16,
-                oscale: 25.5,
-                zenith_angle: 30f64.to_radians(),
-                turbulence: element::TurbulenceProfile::default(),
-                ray_tracing: None,
-            },
+            args: element::ATMOSPHERE::default()
         }
     }
     /// Set r0 value taken at pointing the zenith in meters

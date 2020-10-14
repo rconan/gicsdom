@@ -46,7 +46,6 @@ pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
-
 /// CEO macro builder
 ///
 /// One macro to rule them all, one macro to find them, one macro to bring them all and in the darkness bind them all
@@ -153,19 +152,32 @@ pub mod element {
         pub mode_type: String,
         pub n_mode: usize,
     }
-    impl Default for Mirror {
-        fn default() -> Self {
-            Mirror {
-                mode_type: String::new(),
-                n_mode: 0,
-            }
-        }
-    }
     /// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
     #[derive(Debug)]
     pub struct GMT {
         pub m1: Mirror,
         pub m2: Mirror,
+    }
+    /// Default properties:
+    ///  * M1:
+    ///    * mode type : "bending modes"
+    ///    * \# mode    : 0
+    ///  * M2:
+    ///    * mode type : "Karhunen-Loeve"
+    ///    * \# mode    : 0
+    impl Default for GMT {
+        fn default() -> Self {
+            GMT {
+                m1: Mirror {
+                    mode_type: "bending modes".into(),
+                    n_mode: 0,
+                },
+                m2: Mirror {
+                    mode_type: "Karhunen-Loeve".into(),
+                    n_mode: 0,
+                },
+            }
+        }
     }
     // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
@@ -179,21 +191,59 @@ pub mod element {
         pub azimuth: Vec<f32>,
         pub magnitude: Vec<f32>,
     }
+    /// Default properties:
+    ///  * size             : 1
+    ///  * pupil size       : 25.5m
+    ///  * pupil sampling   : 512px
+    ///  * photometric band : Vs (500nm)
+    ///  * zenith           : 0degree
+    ///  * azimuth          : 0degree
+    ///  * magnitude        : 0
+    impl Default for SOURCE {
+        fn default() -> Self {
+            SOURCE {
+                size: 1,
+                pupil_size: 25.5,
+                pupil_sampling: 512,
+                band: "Vs".into(),
+                zenith: vec![0f32],
+                azimuth: vec![0f32],
+                magnitude: vec![0f32],
+            }
+        }
+    }
     // ---------------------------------------------------------------------------------------------
-    /// n_side_lenslet, n_px_lenslet, d
     #[doc(hidden)]
     #[derive(Debug)]
     pub struct LensletArray(pub usize, pub usize, pub f64);
-    /// n_px_framelet, n_px_imagelet, osf
+    impl Default for LensletArray {
+        fn default() -> Self {
+            LensletArray(1, 511, 25.5)
+        }
+    }
     #[doc(hidden)]
     #[derive(Debug)]
     pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
+    impl Default for Detector {
+        fn default() -> Self {
+            Detector(512, None, None)
+        }
+    }
     #[derive(Debug)]
     /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
     pub struct SHACKHARTMANN {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
+    }
+    impl Default for SHACKHARTMANN {
+        fn default() -> Self {
+            SHACKHARTMANN {
+                n_sensor: 1,
+                lenslet_array: LensletArray::default(),
+                detector: Detector::default(),
+            }
+        }
     }
     // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
@@ -202,6 +252,19 @@ pub mod element {
         pub r0_at_zenith: f64,
         pub oscale: f64,
         pub zenith_angle: f64,
+    }
+    /// Default properties:
+    ///  * r0           : 16cm
+    ///  * L0           : 25m
+    ///  * zenith angle : 30 degrees
+    impl Default for PSSN {
+        fn default() -> Self {
+            PSSN {
+                r0_at_zenith: 0.16,
+                oscale: 25.0,
+                zenith_angle: 30_f64.to_radians(),
+            }
+        }
     }
     // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
@@ -229,7 +292,7 @@ pub mod element {
                 wind_direction: [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462].to_vec(),
             }
         }
-    } 
+    }
     #[derive(Debug)]
     #[doc(hidden)]
     pub struct RayTracing {
@@ -247,7 +310,29 @@ pub mod element {
         pub oscale: f64,
         pub zenith_angle: f64,
         pub turbulence: TurbulenceProfile,
-        pub ray_tracing: Option<RayTracing>
+        pub ray_tracing: Option<RayTracing>,
+    }
+    /// Default properties:
+    ///  * r0           : 16cm
+    ///  * L0           : 25m
+    ///  * zenith angle : 30 degrees
+    ///  * turbulence profile:
+    ///    * n_layer        : 7
+    ///    * altitude       : [25.0, 275.0, 425.0, 1250.0, 4000.0, 8000.0, 13000.0] m
+    ///    * xi0            : [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751]
+    ///    * wind speed     : [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187] m/s
+    ///    * wind direction : [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462] rd
+    /// * ray tracing : none
+    impl Default for ATMOSPHERE {
+        fn default() -> Self {
+            ATMOSPHERE {
+                r0_at_zenith: 0.16,
+                oscale: 25.5,
+                zenith_angle: 30f64.to_radians(),
+                turbulence: TurbulenceProfile::default(),
+                ray_tracing: None,
+            }
+        }
     }
     impl_ceotype!(
         GMT,

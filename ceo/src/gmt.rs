@@ -72,16 +72,7 @@ pub struct Gmt {
 impl CEO<element::GMT> {
     pub fn new() -> CEO<element::GMT> {
         CEO {
-            args: element::GMT {
-                m1: element::Mirror {
-                    mode_type: "bending modes".into(),
-                    n_mode: 0,
-                },
-                m2: element::Mirror {
-                    mode_type: "Karhunen-Loeve".into(),
-                    n_mode: 0,
-                },
-            },
+            args: element::GMT::default(),
         }
     }
     pub fn set_m1(mut self, mode_type: &str, n_mode: usize) -> Self {

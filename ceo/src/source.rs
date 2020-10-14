@@ -93,15 +93,7 @@ impl CEO<element::SOURCE> {
     /// Create a new `Source` builder
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
-            args: element::SOURCE {
-                size: 1,
-                pupil_size: 25.5,
-                pupil_sampling: 512,
-                band: "Vs".into(),
-                zenith: vec![0f32],
-                azimuth: vec![0f32],
-                magnitude: vec![0f32],
-            },
+            args: element::SOURCE::default()
         }
     }
     /// Set the number of sources

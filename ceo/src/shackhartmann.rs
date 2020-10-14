@@ -86,11 +86,7 @@ pub struct ShackHartmann<S: Model> {
 impl CEO<element::SHACKHARTMANN> {
     pub fn new() -> CEO<element::SHACKHARTMANN> {
         CEO {
-            args: element::SHACKHARTMANN {
-                n_sensor: 1,
-                lenslet_array: element::LensletArray(1, 511, 25.5),
-                detector: element::Detector(512, None, None),
-            },
+            args: element::SHACKHARTMANN::default(),
         }
     }
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
