@@ -23,6 +23,7 @@ fn main() {
         .whitelist_type("centroiding")
         .whitelist_type("shackHartmann")
         .whitelist_type("geometricShackHartmann")
+        .whitelist_type("coordinate_system")
         .whitelist_type("gmt_m1")
         .whitelist_type("gmt_m2")
         .whitelist_type("atmosphere")
@@ -35,9 +36,10 @@ fn main() {
         .write_to_file("src/bindings.rs")
         .expect("Couldn't write bindings!");
     println!("cargo:rustc-link-search=native=ceo/CEO/lib/");
+    println!("cargo:rustc-link-search=native=ceo/CEO/jsmn");
     println!("cargo:rustc-link-lib=static=ceo");
+    println!("cargo:rustc-link-lib=static=jsmn");
     println!("cargo:rustc-link-lib=curl");
-    println!("cargo:rustc-link-lib=jsmn");
     println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
     println!("cargo:rustc-link-lib=cudart");
     println!("cargo:rustc-link-lib=cublas");

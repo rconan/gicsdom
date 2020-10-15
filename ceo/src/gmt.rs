@@ -43,16 +43,14 @@ struct Mirror<'a> {
 }
  */
 
-/// Wrapper for CEO gmt_m1 and gmt_m2
+/// # CEO GMT M1 and M2 model
 ///
 /// # Examples
 ///
 /// ```
-/// use gicsdom::ceo;
-/// let mut src = ceo::Source::new(1,25.5,401);
-/// src.build("V",vec![0.0],vec![0.0],vec![0.0]);
-/// let mut gmt = ceo::Gmt::new();
-/// gmt.build(27,None);
+/// use ceo::{ceo,element::{GMT,SOURCE}};
+/// let mut src = ceo!(SOURCE);
+/// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil();
 /// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
 /// ```
@@ -70,19 +68,11 @@ pub struct Gmt {
     pub a1: Vec<f64>,
     pub a2: Vec<f64>,
 }
+/// ## `Gmt` builder
 impl CEO<element::GMT> {
     pub fn new() -> CEO<element::GMT> {
         CEO {
-            args: element::GMT {
-                m1: element::Mirror {
-                    mode_type: "bending modes".into(),
-                    n_mode: 0,
-                },
-                m2: element::Mirror {
-                    mode_type: "Karhunen-Loeve".into(),
-                    n_mode: 0,
-                },
-            },
+            args: element::GMT::default(),
         }
     }
     pub fn set_m1(mut self, mode_type: &str, n_mode: usize) -> Self {
@@ -419,8 +409,8 @@ impl Propagation for Gmt {
     /// Ray traces a `Source` through `Gmt`, ray tracing stops at the exit pupil
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            src._c_.reset_rays();
-            let rays: &mut bundle = &mut src._c_.rays;
+            src.as_raw_mut_ptr().reset_rays();
+            let rays: &mut bundle = &mut src.as_raw_mut_ptr().rays;
             self._c_m2.blocking(rays);
             self._c_m1.trace(rays);
             rays.gmt_truss_onaxis();

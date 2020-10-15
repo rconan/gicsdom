@@ -86,11 +86,7 @@ pub struct ShackHartmann<S: Model> {
 impl CEO<element::SHACKHARTMANN> {
     pub fn new() -> CEO<element::SHACKHARTMANN> {
         CEO {
-            args: element::SHACKHARTMANN {
-                n_sensor: 1,
-                lenslet_array: element::LensletArray(1, 511, 25.5),
-                detector: element::Detector(512, None, None),
-            },
+            args: element::SHACKHARTMANN::default(),
         }
     }
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
@@ -197,7 +193,7 @@ impl ShackHartmann<Geometric> {
     /// Calibrates the `ShackHartmann` WFS reference slopes and valid lenslets
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_.calibrate(&mut src._c_, threshold as f32);
+            self._c_.calibrate(src.as_raw_mut_ptr(), threshold as f32);
         }
         self
     }
@@ -262,7 +258,7 @@ impl<S: Model> Drop for ShackHartmann<S> {
 impl Propagation for ShackHartmann<Geometric> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.propagate(&mut src._c_);
+            self._c_.propagate(src.as_raw_mut_ptr());
         }
         self
     }
@@ -310,7 +306,7 @@ impl ShackHartmann<Diffractive> {
     }
     pub fn calibrate(&mut self, src: &mut Source, threshold: f64) -> &mut Self {
         unsafe {
-            self._c_.calibrate(&mut src._c_, threshold as f32);
+            self._c_.calibrate(src.as_raw_mut_ptr(), threshold as f32);
             self._c_.camera.reset();
         }
         self
@@ -348,7 +344,7 @@ impl ShackHartmann<Diffractive> {
 impl Propagation for ShackHartmann<Diffractive> {
     fn propagate(&mut self, src: &mut Source) -> &mut Self {
         unsafe {
-            self._c_.propagate(&mut src._c_);
+            self._c_.propagate(src.as_raw_mut_ptr());
         }
         self
     }

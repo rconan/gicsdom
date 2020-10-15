@@ -1,3 +1,11 @@
+//!
+//! # CEO wrapper crate
+//!
+//!The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
+//! The simplest method to build CEO element is to use the [`ceo!`][macro] macro builder
+//!
+//! [macro]: macro.ceo.html
+
 use std::{error::Error, f32, f64, fmt, mem};
 
 pub mod atmosphere;
@@ -12,21 +20,34 @@ pub mod pssn;
 pub mod shackhartmann;
 pub mod source;
 
+#[doc(inline)]
 pub use self::atmosphere::Atmosphere;
 //pub use self::calibrations::Calibration;
+#[doc(inline)]
 pub use self::centroiding::Centroiding;
+#[doc(inline)]
 pub use self::cu::Cu;
+#[doc(inline)]
 pub use self::fwhm::Fwhm;
+#[doc(inline)]
 pub use self::gmt::Gmt;
+#[doc(inline)]
 pub use self::imaging::Imaging;
+#[doc(inline)]
 pub use self::pssn::PSSn;
+#[doc(inline)]
 pub use self::shackhartmann::ShackHartmann;
+#[doc(inline)]
 pub use self::source::Propagation;
+#[doc(inline)]
 pub use self::source::Source;
+#[doc(hidden)]
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
 pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 
+/// CEO macro builder
+///
 /// One macro to rule them all, one macro to find them, one macro to bring them all and in the darkness bind them all
 ///
 /// # Examples
@@ -34,20 +55,21 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * GMT
 ///
 /// ```
-/// let gmt = crate::ceo!(element::GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
+/// use ceo::{ceo, element::*};
+/// let gmt = ceo!(GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
 /// ```
 ///
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use element::*;
-/// let mut wfs = crate::ceo!(
+/// use ceo::{ceo, element::*, shackhartmann::Geometric};
+/// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Geometric,
 ///     set_n_sensor = [1],
 ///     set_lenslet_array = [48, 16, 25.5 / 48f64]
 /// );
-/// let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
-/// let mut gmt = crate::ceo!(GMT);
+/// let mut src = ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+/// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil().through(&mut wfs);
 /// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
 /// ```
@@ -55,31 +77,31 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use element::*;
-/// let mut wfs = crate::ceo!(
+/// use ceo::{ceo, element::*, shackhartmann::Diffractive};
+/// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Diffractive,
 ///     set_n_sensor = [1],
 ///     set_lenslet_array = [48, 16, 25.5 / 48f64],
 ///     set_detector = [8, Some(24), None]
 /// );
-/// let mut src = crate::ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
-/// let mut gmt = crate::ceo!(GMT);
+/// let mut src = ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
+/// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil().through(&mut wfs);
 /// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
 /// ```
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        crate::CEO::<$element>::new().build()
+        CEO::<$element>::new().build()
     };
     ($element:ty:$model:ty) => {
-        crate::CEO::<$element>::new().build::<$model>()
+        CEO::<$element>::new().build::<$model>()
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        crate::CEO::<$element>::new()$(.$arg($($val),+))*.build()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build()
     };
     ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        crate::CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
+        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
     };
 }
 /*
@@ -91,16 +113,26 @@ macro_rules! gmt {
 */
 #[derive(Debug)]
 pub struct CeoError<T>(T);
-
 impl<T: std::fmt::Debug> Error for CeoError<T> {}
-
 impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CEO {:?} builder has failed!", self.0)
     }
 }
 
+/// CEO builder type trait
+///
+/// Only structures in the [`element`][element] module implement the trait
+///
+/// [element]: element/index.html
 pub trait CEOType {}
+/// CEO builder pattern
+///
+/// `CEO` is a generic builder pattern for all CEO elements.
+/// It will accept only the structures of the [`element`][element] module that implements the [`CEOtype`][ceotype] trait.
+///
+/// [element]: element/index.html
+/// [ceotype]: trait.CEOType.html
 #[derive(Debug)]
 pub struct CEO<T: CEOType> {
     args: T,
@@ -112,31 +144,42 @@ macro_rules! impl_ceotype {
 }
 pub mod element {
     use super::CEOType;
+    #[doc(hidden)]
     #[derive(Debug)]
     pub struct Mirror {
         pub mode_type: String,
         pub n_mode: usize,
     }
-    impl Default for Mirror {
-        fn default() -> Self {
-            Mirror {
-                mode_type: String::new(),
-                n_mode: 0,
-            }
-        }
-    }
-    /// n_side_lenslet, n_px_lenslet, d
-    #[derive(Debug)]
-    pub struct LensletArray(pub usize, pub usize, pub f64);
-    /// n_px_framelet, n_px_imagelet, osf
-    #[derive(Debug)]
-    pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
+    /// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
     #[derive(Debug)]
     pub struct GMT {
         pub m1: Mirror,
         pub m2: Mirror,
     }
+    /// Default properties:
+    ///  * M1:
+    ///    * mode type : "bending modes"
+    ///    * \# mode    : 0
+    ///  * M2:
+    ///    * mode type : "Karhunen-Loeve"
+    ///    * \# mode    : 0
+    impl Default for GMT {
+        fn default() -> Self {
+            GMT {
+                m1: Mirror {
+                    mode_type: "bending modes".into(),
+                    n_mode: 0,
+                },
+                m2: Mirror {
+                    mode_type: "Karhunen-Loeve".into(),
+                    n_mode: 0,
+                },
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
     pub struct SOURCE {
         pub size: usize,
         pub pupil_size: f64,
@@ -146,23 +189,157 @@ pub mod element {
         pub azimuth: Vec<f32>,
         pub magnitude: Vec<f32>,
     }
+    /// Default properties:
+    ///  * size             : 1
+    ///  * pupil size       : 25.5m
+    ///  * pupil sampling   : 512px
+    ///  * photometric band : Vs (500nm)
+    ///  * zenith           : 0degree
+    ///  * azimuth          : 0degree
+    ///  * magnitude        : 0
+    impl Default for SOURCE {
+        fn default() -> Self {
+            SOURCE {
+                size: 1,
+                pupil_size: 25.5,
+                pupil_sampling: 512,
+                band: "Vs".into(),
+                zenith: vec![0f32],
+                azimuth: vec![0f32],
+                magnitude: vec![0f32],
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
+    #[doc(hidden)]
     #[derive(Debug)]
+    pub struct LensletArray(pub usize, pub usize, pub f64);
+    impl Default for LensletArray {
+        fn default() -> Self {
+            LensletArray(1, 511, 25.5)
+        }
+    }
+    #[doc(hidden)]
+    #[derive(Debug)]
+    pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
+    impl Default for Detector {
+        fn default() -> Self {
+            Detector(512, None, None)
+        }
+    }
+    #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
     pub struct SHACKHARTMANN {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
     }
+    impl Default for SHACKHARTMANN {
+        fn default() -> Self {
+            SHACKHARTMANN {
+                n_sensor: 1,
+                lenslet_array: LensletArray::default(),
+                detector: Detector::default(),
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
     pub struct PSSN {
         pub r0_at_zenith: f64,
         pub oscale: f64,
         pub zenith_angle: f64,
     }
+    /// Default properties:
+    ///  * r0           : 16cm
+    ///  * L0           : 25m
+    ///  * zenith angle : 30 degrees
+    impl Default for PSSN {
+        fn default() -> Self {
+            PSSN {
+                r0_at_zenith: 0.16,
+                oscale: 25.0,
+                zenith_angle: 30_f64.to_radians(),
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
     #[derive(Debug)]
+    /// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
     pub struct FIELDDELAUNAY21 {
         pub src: super::CEO<SOURCE>,
     }
-    impl_ceotype!(GMT, SOURCE, SHACKHARTMANN, PSSN, FIELDDELAUNAY21);
+    // ---------------------------------------------------------------------------------------------
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct TurbulenceProfile {
+        pub n_layer: usize,
+        pub altitude: Vec<f32>,
+        pub xi0: Vec<f32>,
+        pub wind_speed: Vec<f32>,
+        pub wind_direction: Vec<f32>,
+    }
+    impl Default for TurbulenceProfile {
+        fn default() -> Self {
+            TurbulenceProfile {
+                n_layer: 7,
+                altitude: [25.0, 275.0, 425.0, 1250.0, 4000.0, 8000.0, 13000.0].to_vec(),
+                xi0: [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751].to_vec(),
+                wind_speed: [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187].to_vec(),
+                wind_direction: [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462].to_vec(),
+            }
+        }
+    }
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct RayTracing {
+        pub width: f32,
+        pub n_width_px: i32,
+        pub field_size: f32,
+        pub duration: f32,
+        pub filepath: Option<String>,
+        pub n_duration: Option<i32>,
+    }
+    /// [`CEO`](../struct.CEO.html#impl-6) [`Atmosphere`](../struct.Atmosphere.html) builder type
+    #[derive(Debug)]
+    pub struct ATMOSPHERE {
+        pub r0_at_zenith: f64,
+        pub oscale: f64,
+        pub zenith_angle: f64,
+        pub turbulence: TurbulenceProfile,
+        pub ray_tracing: Option<RayTracing>,
+    }
+    /// Default properties:
+    ///  * r0           : 16cm
+    ///  * L0           : 25m
+    ///  * zenith angle : 30 degrees
+    ///  * turbulence profile:
+    ///    * n_layer        : 7
+    ///    * altitude       : [25.0, 275.0, 425.0, 1250.0, 4000.0, 8000.0, 13000.0] m
+    ///    * xi0            : [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751]
+    ///    * wind speed     : [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187] m/s
+    ///    * wind direction : [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462] rd
+    /// * ray tracing : none
+    impl Default for ATMOSPHERE {
+        fn default() -> Self {
+            ATMOSPHERE {
+                r0_at_zenith: 0.16,
+                oscale: 25.5,
+                zenith_angle: 30f64.to_radians(),
+                turbulence: TurbulenceProfile::default(),
+                ray_tracing: None,
+            }
+        }
+    }
+    impl_ceotype!(
+        GMT,
+        SOURCE,
+        SHACKHARTMANN,
+        PSSN,
+        FIELDDELAUNAY21,
+        ATMOSPHERE
+    );
 }
 
 pub trait Conversion<T> {
@@ -173,58 +350,37 @@ pub trait Conversion<T> {
     fn to_arcsec(self) -> T;
     fn to_mas(self) -> T;
 }
-impl Conversion<f64> for f64 {
-    /// Converts angle in arcminute to radian
-    fn from_arcmin(self) -> f64 {
-        self.to_radians() / 60.
-    }
-    /// Converts angle in arcsecond to radian
-    fn from_arcsec(self) -> f64 {
-        self.from_arcmin() / 60.
-    }
-    /// Converts angle in milli-arcsecond to radian
-    fn from_mas(self) -> f64 {
-        self.from_arcsec() * 1e-3
-    }
-    /// Converts angle in radian to arcminute
-    fn to_arcmin(self) -> f64 {
-        60.0 * self.to_degrees()
-    }
-    /// Converts angle in radian to arcsecond
-    fn to_arcsec(self) -> f64 {
-        60.0 * self.to_arcmin()
-    }
-    /// Converts angle in radian to mill-arcsecond
-    fn to_mas(self) -> f64 {
-        1e3 * self.to_arcsec()
-    }
+macro_rules! impl_conversion {
+    ($($name:ty),+) => {
+        $(impl Conversion<$name> for $name {
+            /// Converts angle in arcminute to radian
+            fn from_arcmin(self) -> $name {
+                self.to_radians() / 60.
+            }
+            /// Converts angle in arcsecond to radian
+            fn from_arcsec(self) -> $name {
+                self.from_arcmin() / 60.
+            }
+            /// Converts angle in milli-arcsecond to radian
+            fn from_mas(self) -> $name {
+                self.from_arcsec() * 1e-3
+            }
+            /// Converts angle in radian to arcminute
+            fn to_arcmin(self) -> $name {
+                60.0 * self.to_degrees()
+            }
+            /// Converts angle in radian to arcsecond
+            fn to_arcsec(self) -> $name {
+                60.0 * self.to_arcmin()
+            }
+            /// Converts angle in radian to mill-arcsecond
+            fn to_mas(self) -> $name {
+                1e3 * self.to_arcsec()
+            }
+        })+
+    };
 }
-impl Conversion<f32> for f32 {
-    /// Converts angle in arcminute to radian
-    fn from_arcmin(self) -> f32 {
-        self.to_radians() / 60.
-    }
-    /// Converts angle in arcsecond to radian
-    fn from_arcsec(self) -> f32 {
-        self.from_arcmin() / 60.
-    }
-    /// Converts angle in milli-arcsecond to radian
-    fn from_mas(self) -> f32 {
-        self.from_arcsec() * 1e-3
-    }
-    /// Converts angle in radian to arcminute
-    fn to_arcmin(self) -> f32 {
-        60.0 * self.to_degrees()
-    }
-    /// Converts angle in radian to arcsecond
-    fn to_arcsec(self) -> f32 {
-        60.0 * self.to_arcmin()
-    }
-    /// Converts angle in radian to mill-arcsecond
-    fn to_mas(self) -> f32 {
-        1e3 * self.to_arcsec()
-    }
-}
+impl_conversion!(f64, f32);
 
 pub fn set_gpu(id: i32) {
     unsafe {
