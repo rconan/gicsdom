@@ -6,7 +6,7 @@ use log;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
-use std::{env, time::Instant};
+use std::{env, time::Duration, thread, time::Instant};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct CfdCases {
@@ -41,11 +41,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AWS_BATCH_JOB_ARRAY_INDEX env var missing")
         .parse::<usize>()
         .expect("AWS_BATCH_JOB_ARRAY_INDEX parsing failed");
+    thread::sleep(Duration::from_secs((job_idx*3) as u64));
     let index_offset = env::var("N_INDEX_OFFSET").unwrap_or("N_0".to_owned())[2..]
         .parse::<usize>()
         .expect("N_INDEX_OFFSET parsing failed");
 
-    let glao_loop = match env::var("LOOP").expect("LOOP:[OPEN,CLOSED] env var missing").as_str() {
+    let glao_loop = match env::var("LOOP")
+        .expect("LOOP:[OPEN,CLOSED] env var missing")
+        .as_str()
+    {
         "OPEN" => Some(Loop::Open),
         "CLOSED" => Some(Loop::Closed),
         _ => None,
@@ -79,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut science = match science_field.as_str() {
         "ONAXIS" => ScienceField::on_axis("Vs", n_px, None),
         "DELAUNAY21" => ScienceField::delaunay_21("Vs", n_px, None),
-        _ => panic!("SCIENCE is either ONAXIS or DELAUNAY21")
+        _ => panic!("SCIENCE is either ONAXIS or DELAUNAY21"),
     };
     println!("Building the science field ...");
     science.build();
@@ -165,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Step #{}: reset PSSn!", p);
                         glao_4gs.science.pssn.reset();
                     }
-                    if p%800==0 {
+                    if p % 800 == 0 {
                         println!(
                             "{:9.3} {:5.0} {:?} {:?}",
                             ds.current_time,
@@ -187,14 +191,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 wfe.push(glao_4gs.get_science(&mut ds));
                 glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
                 /*
-                */
+                 */
                 match ds.next() {
                     Some(p) => {
                         if p == rate {
                             println!("Step #{}: reset PSSn!", p);
                             glao_4gs.science.pssn.reset();
                         }
-                        if p%800==0 {
+                        if p % 800 == 0 {
                             println!(
                                 "{:9.3} {:5.0} {:?} {:?}",
                                 ds.current_time,
