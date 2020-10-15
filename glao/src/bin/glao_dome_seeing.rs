@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<usize>()
         .expect("N_INDEX_OFFSET parsing failed");
 
-    let glao_loop = match env::var("LOOP").expect("LOOP env var missing").as_str() {
+    let glao_loop = match env::var("LOOP").expect("LOOP:[OPEN,CLOSED] env var missing").as_str() {
         "OPEN" => Some(Loop::Open),
         "CLOSED" => Some(Loop::Closed),
         _ => None,
@@ -56,6 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("DURATION env var missing")
         .parse::<usize>()
         .expect("DURATION parsing failed!");
+
+    let science_field = env::var("SCIENCE").expect("SCIENCE:[ONAXIS,DELAUNAY21] env var mission");
 
     let rate = 40;
     let upload_results = true;
@@ -74,8 +76,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wind_speed = [5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187];
     let wind_direction = [0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462];
     let mut atm = ceo::Atmosphere::new();
-    let mut science = ScienceField::delaunay_21("Vs", n_px, None);
-    //let mut science = ScienceField::on_axis("Vs", n_px, None);
+    let mut science = match science_field.as_str() {
+        "ONAXIS" => ScienceField::on_axis("Vs", n_px, None),
+        "DELAUNAY21" => ScienceField::delaunay_21("Vs", n_px, None),
+        _ => panic!("SCIENCE is either ONAXIS or DELAUNAY21")
+    };
     println!("Building the science field ...");
     science.build();
     println!("Building the atmosphere ...");
@@ -154,20 +159,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             t.push(ds.current_time);
             glao_4gs.atm.secs = ds.current_time.clone();
             wfe.push(glao_4gs.get_science(&mut ds));
-            //glao_4gs.closed_loop(&mut ds, &mut kl_coefs, 0.5);
-            /*
-            println!(
-                " {:5.0} {:?} {:?}",
-                wfe.last().unwrap().0[0],
-                wfe.last().unwrap().1,
-                wfe.last().unwrap().2
-            );
-             */
             match ds.next() {
                 Some(p) => {
                     if p == rate {
                         println!("Step #{}: reset PSSn!", p);
                         glao_4gs.science.pssn.reset();
+                    }
+                    if p%800==0 {
+                        println!(
+                            "{:9.3} {:5.0} {:?} {:?}",
+                            ds.current_time,
+                            wfe.last().unwrap().0[0],
+                            wfe.last().unwrap().1,
+                            wfe.last().unwrap().2
+                        );
                     }
                 }
                 None => break,
@@ -205,21 +210,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    /*
-    let mut fwhm = ceo::Fwhm::new();
-    fwhm.build(&mut glao_4gs.science.src);
-    fwhm.upper_bracket = 2f64 / pssn.r0() as f64;
-    let glao_fwhm = fwhm.from_complex_otf(&pssn.telescope_error_otf());
-    */
-    //let ps = glao_4gs.science.src.phase().clone();
-    /*
-    println!(
-        "WFE RMS: [{:5.0},{:5.0}]nm ; PSSn: {:.5}",
-        wfe_0.0[0],
-        wfe.0[0],
-        glao_4gs.science.pssn.peek().estimates[0]
-    );
-    */
     println!("{} steps in {}s", ds.n_step, now.elapsed().as_secs());
 
     if upload_results {
@@ -253,15 +243,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<String>>()
         );
         println!("PSSn: {:.?}", glao_4gs.science.pssn.peek().estimates);
-        /*
-        let w = t
-            .clone()
-            .into_iter()
-            .zip(wfe_rms.clone().into_iter())
-            .collect::<Vec<(f64, f32)>>();
-        println!("Dome seeing WFE RMS: {:#?}", w);
-        println!("PSSn: {:?}", pssn.peek().estimates);
-        */
     }
 
     Ok(())
