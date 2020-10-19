@@ -1,7 +1,7 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, Cu, Mask, Propagation, Source, CEO};
+use super::{element, element::ShWfs, Cu, Mask, Propagation, Source, CEO};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -84,11 +84,6 @@ pub struct ShackHartmann<S: Model> {
     pub centroids: Cu<f32>,
 }
 impl CEO<element::SHACKHARTMANN> {
-    pub fn new() -> CEO<element::SHACKHARTMANN> {
-        CEO {
-            args: element::SHACKHARTMANN::default(),
-        }
-    }
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
         self.args.n_sensor = n_sensor;
         self
@@ -106,41 +101,58 @@ impl CEO<element::SHACKHARTMANN> {
         self.args.detector = element::Detector(n_px_framelet, n_px_imagelet, osf);
         self
     }
-    pub fn build<T: Model>(self) -> ShackHartmann<T> {
-        let element::LensletArray(n_side_lenslet, n_px_lenslet, d) = self.args.lenslet_array;
-        let mut wfs = ShackHartmann::<T> {
-            _c_: unsafe { mem::zeroed() },
-            n_side_lenslet: n_side_lenslet as i32,
-            n_px_lenslet: n_px_lenslet as i32,
-            d,
-            n_sensor: self.args.n_sensor as i32,
-            n_centroids: 0,
-            centroids: Cu::vector(
-                (n_side_lenslet * n_side_lenslet * 2 * self.args.n_sensor) as usize,
-            ),
-        };
-        let element::Detector(n_px_framelet, n_px_imagelet, osf) = self.args.detector;
-        let n_px = match n_px_imagelet {
-            Some(n_px_imagelet) => n_px_imagelet,
-            None => n_px_framelet,
-        };
-        let b = n_px / n_px_framelet;
-        let o = match osf {
-            Some(osf) => osf,
-            None => 2,
-        };
-        wfs.n_centroids = wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
-        wfs._c_.build(
-            wfs.n_side_lenslet,
-            wfs.d as f32,
-            wfs.n_sensor,
-            wfs.n_px_lenslet,
-            o as i32,
-            n_px as i32,
-            b as i32,
-        );
-        wfs.centroids.from_ptr(wfs._c_.get_c_as_mut_ptr());
-        wfs
+    pub fn guide_stars(&self) -> CEO<element::SOURCE> {
+        self.args
+            .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
+    }
+    pub fn build<T: Model>(&self) -> ShackHartmann<T> {
+        self.args.build::<T>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+}
+impl CEO<element::SH48> {
+    pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
+        self.args.n_sensor = n_sensor;
+        self
+    }
+    pub fn guide_stars(&self) -> CEO<element::SOURCE> {
+        self.args
+            .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
+    }
+    pub fn build<T: Model>(&self) -> ShackHartmann<T> {
+        self.args.build::<T>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+}
+use super::CEOWFS;
+impl CEOWFS for CEO<element::SHACKHARTMANN> {
+    fn build(self) -> ShackHartmann<Geometric> {
+        self.args.build::<Geometric>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+    fn get_n_data(&self) -> usize {
+        2*self.args.lenslet_array.0.pow(2)*self.args.n_sensor
+    }
+}
+impl CEOWFS for CEO<element::SH48> {
+    fn build(self) -> ShackHartmann<Geometric> {
+        self.args.build::<Geometric>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+    fn get_n_data(&self) -> usize {
+        2*self.args.lenslet_array.0.pow(2)*self.args.n_sensor
     }
 }
 impl<S: Model> ShackHartmann<S> {
@@ -160,6 +172,13 @@ impl<S: Model> ShackHartmann<S> {
             n_centroids: 0,
             centroids: Cu::vector((n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize),
         }
+    }
+    pub fn guide_stars(&self) -> CEO<element::SOURCE> {
+        CEO::<element::SOURCE>::new()
+            .set_size(self.n_sensor as usize)
+            .set_pupil_size(self.d * self.n_side_lenslet as f64)
+            .set_pupil_sampling((self.n_px_lenslet * self.n_side_lenslet + 1) as usize)
+            .set_band("R")
     }
     pub fn drop(&mut self) {
         self._c_.drop();
