@@ -1,12 +1,9 @@
-use serde::{Deserialize, Serialize};
-use serde_pickle as pickle;
 use std::f32;
 use std::ffi::CString;
-use std::fs::File;
 use std::mem;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, Conversion, Cu, CEO};
+use super::{element, Centroiding, Cu, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -36,56 +33,62 @@ pub struct Source {
     pub azimuth: Vec<f32>,
     pub magnitude: Vec<f32>,
 }
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct GlaoField {
-    pub zenith_arcmin: Vec<f32>,
-    pub azimuth_degree: Vec<f32>,
-}
 /// ## `Source` builder for a 21 source field
 impl CEO<element::FIELDDELAUNAY21> {
     /// Create a new `Source` builder
     pub fn new() -> CEO<element::FIELDDELAUNAY21> {
-        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
-        let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
-        let n_src = field.zenith_arcmin.len();
-        assert_eq!(n_src, 21);
         CEO {
-            args: element::FIELDDELAUNAY21 {
-                src: CEO::<element::SOURCE>::new()
-                    .set_size(n_src)
-                    .set_zenith_azimuth(
-                        field
-                            .zenith_arcmin
-                            .iter()
-                            .map(|x| x.from_arcmin())
-                            .collect::<Vec<f32>>(),
-                        field
-                            .azimuth_degree
-                            .iter()
-                            .map(|x| x.to_radians())
-                            .collect::<Vec<f32>>(),
-                    ),
-            },
+            args: element::FIELDDELAUNAY21::default(),
         }
     }
     /// Set the sampling of the pupil in pixels
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
-        self.args.src.args.pupil_sampling = pupil_sampling;
+        self.args.pupil_sampling = pupil_sampling;
         self
     }
     /// Set the pupil size in meters
     pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
-        self.args.src.args.pupil_size = pupil_size;
+        self.args.pupil_size = pupil_size;
         self
     }
     /// Set the photometric band
     pub fn set_band(mut self, band: &str) -> Self {
-        self.args.src.args.band = band.to_owned();
+        self.args.band = band.to_owned();
         self
     }
     /// Build the source object
     pub fn build(self) -> Source {
-        self.args.src.build()
+        let mut src = Source {
+            _c_: unsafe { mem::zeroed() },
+            size: self.args.size as i32,
+            pupil_size: self.args.pupil_size,
+            pupil_sampling: self.args.pupil_sampling as i32,
+            _wfe_rms: vec![0.0; self.args.size],
+            _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
+            zenith: self.args.zenith,
+            azimuth: self.args.azimuth,
+            magnitude: self.args.magnitude,
+        };
+        unsafe {
+            let origin = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 25.0,
+            };
+            let src_band = CString::new(self.args.band.into_bytes()).unwrap();
+            src._c_.setup7(
+                src_band.into_raw(),
+                src.magnitude.as_mut_ptr(),
+                src.zenith.as_mut_ptr(),
+                src.azimuth.as_mut_ptr(),
+                f32::INFINITY,
+                self.args.size as i32,
+                self.args.pupil_size,
+                self.args.pupil_sampling as i32,
+                origin,
+            );
+        }
+        src
     }
 }
 /// ## `Source` builder
