@@ -9,7 +9,7 @@
 use std::{error::Error, f32, f64, fmt, mem};
 
 pub mod atmosphere;
-//pub mod calibrations;
+pub mod calibrations;
 pub mod centroiding;
 pub mod ceo_bindings;
 pub mod cu;
@@ -22,7 +22,8 @@ pub mod source;
 
 #[doc(inline)]
 pub use self::atmosphere::Atmosphere;
-//pub use self::calibrations::Calibration;
+#[doc(inline)]
+pub use self::calibrations::Calibration;
 #[doc(inline)]
 pub use self::centroiding::Centroiding;
 #[doc(inline)]
@@ -125,7 +126,7 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
 /// Only structures in the [`element`][element] module implement the trait
 ///
 /// [element]: element/index.html
-pub trait CEOType {}
+pub trait CEOType: Clone + Default {}
 /// CEO builder pattern
 ///
 /// `CEO` is a generic builder pattern for all CEO elements.
@@ -133,25 +134,34 @@ pub trait CEOType {}
 ///
 /// [element]: element/index.html
 /// [ceotype]: trait.CEOType.html
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CEO<T: CEOType> {
     args: T,
 }
-macro_rules! impl_ceotype {
-    ($($element:ty),+) => {
-        $(impl CEOType for $element {})+
-    };
+pub trait CEOBluePrint<T: CEOType> {
+    fn new() -> CEO<T>;
+}
+impl<T: CEOType> CEOBluePrint<T> for CEO<T> {
+    fn new() -> Self {
+        CEO {
+            args: Default::default(),
+        }
+    }
+}
+pub trait CEOWFS: Clone {
+    fn build(self) -> ShackHartmann<shackhartmann::Geometric>;
+    fn get_n_data(&self) -> usize;
 }
 pub mod element {
     use super::CEOType;
     #[doc(hidden)]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Mirror {
         pub mode_type: String,
         pub n_mode: usize,
     }
     /// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct GMT {
         pub m1: Mirror,
         pub m2: Mirror,
@@ -178,7 +188,7 @@ pub mod element {
         }
     }
     // ---------------------------------------------------------------------------------------------
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
     pub struct SOURCE {
         pub size: usize,
@@ -211,23 +221,120 @@ pub mod element {
         }
     }
     // ---------------------------------------------------------------------------------------------
+    #[derive(Debug, Clone)]
+    /// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
+    pub struct FIELDDELAUNAY21 {
+        pub size: usize,
+        pub pupil_size: f64,
+        pub pupil_sampling: usize,
+        pub band: String,
+        pub zenith: Vec<f32>,
+        pub azimuth: Vec<f32>,
+        pub magnitude: Vec<f32>,
+    }
+    use serde::{Deserialize, Serialize};
+    #[derive(Debug, Deserialize, Serialize, Default)]
+    struct GlaoField {
+        pub zenith_arcmin: Vec<f32>,
+        pub azimuth_degree: Vec<f32>,
+    }
+    impl Default for FIELDDELAUNAY21 {
+        fn default() -> Self {
+            use super::Conversion;
+            use serde_pickle as pickle;
+            use std::fs::File;
+            let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
+            let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
+            let n_src = field.zenith_arcmin.len();
+            FIELDDELAUNAY21 {
+                size: n_src,
+                pupil_size: 25.5,
+                pupil_sampling: 512,
+                band: "Vs".into(),
+                zenith: field
+                    .zenith_arcmin
+                    .iter()
+                    .map(|x| x.from_arcmin())
+                    .collect::<Vec<f32>>(),
+                azimuth: field
+                    .azimuth_degree
+                    .iter()
+                    .map(|x| x.to_radians())
+                    .collect::<Vec<f32>>(),
+                magnitude: vec![0f32; n_src],
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
+    // n_side_lenslet, n_px_lenslet, d
     #[doc(hidden)]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct LensletArray(pub usize, pub usize, pub f64);
     impl Default for LensletArray {
         fn default() -> Self {
             LensletArray(1, 511, 25.5)
         }
     }
+    // n_px_framelet, n_px_imagelet, osf
     #[doc(hidden)]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
     impl Default for Detector {
         fn default() -> Self {
             Detector(512, None, None)
         }
     }
-    #[derive(Debug)]
+    pub trait ShWfs {
+        fn build<T: super::shackhartmann::Model>(
+            &self,
+            n_sensor: usize,
+            lenslet_array: LensletArray,
+            detector: Detector,
+        ) -> super::ShackHartmann<T> {
+            let LensletArray(n_side_lenslet, n_px_lenslet, d) = lenslet_array;
+            let mut wfs = super::ShackHartmann::<T> {
+                _c_: unsafe { std::mem::zeroed() },
+                n_side_lenslet: n_side_lenslet as i32,
+                n_px_lenslet: n_px_lenslet as i32,
+                d,
+                n_sensor: n_sensor as i32,
+                n_centroids: 0,
+                centroids: super::Cu::vector(
+                    (n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize,
+                ),
+            };
+            let Detector(n_px_framelet, n_px_imagelet, osf) = detector;
+            let n_px = match n_px_imagelet {
+                Some(n_px_imagelet) => n_px_imagelet,
+                None => n_px_framelet,
+            };
+            let b = n_px / n_px_framelet;
+            let o = match osf {
+                Some(osf) => osf,
+                None => 2,
+            };
+            wfs.n_centroids = wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
+            wfs._c_.build(
+                wfs.n_side_lenslet,
+                wfs.d as f32,
+                wfs.n_sensor,
+                wfs.n_px_lenslet,
+                o as i32,
+                n_px as i32,
+                b as i32,
+            );
+            wfs.centroids.from_ptr(wfs._c_.get_c_as_mut_ptr());
+            wfs
+        }
+        fn guide_stars(&self, n_sensor: usize, lenslet_array: LensletArray) -> super::CEO<SOURCE> {
+            let LensletArray(n_side_lenslet, n_px_lenslet, d) = lenslet_array;
+            super::CEO::<SOURCE>::new()
+                .set_size(n_sensor)
+                .set_pupil_size(d * n_side_lenslet as f64)
+                .set_pupil_sampling(n_px_lenslet * n_side_lenslet + 1)
+        }
+    }
+    #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
     pub struct SHACKHARTMANN {
         pub n_sensor: usize,
@@ -243,8 +350,26 @@ pub mod element {
             }
         }
     }
+    impl ShWfs for SHACKHARTMANN {}
+    #[derive(Debug, Clone)]
+    /// [`CEO`](../struct.CEO.html#impl-7) specialized [`ShackHartmann`](../struct.ShackHartmann.html) builder type
+    pub struct SH48 {
+        pub n_sensor: usize,
+        pub lenslet_array: LensletArray,
+        pub detector: Detector,
+    }
+    impl Default for SH48 {
+        fn default() -> Self {
+            SH48 {
+                n_sensor: 4,
+                lenslet_array: LensletArray(48, 16, 25.5 / 48.0),
+                detector: Detector(8, Some(24), Some(2)),
+            }
+        }
+    }
+    impl ShWfs for SH48 {}
     // ---------------------------------------------------------------------------------------------
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
     pub struct PSSN {
         pub r0_at_zenith: f64,
@@ -265,13 +390,7 @@ pub mod element {
         }
     }
     // ---------------------------------------------------------------------------------------------
-    #[derive(Debug)]
-    /// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
-    pub struct FIELDDELAUNAY21 {
-        pub src: super::CEO<SOURCE>,
-    }
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[doc(hidden)]
     pub struct TurbulenceProfile {
         pub n_layer: usize,
@@ -291,7 +410,7 @@ pub mod element {
             }
         }
     }
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[doc(hidden)]
     pub struct RayTracing {
         pub width: f32,
@@ -302,7 +421,7 @@ pub mod element {
         pub n_duration: Option<i32>,
     }
     /// [`CEO`](../struct.CEO.html#impl-6) [`Atmosphere`](../struct.Atmosphere.html) builder type
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ATMOSPHERE {
         pub r0_at_zenith: f64,
         pub oscale: f64,
@@ -332,13 +451,19 @@ pub mod element {
             }
         }
     }
+    macro_rules! impl_ceotype {
+        ($($element:ty),+) => {
+            $(impl CEOType for $element {})+
+        };
+    }
     impl_ceotype!(
         GMT,
         SOURCE,
         SHACKHARTMANN,
         PSSN,
         FIELDDELAUNAY21,
-        ATMOSPHERE
+        ATMOSPHERE,
+        SH48
     );
 }
 
