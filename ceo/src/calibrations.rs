@@ -169,7 +169,7 @@ impl Calibration {
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
         let c_push = wfs.get_data().from_dev();
-        println!("c push sum: {:?}", c_push.iter().sum::<f32>());
+        //println!("c push sum: {:?}", c_push.iter().sum::<f32>());
         // PULL
         match mirror {
             Mirror::M1 => {
@@ -189,7 +189,7 @@ impl Calibration {
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
         let c_pull = wfs.get_data().from_dev();
-        println!("c pull sum: {:?}", c_pull.iter().sum::<f32>());
+        //println!("c pull sum: {:?}", c_pull.iter().sum::<f32>());
         // RESET
         match mirror {
             Mirror::M1 => {
@@ -223,14 +223,16 @@ impl Calibration {
         mirror: Vec<Mirror>,
         segments: Vec<Vec<Segment>>,
         wfs_blueprint: impl CEOWFS,
+        wfs_intensity_threshold: Option<f64>
     ) {
         self.n_mode = segments
             .iter()
             .flat_map(|x| x.iter().map(|y| y.n_mode()))
             .sum::<usize>()
             * mirror.len();
-        self.n_data = wfs_blueprint.get_n_data();
         let mut calibration: Vec<f32> = vec![];
+        let mut nnz = 0_usize;
+        let wfs_intensity_threshold = wfs_intensity_threshold.unwrap_or(0.5);
         for (k, segment) in segments.iter().enumerate() {
             for m in mirror.iter() {
                 for rbm in segment.iter() {
@@ -239,8 +241,9 @@ impl Calibration {
                     let mut wfs = wfs_blueprint.clone().build();
                     let mut src = self.src_blueprint.clone().build();
                     src.through(&mut gmt).xpupil();
-                    wfs.calibrate(&mut src, 0.5);
-                    println!("# valid lenslet: {}", wfs.n_valid_lenslet());
+                    wfs.calibrate(&mut src, wfs_intensity_threshold);
+                    nnz = wfs.n_valid_lenslet();
+                    //println!("# valid lenslet: {}", wfs.n_valid_lenslet());
                     for l in idx {
                         calibration.extend::<Vec<f32>>(Calibration::sample(
                             &mut gmt, &mut src, &mut wfs, k, m, l, stroke,
@@ -249,7 +252,9 @@ impl Calibration {
                 }
             }
         }
-        self.poke = Cu::array(self.n_data, self.n_mode);
+        self.n_data = nnz*2;
+        println!("calibration len: {}/{}",calibration.len(),nnz*2*14);
+        self.poke = Cu::array(nnz*2, self.n_mode);
         self.poke.to_dev(&mut calibration);
     }
     pub fn solve(&mut self, data: &mut Cu<f32>) -> Vec<f32> {
