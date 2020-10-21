@@ -4,6 +4,7 @@ use super::{
     Centroiding, Cu, Gmt, ShackHartmann, Source, CEO, CEOWFS,
 };
 use std::ops::Range;
+use std::rc::Rc;
 //use std::time::Instant;
 
 #[derive(Clone)]
@@ -89,8 +90,9 @@ impl Segment {
 /// `Calibration` creates its own GMT simulation with a `Gmt` and a `Source`.
 /// The calibration is performed by estimating the geometric centroids associated with the calibrated functions.
 pub struct Calibration {
-    gmt_blueprint: CEO<GMT>,
-    src_blueprint: CEO<SOURCE>,
+    gmt_blueprint: Rc<CEO<GMT>>,
+    src_blueprint: Rc<CEO<SOURCE>>,
+    wfs_blueprint: Rc<dyn CEOWFS>,
     pub cog: Centroiding,
     pub n_data: usize,
     pub n_mode: usize,
@@ -98,10 +100,11 @@ pub struct Calibration {
 }
 impl Calibration {
     /// Creates a new `Calibration` with a `LensletArray` and the number of pixel per lenslet (`None`: 16)
-    pub fn new(gmt_blueprint: CEO<GMT>, src_blueprint: CEO<SOURCE>) -> Calibration {
+    pub fn new(gmt_blueprint: Rc<CEO<GMT>>, src_blueprint: Rc<CEO<SOURCE>>,wfs_blueprint: Rc<dyn CEOWFS>) -> Calibration {
         Calibration {
             gmt_blueprint,
             src_blueprint,
+            wfs_blueprint,
             cog: Centroiding::new(),
             n_data: 0,
             n_mode: 0,
@@ -212,8 +215,6 @@ impl Calibration {
             .map(|x| 0.5 * (x.0 - x.1) / stroke as f32)
             .collect()
     }
-}
-impl Calibration {
     /// Calibrates the given mirror and segment functions:
     ///
     /// * `mirror`: `Vec` of `Mirror` functions
@@ -222,7 +223,6 @@ impl Calibration {
         &mut self,
         mirror: Vec<Mirror>,
         segments: Vec<Vec<Segment>>,
-        wfs_blueprint: impl CEOWFS,
         wfs_intensity_threshold: Option<f64>
     ) {
         self.n_mode = segments
@@ -238,7 +238,7 @@ impl Calibration {
                 for rbm in segment.iter() {
                     let (stroke, idx) = rbm.strip();
                     let mut gmt = self.gmt_blueprint.clone().build();
-                    let mut wfs = wfs_blueprint.clone().build();
+                    let mut wfs = Rc::clone(&self.wfs_blueprint).build();
                     let mut src = self.src_blueprint.clone().build();
                     src.through(&mut gmt).xpupil();
                     wfs.calibrate(&mut src, wfs_intensity_threshold);

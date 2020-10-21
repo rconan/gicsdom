@@ -57,7 +57,7 @@ impl CEO<element::FIELDDELAUNAY21> {
         self
     }
     /// Build the source object
-    pub fn build(self) -> Source {
+    pub fn build(&self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },
             size: self.args.size as i32,
@@ -65,9 +65,9 @@ impl CEO<element::FIELDDELAUNAY21> {
             pupil_sampling: self.args.pupil_sampling as i32,
             _wfe_rms: vec![0.0; self.args.size],
             _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
-            zenith: self.args.zenith,
-            azimuth: self.args.azimuth,
-            magnitude: self.args.magnitude,
+            zenith: self.args.zenith.clone(),
+            azimuth: self.args.azimuth.clone(),
+            magnitude: self.args.magnitude.clone(),
         };
         unsafe {
             let origin = vector {
@@ -75,7 +75,7 @@ impl CEO<element::FIELDDELAUNAY21> {
                 y: 0.0,
                 z: 25.0,
             };
-            let src_band = CString::new(self.args.band.into_bytes()).unwrap();
+            let src_band = CString::new(self.args.band.clone().into_bytes()).unwrap();
             src._c_.setup7(
                 src_band.into_raw(),
                 src.magnitude.as_mut_ptr(),
@@ -149,7 +149,7 @@ impl CEO<element::SOURCE> {
         self
     }
     /// Build the `Source`
-    pub fn build(self) -> Source {
+    pub fn build(&self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },
             size: self.args.size as i32,
@@ -157,9 +157,9 @@ impl CEO<element::SOURCE> {
             pupil_sampling: self.args.pupil_sampling as i32,
             _wfe_rms: vec![0.0; self.args.size],
             _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
-            zenith: self.args.zenith,
-            azimuth: self.args.azimuth,
-            magnitude: self.args.magnitude,
+            zenith: self.args.zenith.clone(),
+            azimuth: self.args.azimuth.clone(),
+            magnitude: self.args.magnitude.clone(),
         };
         unsafe {
             let origin = vector {
@@ -167,7 +167,7 @@ impl CEO<element::SOURCE> {
                 y: 0.0,
                 z: 25.0,
             };
-            let src_band = CString::new(self.args.band.into_bytes()).unwrap();
+            let src_band = CString::new(self.args.band.clone().into_bytes()).unwrap();
             src._c_.setup7(
                 src_band.into_raw(),
                 src.magnitude.as_mut_ptr(),

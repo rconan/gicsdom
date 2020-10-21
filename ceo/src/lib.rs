@@ -138,18 +138,18 @@ pub trait CEOType: Clone + Default {}
 pub struct CEO<T: CEOType> {
     args: T,
 }
-pub trait CEOBluePrint<T: CEOType> {
+pub trait CEOInit<T: CEOType> {
     fn new() -> CEO<T>;
 }
-impl<T: CEOType> CEOBluePrint<T> for CEO<T> {
+impl<T: CEOType> CEOInit<T> for CEO<T> {
     fn new() -> Self {
         CEO {
             args: Default::default(),
         }
     }
 }
-pub trait CEOWFS: Clone {
-    fn build(self) -> ShackHartmann<shackhartmann::Geometric>;
+pub trait CEOWFS {
+    fn build(&self) -> ShackHartmann<shackhartmann::Geometric>;
     fn get_n_data(&self) -> usize;
 }
 pub mod element {

@@ -132,7 +132,7 @@ impl CEO<element::SH48> {
 }
 use super::CEOWFS;
 impl CEOWFS for CEO<element::SHACKHARTMANN> {
-    fn build(self) -> ShackHartmann<Geometric> {
+    fn build(&self) -> ShackHartmann<Geometric> {
         self.args.build::<Geometric>(
             self.args.n_sensor,
             self.args.lenslet_array.clone(),
@@ -144,7 +144,7 @@ impl CEOWFS for CEO<element::SHACKHARTMANN> {
     }
 }
 impl CEOWFS for CEO<element::SH48> {
-    fn build(self) -> ShackHartmann<Geometric> {
+    fn build(&self) -> ShackHartmann<Geometric> {
         self.args.build::<Geometric>(
             self.args.n_sensor,
             self.args.lenslet_array.clone(),

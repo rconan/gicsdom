@@ -103,7 +103,7 @@ impl CEO<element::GMT> {
         };
         self
     }
-    pub fn build(self) -> Gmt {
+    pub fn build(&self) -> Gmt {
         let mut gmt = Gmt {
             _c_m1_modes: unsafe { mem::zeroed() },
             _c_m2_modes: unsafe { mem::zeroed() },
@@ -115,7 +115,7 @@ impl CEO<element::GMT> {
             a1: vec![0.],
             a2: vec![0.],
         };
-        let m1_mode_type = CString::new(self.args.m1.mode_type.into_bytes()).unwrap();
+        let m1_mode_type = CString::new(self.args.m1.mode_type.clone().into_bytes()).unwrap();
         gmt.m1_n_mode = self.args.m1.n_mode;
         gmt.a1 = vec![0.0; 7 * gmt.m1_n_mode as usize];
         unsafe {
@@ -123,7 +123,7 @@ impl CEO<element::GMT> {
                 .setup(m1_mode_type.into_raw(), 7, gmt.m1_n_mode as i32);
             gmt._c_m1.setup1(&mut gmt._c_m1_modes);
         }
-        let m2_mode_type = CString::new(self.args.m2.mode_type.into_bytes()).unwrap();
+        let m2_mode_type = CString::new(self.args.m2.mode_type.clone().into_bytes()).unwrap();
         gmt.m2_n_mode = self.args.m2.n_mode;
         gmt.a2 = vec![0.0; 7 * gmt.m2_n_mode as usize];
         unsafe {
