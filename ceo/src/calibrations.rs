@@ -89,62 +89,36 @@ impl Segment {
 
 /// GMT segment rigid body motion and surface figure calibration
 ///
-/// `Calibration` creates its own GMT simulation with a `Gmt` and a `Source`.
+/// `Calibration` creates its own GMT simulation with a `Gmt`, a `Source` and a `CEOWFS`.
 /// The calibration is performed by estimating the geometric centroids associated with the calibrated functions.
 pub struct Calibration {
     gmt_blueprint: Arc<CEO<GMT>>,
     src_blueprint: Arc<CEO<SOURCE>>,
-    wfs_blueprint: Arc<Box<dyn CEOWFS>>,
+    wfs_blueprint: Arc<dyn CEOWFS>,
     pub n_data: usize,
     pub n_mode: usize,
     pub poke: Cu<f32>,
 }
 impl Calibration {
-    /// Creates a new `Calibration` with a `LensletArray` and the number of pixel per lenslet (`None`: 16)
-    pub fn new(
-        gmt_blueprint: CEO<GMT>,
-        src_blueprint: CEO<SOURCE>,
-        wfs_blueprint: Box<dyn CEOWFS>,
-    ) -> Calibration {
+    /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `CEOWFS`
+    pub fn new<P>(
+        gmt_blueprint: &CEO<GMT>,
+        src_blueprint: &CEO<SOURCE>,
+        wfs_blueprint: &P,
+    ) -> Calibration
+    where
+        P: CEOWFS + std::clone::Clone + 'static,
+    {
         Calibration {
-            gmt_blueprint: Arc::new(gmt_blueprint),
-            src_blueprint: Arc::new(src_blueprint),
-            wfs_blueprint: Arc::new(wfs_blueprint),
+            gmt_blueprint: Arc::new(gmt_blueprint.clone()),
+            src_blueprint: Arc::new(src_blueprint.clone()),
+            wfs_blueprint: Arc::new(wfs_blueprint.clone()),
             n_data: 0,
             n_mode: 0,
             poke: Cu::new(),
         }
     }
-    /*
-    /// Sets `Calibration` parameters:
-    ///
-    /// * `zen` - `Source` zenith angle [rd]
-    /// * `azi` - `Source` azimuth angle [rd]
-    /// * `valid_lenslets` - the valid lenslets mask
-    /// * `m1_n_mode` - the number of M1 modes or `None`
-    /// * `m2_max_n` -  M2 largest Zernike radial order per segment
-    pub fn build(
-        &mut self,
-        zen: f32,
-        azi: f32,
-        valid_lenslets: &Vec<i8>,
-        m1_n_mode: Option<usize>,
-        m2_max_n: Option<usize>,
-    ) -> &mut Self {
-        self.gmt.build(m1_n_mode.unwrap(), m2_max_n);
-        self.m1_mode = vec![vec![0.; m1_n_mode.or(Some(1)).unwrap()]; 7];
-        self.src.build("R+I", vec![zen], vec![azi], vec![0f32]);
-        self.cog.build(self.n_side_lenslet as u32, None);
-        //        self.cog.process(detector, None);
-        self.n_data = self
-            .cog
-            .set_valid_lenslets(None, Some(valid_lenslets.clone()));
-        //println!("# valid lenslets: {}", self.n_data);
-        self.n_data *= 2;
-        self
-    }
-    */
-    /// Performs the calibration of a single `Segment` function for a single `Mirror` function
+    /// Performs the calibration of a single `Segment` function for a single `Mirror`
     pub fn sample(
         gmt: &mut Gmt,
         src: &mut Source,
@@ -224,7 +198,7 @@ impl Calibration {
                 for rbm in segment.iter() {
                     let (stroke, idx) = rbm.strip();
                     let mut gmt = self.gmt_blueprint.clone().build();
-                    let mut wfs = Arc::clone(&self.wfs_blueprint).build();
+                    let mut wfs = self.wfs_blueprint.clone().build();
                     let mut src = self.src_blueprint.clone().build();
                     src.through(&mut gmt).xpupil();
                     wfs.calibrate(&mut src, wfs_intensity_threshold);

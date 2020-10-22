@@ -1,10 +1,9 @@
 use ceo::{
     calibrations, ceo, element::*, shackhartmann::Geometric as WFS_TYPE, CEOInit, Calibration,
-    Conversion, CEO,
+     CEO,
 };
 use serde_pickle as pickle;
 use std::fs::File;
-use std::rc::Rc;
 use std::time::Instant;
 
 fn main() {
@@ -12,11 +11,7 @@ fn main() {
     let wfs_blueprint = CEO::<SH48>::new().set_n_sensor(1);
     let gs_blueprint = wfs_blueprint.guide_stars();
 
-    let mut gmt2wfs = Calibration::new(
-        gmt_blueprint.clone(),
-        gs_blueprint.clone(),
-        std::boxed::Box::new(wfs_blueprint.clone()),
-    );
+    let mut gmt2wfs = Calibration::new(&gmt_blueprint, &gs_blueprint, &wfs_blueprint);
     let mirror = vec![calibrations::Mirror::M2];
     let segments = vec![vec![calibrations::Segment::Rxyz(1e-6, Some(0..2))]; 7];
     let now = Instant::now();
