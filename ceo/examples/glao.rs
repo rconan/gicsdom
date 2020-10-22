@@ -8,14 +8,14 @@ use std::rc::Rc;
 use std::time::Instant;
 
 fn main() {
-    let gmt_blueprint = Rc::new(CEO::<GMT>::new().set_m2_n_mode(70));
-    let wfs_blueprint = Rc::new(CEO::<SH48>::new());
-    let gs_blueprint = Rc::new(wfs_blueprint.guide_stars().set_on_ring(6f32.from_arcmin()));
+    let gmt_blueprint = CEO::<GMT>::new().set_m2_n_mode(70);
+    let wfs_blueprint = CEO::<SH48>::new();
+    let gs_blueprint = wfs_blueprint.guide_stars().set_on_ring(6f32.from_arcmin());
 
     let mut gmt2wfs = Calibration::new(
-        Rc::clone(&gmt_blueprint),
-        Rc::clone(&gs_blueprint),
-        wfs_blueprint.clone(),
+        gmt_blueprint.clone(),
+        gs_blueprint.clone(),
+        std::boxed::Box::new(wfs_blueprint.clone()),
     );
     let mirror = vec![calibrations::Mirror::M2MODES];
     let segments = vec![vec![calibrations::Segment::Modes(1e-6, 1..70)]; 7];

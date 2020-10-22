@@ -4,15 +4,19 @@ use ceo::{
 };
 use serde_pickle as pickle;
 use std::fs::File;
-use std::time::Instant;
 use std::rc::Rc;
+use std::time::Instant;
 
 fn main() {
-    let gmt_blueprint = Rc::new(CEO::<GMT>::new());
-    let wfs_blueprint = Rc::new(CEO::<SH48>::new().set_n_sensor(1));
-    let gs_blueprint = Rc::new(wfs_blueprint.guide_stars());
+    let gmt_blueprint = CEO::<GMT>::new();
+    let wfs_blueprint = CEO::<SH48>::new().set_n_sensor(1);
+    let gs_blueprint = wfs_blueprint.guide_stars();
 
-    let mut gmt2wfs = Calibration::new(Rc::clone(&gmt_blueprint), Rc::clone(&gs_blueprint), wfs_blueprint.clone());
+    let mut gmt2wfs = Calibration::new(
+        gmt_blueprint.clone(),
+        gs_blueprint.clone(),
+        std::boxed::Box::new(wfs_blueprint.clone()),
+    );
     let mirror = vec![calibrations::Mirror::M2];
     let segments = vec![vec![calibrations::Segment::Rxyz(1e-6, Some(0..2))]; 7];
     let now = Instant::now();
