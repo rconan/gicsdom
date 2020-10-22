@@ -16,6 +16,8 @@ pub enum Mirror {
     M1MODES,
     /// M2 rigid body motion
     M2,
+    /// M1 modal surface
+    M2MODES,
 }
 
 #[derive(Clone)]
@@ -100,7 +102,11 @@ pub struct Calibration {
 }
 impl Calibration {
     /// Creates a new `Calibration` with a `LensletArray` and the number of pixel per lenslet (`None`: 16)
-    pub fn new(gmt_blueprint: Rc<CEO<GMT>>, src_blueprint: Rc<CEO<SOURCE>>,wfs_blueprint: Rc<dyn CEOWFS>) -> Calibration {
+    pub fn new(
+        gmt_blueprint: Rc<CEO<GMT>>,
+        src_blueprint: Rc<CEO<SOURCE>>,
+        wfs_blueprint: Rc<dyn CEOWFS>,
+    ) -> Calibration {
         Calibration {
             gmt_blueprint,
             src_blueprint,
@@ -153,61 +159,43 @@ impl Calibration {
         let mut m1_rbm = vec![vec![0.; 6]; 7];
         let mut m1_mode = vec![vec![0.; gmt.m1_n_mode]; 7];
         let mut m2_rbm = vec![vec![0.; 6]; 7];
+        let mut m2_mode = vec![vec![0.; gmt.m2_n_mode]; 7];
+        let mut update = |x: f64, gmt: &mut Gmt| {
+            match mirror {
+                Mirror::M1 => {
+                    m1_rbm[sid][k] = x;
+                    gmt.update(Some(&m1_rbm), None, None, None);
+                }
+                Mirror::M1MODES => {
+                    m1_mode[sid][k] = x;
+                    gmt.update(None, None, Some(&m1_mode), None);
+                }
+                Mirror::M2 => {
+                    m2_rbm[sid][k] = x;
+                    gmt.update(None, Some(&m2_rbm), None, None);
+                }
+                Mirror::M2MODES => {
+                    m2_mode[sid][k] = x;
+                    gmt.update(None, None, None, Some(&m2_mode));
+                }
+            };
+        };
         // PUSH
-        match mirror {
-            Mirror::M1 => {
-                m1_rbm[sid][k] = stroke;
-                gmt.update(Some(&m1_rbm), None, None);
-            }
-            Mirror::M1MODES => {
-                m1_mode[sid][k] = stroke;
-                gmt.update(None, None, Some(&m1_mode));
-            }
-            Mirror::M2 => {
-                m2_rbm[sid][k] = stroke;
-                gmt.update(None, Some(&m2_rbm), None);
-            }
-        }
+        update(stroke, gmt);
         wfs.reset();
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
         let c_push = wfs.get_data().from_dev();
         //println!("c push sum: {:?}", c_push.iter().sum::<f32>());
         // PULL
-        match mirror {
-            Mirror::M1 => {
-                m1_rbm[sid][k] = -stroke;
-                gmt.update(Some(&m1_rbm), None, None);
-            }
-            Mirror::M1MODES => {
-                m1_mode[sid][k] = -stroke;
-                gmt.update(None, None, Some(&m1_mode));
-            }
-            Mirror::M2 => {
-                m2_rbm[sid][k] = -stroke;
-                gmt.update(None, Some(&m2_rbm), None);
-            }
-        }
+        update(-stroke, gmt);
         wfs.reset();
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
         let c_pull = wfs.get_data().from_dev();
         //println!("c pull sum: {:?}", c_pull.iter().sum::<f32>());
         // RESET
-        match mirror {
-            Mirror::M1 => {
-                m1_rbm[sid][k] = 0f64;
-                gmt.update(Some(&m1_rbm), None, None);
-            }
-            Mirror::M1MODES => {
-                m1_mode[sid][k] = 0f64;
-                gmt.update(None, None, Some(&m1_mode));
-            }
-            Mirror::M2 => {
-                m2_rbm[sid][k] = 0f64;
-                gmt.update(None, Some(&m2_rbm), None);
-            }
-        }
+        update(0f64, gmt);
         // OUT
         c_push
             .iter()
@@ -223,7 +211,7 @@ impl Calibration {
         &mut self,
         mirror: Vec<Mirror>,
         segments: Vec<Vec<Segment>>,
-        wfs_intensity_threshold: Option<f64>
+        wfs_intensity_threshold: Option<f64>,
     ) {
         self.n_mode = segments
             .iter()
@@ -252,13 +240,17 @@ impl Calibration {
                 }
             }
         }
-        self.n_data = nnz*2;
-        println!("calibration len: {}/{}",calibration.len(),nnz*2*14);
-        self.poke = Cu::array(nnz*2, self.n_mode);
+        self.n_data = nnz * 2;
+        println!("calibration len: {}/{}", calibration.len(), nnz * 2 * 14);
+        self.poke = Cu::array(nnz * 2, self.n_mode);
         self.poke.to_dev(&mut calibration);
     }
+    pub fn qr(&mut self) -> &mut Self {
+        self.poke.qr();
+        self
+    }
     pub fn solve(&mut self, data: &mut Cu<f32>) -> Vec<f32> {
-        self.poke.qr().qr_solve(data).into()
+        self.poke.qr_solve(data).into()
     }
 }
 /*
