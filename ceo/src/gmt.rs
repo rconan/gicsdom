@@ -321,6 +321,7 @@ impl Gmt {
         m1_rbm: Option<&Vec<Vec<f64>>>,
         m2_rbm: Option<&Vec<Vec<f64>>>,
         m1_mode: Option<&Vec<Vec<f64>>>,
+        m2_mode: Option<&Vec<Vec<f64>>>,
     ) {
         if let Some(m1_rbm) = m1_rbm {
             for (k, rbm) in m1_rbm.iter().enumerate() {
@@ -335,6 +336,10 @@ impl Gmt {
         if let Some(m1_mode) = m1_mode {
             let mut m = m1_mode.clone().into_iter().flatten().collect::<Vec<f64>>();
             self.set_m1_modes(&mut m);
+        }
+        if let Some(m2_mode) = m2_mode {
+            let mut m = m2_mode.clone().into_iter().flatten().collect::<Vec<f64>>();
+            self.set_m2_modes(&mut m);
         }
     }
     pub fn update42(
