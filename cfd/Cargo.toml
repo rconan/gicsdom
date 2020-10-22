@@ -9,5 +9,7 @@ edition = "2018"
 [dependencies]
 ceo = { path = "../ceo" }
 cirrus = { path = "../cirrus" }
+tokio = "0.2.22"
 serde_yaml = "0.8.13"
 serde = "^1.0"
+indicatif = "0.15.0"
