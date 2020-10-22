@@ -96,7 +96,7 @@ impl CEO<element::SOURCE> {
     /// Create a new `Source` builder
     pub fn new() -> CEO<element::SOURCE> {
         CEO {
-            args: element::SOURCE::default()
+            args: element::SOURCE::default(),
         }
     }
     /// Set the number of sources
@@ -135,6 +135,14 @@ impl CEO<element::SOURCE> {
         );
         self.args.zenith = zenith;
         self.args.azimuth = azimuth;
+        self
+    }
+    /// Set n sources at zenith angle evenly spread of a ring
+    pub fn set_on_ring(mut self, zenith: f32) -> Self {
+        self.args.zenith = vec![zenith; self.args.size];
+        self.args.azimuth = (0..self.args.size)
+            .map(|x| 2. * std::f32::consts::PI * x as f32 / self.args.size as f32)
+            .collect::<Vec<f32>>();
         self
     }
     /// Set the source magnitude
