@@ -201,7 +201,9 @@ impl Atmosphere {
         };
         self
     }
-
+    pub fn as_raw_mut_ptr(&mut self) -> &mut atmosphere {
+        &mut self._c_
+    }
     pub fn raytrace_build(
         &mut self,
         r_not: f32,
