@@ -16,6 +16,7 @@ pub mod cu;
 pub mod fwhm;
 pub mod gmt;
 pub mod imaging;
+pub mod lmmse;
 pub mod pssn;
 pub mod shackhartmann;
 pub mod source;
@@ -34,6 +35,8 @@ pub use self::fwhm::Fwhm;
 pub use self::gmt::Gmt;
 #[doc(inline)]
 pub use self::imaging::Imaging;
+#[doc(inline)]
+pub use self::lmmse::LinearMinimumMeanSquareError;
 #[doc(inline)]
 pub use self::pssn::PSSn;
 #[doc(inline)]
@@ -451,6 +454,33 @@ pub mod element {
             }
         }
     }
+    // ---------------------------------------------------------------------------------------------
+    #[derive(Debug, Clone)]
+    pub struct LMMSE {
+        pub atm: super::CEO<ATMOSPHERE>,
+        pub guide_star: super::CEO<SOURCE>,
+        pub mmse_star: Option<super::CEO<SOURCE>>,
+        pub fov_diameter: Option<f64>,
+        pub n_side_lenslet: usize,
+        pub solver_id: String,
+        pub pupil_mask: super::Mask,
+        pub wavefront_osf: usize,
+    }
+    impl Default for LMMSE {
+        fn default() -> Self {
+            LMMSE {
+                atm: super::CEO::<ATMOSPHERE>::new(),
+                guide_star: super::CEO::<SOURCE>::new(),
+                mmse_star: Some(super::CEO::<SOURCE>::new()),
+                fov_diameter: None,
+                n_side_lenslet: 0,
+                solver_id: "MINRES".to_owned(),
+                pupil_mask: super::Mask::new(),
+                wavefront_osf: 1,
+            }
+        }
+    }
+    // ---------------------------------------------------------------------------------------------
     macro_rules! impl_ceotype {
         ($($element:ty),+) => {
             $(impl CEOType for $element {})+
@@ -463,7 +493,8 @@ pub mod element {
         PSSN,
         FIELDDELAUNAY21,
         ATMOSPHERE,
-        SH48
+        SH48,
+        LMMSE
     );
 }
 
@@ -513,6 +544,7 @@ pub fn set_gpu(id: i32) {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Mask {
     _c_: mask,
 }
@@ -537,6 +569,9 @@ impl Mask {
         self._c_.nnz as usize
     }
     pub fn as_mut_prt(&mut self) -> *mut mask {
+        &mut self._c_
+    }
+    pub fn as_raw_mut_ptr(&mut self) -> &mut mask {
         &mut self._c_
     }
 }
