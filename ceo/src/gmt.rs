@@ -463,7 +463,7 @@ mod tests {
         let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
-        gmt.update(Some(&rt), None, None);
+        gmt.update(Some(&rt), None, None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
         let mut delta: Vec<f32> = Vec::with_capacity(7);
         for k in 0..7 {
@@ -480,7 +480,7 @@ mod tests {
         let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
-        gmt.update(Some(&rt), None, None);
+        gmt.update(Some(&rt), None, None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
         let mut delta: Vec<f32> = Vec::with_capacity(7);
         for k in 0..7 {
@@ -497,7 +497,7 @@ mod tests {
         let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 1e-6, 0f64, 0f64]; 7];
-        gmt.update(None, Some(&rt), None);
+        gmt.update(None, Some(&rt), None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
         let mut delta: Vec<f32> = Vec::with_capacity(7);
         for k in 0..7 {
@@ -514,7 +514,7 @@ mod tests {
         let mut gmt = CEO::<GMT>::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
         let rt = vec![vec![0f64, 0f64, 0f64, 0f64, 1e-6, 0f64]; 7];
-        gmt.update(None, Some(&rt), None);
+        gmt.update(None, Some(&rt), None, None);
         let seg_tts = src.through(&mut gmt).xpupil().segments_gradients();
         let mut delta: Vec<f32> = Vec::with_capacity(7);
         for k in 0..7 {

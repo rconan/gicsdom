@@ -235,7 +235,7 @@ mod tests {
         let s0 = cog.grab().valids(None);
 
         let m2_rbm = vec![vec![0f64, 0f64, 0f64, 1e-6, 1e-6, 0f64]; 7];
-        gmt.update(None, Some(&m2_rbm), None);
+        gmt.update(None, Some(&m2_rbm), None, None);
         sensor.reset();
         src.through(&mut gmt).xpupil().through(&mut sensor);
         let c = cog.process(&sensor, Some(&cog0)).grab().valids(None);

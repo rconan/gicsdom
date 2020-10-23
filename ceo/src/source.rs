@@ -542,7 +542,7 @@ mod tests {
         gmt.build(1, None);
         let p0 = src.through(&mut gmt).xpupil().segment_piston_10e(-9);
         let rt = vec![vec![0f64, 0f64, 1e-6, 0f64, 0f64, 0f64]; 7];
-        gmt.update(None, Some(&rt), None);
+        gmt.update(None, Some(&rt), None, None);
         let p = src.through(&mut gmt).xpupil().segment_piston_10e(-9);
         let dp = p
             .iter()

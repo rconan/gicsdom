@@ -390,6 +390,7 @@ mod tests {
     #[test]
     fn shack_hartmann_geometric_new() {
         use element::*;
+        use crate::CEOInit;
         let mut wfs = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
@@ -403,6 +404,7 @@ mod tests {
     #[test]
     fn shack_hartmann_geometric_new_with_macro() {
         use element::*;
+        use crate::CEOInit;
         let mut wfs = crate::ceo!(
             SHACKHARTMANN: Geometric,
             set_n_sensor = [1],
@@ -417,6 +419,7 @@ mod tests {
     #[test]
     fn shack_hartmann_diffractive_new() {
         use element::*;
+        use crate::CEOInit;
         let mut wfs = CEO::<SHACKHARTMANN>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
@@ -431,6 +434,7 @@ mod tests {
     #[test]
     fn shack_hartmann_diffractive_new_with_macro() {
         use element::*;
+        use crate::CEOInit;
         let mut wfs = crate::ceo!(
             SHACKHARTMANN: Diffractive,
             set_n_sensor = [1],
