@@ -23,21 +23,6 @@ fn main() {
 
     let mut gmt = ceo!(GMT, set_m2_n_mode = [n_kl]);
     let mut mmse_src = src_blueprint.build();
-    let mut kl: Vec<Vec<f32>> = vec![];
-    for s in 0..7 {
-        for k in 1..n_kl {
-            gmt.set_m2_modes_ij(s, k, 1e-6);
-            mmse_src.through(&mut gmt).xpupil();
-            kl.push(mmse_src.phase_as_ptr().into());
-        }
-    }
-    gmt.reset();
-    let kl_norm = kl
-        .iter()
-        .map(|x| x.iter().map(|y| (y * y) as f64).sum::<f64>())
-        .collect::<Vec<f64>>();
-    let mut file = File::create("KL.pkl").unwrap();
-    pickle::to_writer(&mut file, &kl, true).unwrap();
 
     let mut lmmse = CEO::<LMMSE>::new()
         .set_atmosphere(&atm_blueprint)
@@ -67,23 +52,14 @@ fn main() {
     mmse_src.sub(&mut lmmse_phase);
     println!("Residual WFE RMS: {}nm", mmse_src.wfe_rms_10e(-9)[0]);
 
-    let phase = Vec::<f32>::from(lmmse_phase);
-    let mut kl_coefs = kl
-        .iter()
-        .zip(kl_norm.iter())
-        .map(|x| {
-            x.0.iter()
-                .zip(phase.iter())
-                .map(|y| -1e-6 * (y.0 * y.1) as f64)
-                .sum::<f64>()
-                / x.1
-        })
-        .collect::<Vec<f64>>();
+    let kln = lmmse.calibrate_karhunen_loeve(n_kl, Some(1), None);
+    let mut kl_coefs = lmmse.get_karhunen_loeve_coefficients(&kln, Some(-1f64));
     (0..7).for_each(|k| kl_coefs.insert(k * n_kl, 0.));
 
     let mut file = File::create("KL_coefs.pkl").unwrap();
     pickle::to_writer(&mut file, &kl_coefs, true).unwrap();
 
+    let phase = Vec::<f32>::from(lmmse_phase);
     let mut file = File::create("tomography.pkl").unwrap();
     pickle::to_writer(&mut file, &(src_phase, phase), true).unwrap();
 
@@ -102,5 +78,4 @@ fn main() {
     let kl_phase: Vec<f32> = src.phase_as_ptr().into();
     let mut file = File::create("KL_phase.pkl").unwrap();
     pickle::to_writer(&mut file, &kl_phase, true).unwrap();
-
 }

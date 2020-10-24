@@ -104,4 +104,56 @@ impl LinearMinimumMeanSquareError {
     pub fn get_n_iteration(&mut self) -> usize {
         self._c_.iSolve.N_ITERATION as usize
     }
+    pub fn calibrate_karhunen_loeve(
+        &mut self,
+        n_kl: usize,
+        first_kl: Option<usize>,
+        stroke: Option<f64>,
+    ) -> Vec<Vec<f64>> {
+        let mut gmt = ceo!(element::GMT, set_m2_n_mode = [n_kl]);
+        let mut kl: Vec<Vec<f32>> = vec![];
+        let first_kl = first_kl.unwrap_or(0);
+        let stroke = stroke.unwrap_or(1e-6);
+        for s in 0..7 {
+            for k in first_kl..n_kl {
+                gmt.set_m2_modes_ij(s, k, stroke);
+                self.mmse_star.through(&mut gmt).xpupil();
+                let b_push: Vec<f32> = self.mmse_star.phase_as_ptr().into();
+                gmt.set_m2_modes_ij(s, k, -stroke);
+                self.mmse_star.through(&mut gmt).xpupil();
+                let b_pull: Vec<f32> = self.mmse_star.phase_as_ptr().into();
+                kl.push(
+                    b_push
+                        .iter()
+                        .zip(b_pull.iter())
+                        .map(|x| 0.5 * (x.0 - x.1) / stroke as f32)
+                        .collect::<Vec<f32>>(),
+                );
+            }
+        }
+        gmt.reset();
+        let kl_norm = kl
+            .iter()
+            .map(|x| x.iter().map(|y| (y * y) as f64).sum::<f64>())
+            .collect::<Vec<f64>>();
+        kl.iter()
+            .zip(kl_norm.into_iter())
+            .map(|x| x.0.iter().map(|&y| y as f64 / x.1).collect::<Vec<f64>>())
+            .collect::<_>()
+    }
+    pub fn get_karhunen_loeve_coefficients(
+        &mut self,
+        kln: &Vec<Vec<f64>>,
+        stroke: Option<f64>,
+    ) -> Vec<f64> {
+        let stroke = stroke.unwrap_or(1f64);
+        kln.iter()
+            .map(|x| {
+                x.iter()
+                    .zip(Vec::<f32>::from(self.phase_as_ptr()).into_iter())
+                    .map(|y| stroke * y.0 * y.1 as f64)
+                    .sum::<f64>()
+            })
+            .collect::<_>()
+    }
 }
