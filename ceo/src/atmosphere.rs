@@ -38,7 +38,7 @@ impl CEO<element::ATMOSPHERE> {
     /// Create a new `Atmosphere` builder
     pub fn new() -> CEO<element::ATMOSPHERE> {
         CEO {
-            args: element::ATMOSPHERE::default()
+            args: element::ATMOSPHERE::default(),
         }
     }
     /// Set r0 value taken at pointing the zenith in meters
@@ -54,6 +54,10 @@ impl CEO<element::ATMOSPHERE> {
     /// Set zenith angle value in radians
     pub fn set_zenith_angle(mut self, zenith_angle: f64) -> Self {
         self.args.zenith_angle = zenith_angle;
+        self
+    }
+    pub fn set_turbulence_profile(mut self, turbulence: element::TurbulenceProfile) -> Self {
+        self.args.turbulence = turbulence;
         self
     }
     /// Set parameters for atmosphere ray tracing

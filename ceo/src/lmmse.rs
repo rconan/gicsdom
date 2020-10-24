@@ -1,5 +1,6 @@
 use super::ceo_bindings::LMMSE;
-use super::{element, Atmosphere, Mask, Source, CEO};
+use super::{element, Atmosphere, Mask, Source, CEO,
+           GeometricShackHartmann as WFS, Cu};
 use std::ffi::CString;
 
 pub struct LinearMinimumMeanSquareError {
@@ -16,16 +17,16 @@ impl CEO<element::LMMSE> {
             args: element::LMMSE::default(),
         }
     }
-    pub fn set_atm(mut self, atm: CEO<element::ATMOSPHERE>) -> Self {
-        self.args.atm = atm;
+    pub fn set_atmosphere(mut self, atm: &CEO<element::ATMOSPHERE>) -> Self {
+        self.args.atm = atm.clone();
         self
     }
-    pub fn set_guide_star(mut self, src: CEO<element::SOURCE>) -> Self {
-        self.args.guide_star = src;
+    pub fn set_guide_star(mut self, src: &CEO<element::SOURCE>) -> Self {
+        self.args.guide_star = src.clone();
         self
     }
-    pub fn set_mmse_star(mut self, src: CEO<element::SOURCE>) -> Self {
-        self.args.mmse_star = Some(src);
+    pub fn set_mmse_star(mut self, src: &CEO<element::SOURCE>) -> Self {
+        self.args.mmse_star = Some(src.clone());
         self.args.fov_diameter = None;
         self
     }
@@ -52,12 +53,13 @@ impl CEO<element::LMMSE> {
             pupil_mask: self.args.pupil_mask,
         };
         let solver_id = CString::new(self.args.solver_id.clone().into_bytes()).unwrap();
+        let d = self.args.guide_star.args.pupil_size/self.args.n_side_lenslet as f64;
         match lmmse.fov_diameter {
             Some(fov) => unsafe {
                 lmmse._c_.setup3(
                     lmmse.atm.as_raw_mut_ptr(),
                     lmmse.guide_star.as_raw_mut_ptr(),
-                    self.args.guide_star.args.pupil_sampling as f32,
+                    d as f32,
                     self.args.n_side_lenslet as i32,
                     lmmse.pupil_mask.as_raw_mut_ptr(),
                     solver_id.into_raw(),
@@ -72,7 +74,7 @@ impl CEO<element::LMMSE> {
                             lmmse.atm.as_raw_mut_ptr(),
                             lmmse.guide_star.as_raw_mut_ptr(),
                             src.as_raw_mut_ptr(),
-                            self.args.guide_star.args.pupil_sampling as f32,
+                            d as f32,
                             self.args.n_side_lenslet as i32,
                             lmmse.pupil_mask.as_raw_mut_ptr(),
                             solver_id.into_raw(),
@@ -83,5 +85,25 @@ impl CEO<element::LMMSE> {
             }
         }
         lmmse
+    }
+}
+impl LinearMinimumMeanSquareError {
+    pub fn get_wavefront_estimate(&mut self, wfs: &mut WFS) -> &mut Self {
+        unsafe {
+            self._c_.estimation(&wfs.as_raw_mut_ptr().data_proc);
+        }
+        self
+    }
+    pub fn phase_as_ptr(&mut self) -> Cu<f32> {
+        //println!("PS_E_N_PX: {}",self._c_.PS_E_N_PX);
+        let mut phase: Cu<f32> = Cu::vector(self._c_.PS_E_N_PX as usize);
+        phase.from_ptr(self._c_.d__phase_est);
+        phase
+    }
+    pub fn set_n_iteration(&mut self, n_iteration: usize) {
+        self._c_.iSolve.N_ITERATION = n_iteration as i32;
+    }
+    pub fn get_n_iteration(&mut self) -> usize {
+        self._c_.iSolve.N_ITERATION as usize
     }
 }

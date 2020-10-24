@@ -440,6 +440,12 @@ impl Source {
         }
         self
     }
+    pub fn sub(&mut self, phase: &mut Cu<f32>) -> &mut Self {
+        unsafe {
+            self._c_.wavefront.add_phase(-1.0, phase.as_mut_ptr());
+        }
+        self
+    }
     /// Adds `phase` to the `Source` wavefront
     pub fn add_same(&mut self, phase: &mut Cu<f32>) -> &mut Self {
         unsafe {
@@ -457,6 +463,11 @@ impl Source {
             );
         }
         &self._phase
+    }
+    pub fn phase_as_ptr(&mut self) -> Cu<f32> {
+        let mut phase: Cu<f32> = Cu::vector(self._c_.wavefront.N_PX as usize);
+        phase.from_ptr(self._c_.wavefront.phase);
+        phase
     }
     /// Returns the wavefront amplitude in the exit pupil of the telescope
     pub fn amplitude(&mut self) -> Vec<f32> {

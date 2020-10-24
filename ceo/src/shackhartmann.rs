@@ -268,6 +268,9 @@ impl ShackHartmann<Geometric> {
         flux.from_ptr(self._c_.data_proc.d__mass);
         flux
     }
+    pub fn as_raw_mut_ptr(&mut self) -> &mut Geometric {
+        &mut self._c_
+    }
 }
 impl<S: Model> Drop for ShackHartmann<S> {
     fn drop(&mut self) {
