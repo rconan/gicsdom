@@ -3,22 +3,22 @@ use serde_pickle as pickle;
 use std::fs::File;
 
 fn main() {
-    let n_actuator = 49;
+    let n_actuator = 61;
     let n_kl = 70;
 
     let atm_blueprint = CEO::<ATMOSPHERE>::new()
         .set_r0_at_zenith(0.15)
-        .set_oscale(30.)
-        .set_zenith_angle(0.)
+        .set_oscale(60.)
+        .set_zenith_angle(0.);/*
         .set_turbulence_profile(TurbulenceProfile {
             n_layer: 1,
             altitude: vec![0f32],
             xi0: vec![1f32],
             wind_speed: vec![0f32],
             wind_direction: vec![0f32],
-        });
-    let wfs_blueprint = CEO::<SH48>::new().set_n_sensor(3);
-    let gs_blueprint = wfs_blueprint.guide_stars().set_on_ring(6f32.from_arcmin());
+        });*/
+    let wfs_blueprint = CEO::<SHACKHARTMANN>::new().set_n_sensor(6).set_lenslet_array(n_actuator-1,16,25.5/(n_actuator-1) as f64);
+    let gs_blueprint = wfs_blueprint.guide_stars().set_on_ring(30f32.from_arcsec());
     let src_blueprint = CEO::<SOURCE>::new().set_pupil_sampling(n_actuator);
 
     let mut gmt = ceo!(GMT, set_m2_n_mode = [n_kl]);
@@ -52,9 +52,8 @@ fn main() {
     mmse_src.sub(&mut lmmse_phase);
     println!("Residual WFE RMS: {}nm", mmse_src.wfe_rms_10e(-9)[0]);
 
-    let kln = lmmse.calibrate_karhunen_loeve(n_kl, Some(1), None);
+    let kln = lmmse.calibrate_karhunen_loeve(n_kl, None, None);
     let mut kl_coefs = lmmse.get_karhunen_loeve_coefficients(&kln, Some(-1f64));
-    (0..7).for_each(|k| kl_coefs.insert(k * n_kl, 0.));
 
     let mut file = File::create("KL_coefs.pkl").unwrap();
     pickle::to_writer(&mut file, &kl_coefs, true).unwrap();
