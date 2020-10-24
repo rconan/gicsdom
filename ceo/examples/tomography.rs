@@ -1,4 +1,4 @@
-use ceo::{ceo, element::*, shackhartmann::Geometric, CEOInit, Conversion, Mask, CEO};
+use ceo::{ceo, element::*, shackhartmann::Geometric, CEOInit, Conversion, CEO};
 use serde_pickle as pickle;
 use std::fs::File;
 
@@ -23,12 +23,6 @@ fn main() {
 
     let mut gmt = ceo!(GMT, set_m2_n_mode = [n_kl]);
     let mut mmse_src = src_blueprint.build();
-
-    mmse_src.through(&mut gmt).xpupil();
-    let mut dm = Mask::new();
-    dm.build(n_actuator * n_actuator)
-        .filter(&mut mmse_src.amplitude().into());
-
     let mut kl: Vec<Vec<f32>> = vec![];
     for s in 0..7 {
         for k in 1..n_kl {
@@ -50,7 +44,6 @@ fn main() {
         .set_guide_star(&gs_blueprint)
         .set_mmse_star(&src_blueprint)
         .set_n_side_lenslet(n_actuator - 1)
-        .set_pupil_mask(dm)
         .build();
 
     let mut atm = atm_blueprint.build();

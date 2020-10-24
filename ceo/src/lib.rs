@@ -459,11 +459,10 @@ pub mod element {
     pub struct LMMSE {
         pub atm: super::CEO<ATMOSPHERE>,
         pub guide_star: super::CEO<SOURCE>,
-        pub mmse_star: Option<super::CEO<SOURCE>>,
+        pub mmse_star: super::CEO<SOURCE>,
         pub fov_diameter: Option<f64>,
         pub n_side_lenslet: usize,
         pub solver_id: String,
-        pub pupil_mask: super::Mask,
         pub wavefront_osf: usize,
     }
     impl Default for LMMSE {
@@ -471,11 +470,10 @@ pub mod element {
             LMMSE {
                 atm: super::CEO::<ATMOSPHERE>::new(),
                 guide_star: super::CEO::<SOURCE>::new(),
-                mmse_star: Some(super::CEO::<SOURCE>::new()),
+                mmse_star: super::CEO::<SOURCE>::new(),
                 fov_diameter: None,
                 n_side_lenslet: 0,
                 solver_id: "MINRES".to_owned(),
-                pupil_mask: super::Mask::new(),
                 wavefront_osf: 1,
             }
         }
