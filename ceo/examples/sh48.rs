@@ -1,6 +1,5 @@
 use ceo::{
-    calibrations, ceo, element::*, shackhartmann::Geometric as WFS_TYPE, CEOInit, Calibration,
-     CEO,
+    calibrations, ceo, element::*, shackhartmann::Geometric as WFS_TYPE, CEOInit, Calibration, CEO,
 };
 use serde_pickle as pickle;
 use std::fs::File;
@@ -46,13 +45,14 @@ fn main() {
     gs.through(&mut gmt).xpupil().through(&mut wfs);
     wfs.process();
 
-    let mut file = File::create("slopes.pkl").unwrap();
-    pickle::to_writer(&mut file, &wfs.get_data().from_dev(), true).unwrap();
+    let mut a = gmt2wfs.qr().solve(&mut wfs.get_data());
+    let s: Vec<f32> = (gmt2wfs.poke*a.clone()).into();
 
-    let a = gmt2wfs
-        .qr()
-        .solve(&mut wfs.get_data())
-        .iter()
+    let mut file = File::create("slopes.pkl").unwrap();
+    pickle::to_writer(&mut file,  &(wfs.get_data().from_dev(),s), true).unwrap();
+
+    Vec::<f32>::from(a)
+        .into_iter()
         .map(|x| x * 1e6)
         .collect::<Vec<f32>>()
         .chunks(2)

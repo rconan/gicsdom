@@ -98,6 +98,7 @@ pub struct Calibration {
     pub n_data: usize,
     pub n_mode: usize,
     pub poke: Cu<f32>,
+    poke_qr: Cu<f32>,
 }
 impl Calibration {
     /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `CEOWFS`
@@ -116,6 +117,7 @@ impl Calibration {
             n_data: 0,
             n_mode: 0,
             poke: Cu::new(),
+            poke_qr: Cu::new(),
         }
     }
     /// Performs the calibration of a single `Segment` function for a single `Mirror`
@@ -218,11 +220,12 @@ impl Calibration {
         self.poke.to_dev(&mut calibration);
     }
     pub fn qr(&mut self) -> &mut Self {
-        self.poke.qr();
+        self.poke_qr = self.poke.clone();
+        self.poke_qr.qr();
         self
     }
-    pub fn solve(&mut self, data: &mut Cu<f32>) -> Vec<f32> {
-        self.poke.qr_solve(data).into()
+    pub fn solve(&mut self, data: &mut Cu<f32>) -> Cu<f32> {
+        self.poke_qr.qr_solve(data)
     }
 }
 /*

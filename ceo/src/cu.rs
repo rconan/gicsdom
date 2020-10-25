@@ -1,5 +1,6 @@
 use super::ceo_bindings::{gpu_double, gpu_float};
 use std::mem;
+use core::ops::Mul;
 
 pub struct Cu<T> {
     _c_f32: gpu_float,
@@ -91,6 +92,22 @@ impl Cu<f32> {
         }
         v
     }
+    pub fn mv(&mut self, x: &mut Cu<f32>) -> Cu<f32> {
+        assert_eq!(x.n_col(), 1, "x must be a vector (n_col=n=1)!");
+        assert_eq!(
+            x.size(),
+            self.n,
+            "the number of columns ({}) do not match the length ({})of x",
+            self.n,
+            x.size()
+        );
+        let mut y = Cu::<f32>::vector(self.m);
+        y.malloc();
+        unsafe {
+            self._c_f32.mv(&mut y._c_f32, &mut x._c_f32);
+        }
+        y
+    }
     pub fn qr(&mut self) -> &mut Self {
         unsafe {
             self._c_f32.qr(self.m as i32);
@@ -109,6 +126,27 @@ impl Cu<f32> {
         unsafe {
             self._c_f32.qr_solve(&mut x._c_f32, &mut b._c_f32);
         }
+    }
+}
+impl Mul for Cu<f32> {
+    // The multiplication of rational numbers is a closed operation.
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self {
+        let mut q = rhs;
+        let mut s = self;
+        s.mv(&mut q)
+    }
+}
+impl Clone for Cu<f32> {
+    fn clone(&self) -> Self {
+        let mut s  = self._c_f32;
+        let mut other = Cu::<f32>::array(self.m, self.n);
+        other.malloc();
+        unsafe {
+            s.dev2dev(&mut other._c_f32);
+        }
+        other
     }
 }
 impl<T> Drop for Cu<T> {
@@ -133,7 +171,6 @@ impl From<Cu<f32>> for Vec<f32> {
         q.from_dev()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -171,17 +208,17 @@ mod tests {
 
     #[test]
     fn cu_from_into() {
-        let d_v = Cu::<f32>::from(vec![1f32;7]);
+        let d_v = Cu::<f32>::from(vec![1f32; 7]);
         let u: Vec<f32> = d_v.into();
-        println!("u: {:?}",u);
-        assert_eq!(u,vec![1f32;7]);
+        println!("u: {:?}", u);
+        assert_eq!(u, vec![1f32; 7]);
     }
 
     #[test]
     fn cu_into_from() {
-        let v = vec![1f32;7];
+        let v = vec![1f32; 7];
         let d_v: Cu<f32> = v.into();
         let u = Vec::<f32>::from(d_v);
-        assert_eq!(u,vec![1f32;7]);
+        assert_eq!(u, vec![1f32; 7]);
     }
 }

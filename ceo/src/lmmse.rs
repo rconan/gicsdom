@@ -157,3 +157,10 @@ impl LinearMinimumMeanSquareError {
             .collect::<_>()
     }
 }
+impl Drop for LinearMinimumMeanSquareError {
+    fn drop(&mut self) {
+        unsafe {
+            self._c_.cleanup();
+        }
+    }
+}
