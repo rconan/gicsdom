@@ -542,6 +542,7 @@ pub fn set_gpu(id: i32) {
     }
 }
 
+use cu::Single;
 #[derive(Clone, Debug)]
 pub struct Mask {
     _c_: mask,
@@ -556,7 +557,7 @@ impl Mask {
         unsafe { self._c_.setup(n_el as i32) }
         self
     }
-    pub fn filter(&mut self, f: &mut Cu<f32>) -> &mut Self {
+    pub fn filter(&mut self, f: &mut Cu<Single>) -> &mut Self {
         unsafe {
             self._c_.alter(f.as_ptr());
             self._c_.set_index();

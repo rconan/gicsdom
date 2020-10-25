@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, Cu, CEO};
+use super::{element, Centroiding, Cu, cu::Single, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -434,20 +434,20 @@ impl Source {
         }
     }
     /// Adds `phase` to the `Source` wavefront
-    pub fn add(&mut self, phase: &mut Cu<f32>) -> &mut Self {
+    pub fn add(&mut self, phase: &mut Cu<Single>) -> &mut Self {
         unsafe {
             self._c_.wavefront.add_phase(1.0, phase.as_mut_ptr());
         }
         self
     }
-    pub fn sub(&mut self, phase: &mut Cu<f32>) -> &mut Self {
+    pub fn sub(&mut self, phase: &mut Cu<Single>) -> &mut Self {
         unsafe {
             self._c_.wavefront.add_phase(-1.0, phase.as_mut_ptr());
         }
         self
     }
     /// Adds `phase` to the `Source` wavefront
-    pub fn add_same(&mut self, phase: &mut Cu<f32>) -> &mut Self {
+    pub fn add_same(&mut self, phase: &mut Cu<Single>) -> &mut Self {
         unsafe {
             self._c_.wavefront.add_same_phase(1.0, phase.as_mut_ptr());
         }
@@ -464,8 +464,8 @@ impl Source {
         }
         &self._phase
     }
-    pub fn phase_as_ptr(&mut self) -> Cu<f32> {
-        let mut phase: Cu<f32> = Cu::vector(self._c_.wavefront.N_PX as usize);
+    pub fn phase_as_ptr(&mut self) -> Cu<Single> {
+        let mut phase: Cu<Single> = Cu::vector(self._c_.wavefront.N_PX as usize);
         phase.from_ptr(self._c_.wavefront.phase);
         phase
     }

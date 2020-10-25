@@ -1,7 +1,7 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, element::ShWfs, Cu, Mask, Propagation, Source, CEO};
+use super::{element, element::ShWfs, Cu, cu::Single, Mask, Propagation, Source, CEO};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -81,7 +81,7 @@ pub struct ShackHartmann<S: Model> {
     /// The total number of centroids
     pub n_centroids: i32,
     /// The centroids
-    pub centroids: Cu<f32>,
+    pub centroids: Cu<Single>,
 }
 impl CEO<element::SHACKHARTMANN> {
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
@@ -222,18 +222,18 @@ impl ShackHartmann<Geometric> {
         }
         self
     }
-    pub fn get_data(&mut self) -> Cu<f32> {
+    pub fn get_data(&mut self) -> Cu<Single> {
         let m = self._c_.valid_lenslet.nnz as usize * 2usize;
-        let mut data: Cu<f32> = Cu::vector(m);
+        let mut data: Cu<Single> = Cu::vector(m);
         data.malloc();
         unsafe {
             self._c_.get_valid_slopes(data.as_ptr());
         }
         data
     }
-    pub fn filter(&mut self, lenslet_mask: &mut Mask) -> Cu<f32> {
+    pub fn filter(&mut self, lenslet_mask: &mut Mask) -> Cu<Single> {
         let m = lenslet_mask.nnz() as usize * 2usize;
-        let mut data: Cu<f32> = Cu::vector(m);
+        let mut data: Cu<Single> = Cu::vector(m);
         data.malloc();
         unsafe {
             self._c_
@@ -241,7 +241,7 @@ impl ShackHartmann<Geometric> {
         }
         data
     }
-    pub fn fold_into(&mut self, data: &mut Cu<f32>, lenslet_mask: &mut Mask) {
+    pub fn fold_into(&mut self, data: &mut Cu<Single>, lenslet_mask: &mut Mask) {
         unsafe {
             self._c_
                 .folded_slopes(data.as_ptr(), lenslet_mask.as_mut_prt());
@@ -256,14 +256,14 @@ impl ShackHartmann<Geometric> {
         }
         self
     }
-    pub fn lenset_mask(&mut self) -> Cu<f32> {
-        let mut mask: Cu<f32> =
+    pub fn lenset_mask(&mut self) -> Cu<Single> {
+        let mut mask: Cu<Single> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
         mask.from_ptr(self._c_.valid_lenslet.f);
         mask
     }
-    pub fn lenlet_flux(&mut self) -> Cu<f32> {
-        let mut flux: Cu<f32> =
+    pub fn lenlet_flux(&mut self) -> Cu<Single> {
+        let mut flux: Cu<Single> =
             Cu::vector((self.n_side_lenslet * self.n_side_lenslet * self.n_sensor) as usize);
         flux.from_ptr(self._c_.data_proc.d__mass);
         flux

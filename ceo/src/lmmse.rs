@@ -1,5 +1,5 @@
 use super::ceo_bindings::LMMSE;
-use super::{ceo, element, Atmosphere, Cu, GeometricShackHartmann as WFS, Mask, Source, CEO};
+use super::{ceo, element, Atmosphere, Cu, cu::Single, GeometricShackHartmann as WFS, Mask, Source, CEO};
 use std::ffi::CString;
 
 pub struct LinearMinimumMeanSquareError {
@@ -92,9 +92,9 @@ impl LinearMinimumMeanSquareError {
         }
         self
     }
-    pub fn phase_as_ptr(&mut self) -> Cu<f32> {
+    pub fn phase_as_ptr(&mut self) -> Cu<Single> {
         //println!("PS_E_N_PX: {}",self._c_.PS_E_N_PX);
-        let mut phase: Cu<f32> = Cu::vector(self._c_.PS_E_N_PX as usize);
+        let mut phase: Cu<Single> = Cu::vector(self._c_.PS_E_N_PX as usize);
         phase.from_ptr(self._c_.d__phase_est);
         phase
     }

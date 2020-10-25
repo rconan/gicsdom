@@ -1,7 +1,7 @@
 use super::{
     element::{GMT, SOURCE},
     shackhartmann::Geometric,
-    Cu, Gmt, ShackHartmann, Source, CEO, CEOWFS,
+    Cu, cu::Single, Gmt, ShackHartmann, Source, CEO, CEOWFS,
 };
 use std::ops::Range;
 use std::sync::Arc;
@@ -97,8 +97,8 @@ pub struct Calibration {
     wfs_blueprint: Arc<dyn CEOWFS>,
     pub n_data: usize,
     pub n_mode: usize,
-    pub poke: Cu<f32>,
-    poke_qr: Cu<f32>,
+    pub poke: Cu<Single>,
+    poke_qr: Cu<Single>,
 }
 impl Calibration {
     /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `CEOWFS`
@@ -224,7 +224,7 @@ impl Calibration {
         self.poke_qr.qr();
         self
     }
-    pub fn solve(&mut self, data: &mut Cu<f32>) -> Cu<f32> {
+    pub fn solve(&mut self, data: &mut Cu<Single>) -> Cu<Single> {
         self.poke_qr.qr_solve(data)
     }
 }
