@@ -83,13 +83,13 @@ impl<T: CuType> Cu<T> {
             dev_alloc: false,
         }
     }
-    pub fn size(&mut self) -> usize {
+    pub fn size(&self) -> usize {
         self.m * self.n
     }
-    pub fn n_row(&mut self) -> usize {
+    pub fn n_row(&self) -> usize {
         self.m
     }
-    pub fn n_col(&mut self) -> usize {
+    pub fn n_col(&self) -> usize {
         self.n
     }
     pub fn malloc(&mut self) -> &mut Self {
@@ -130,7 +130,7 @@ impl Cu<Single> {
         }
         v
     }
-    pub fn mv(&mut self, x: &mut Cu<Single>) -> Cu<Single> {
+    pub fn mv(&self, x: &Cu<Single>) -> Cu<Single> {
         assert_eq!(x.n_col(), 1, "x must be a vector (n_col=n=1)!");
         assert_eq!(
             x.size(),
@@ -142,7 +142,8 @@ impl Cu<Single> {
         let mut y = Cu::<Single>::vector(self.m);
         y.malloc();
         unsafe {
-            self._c_.mv(&mut y._c_, &mut x._c_);
+            let mut s = self._c_;
+            s.mv(&mut y._c_, &x._c_);
         }
         y
     }
@@ -166,13 +167,22 @@ impl Cu<Single> {
         }
     }
 }
-impl Mul for Cu<Single> {
-    type Output = Self;
+impl Mul for &Cu<Single> {
+    type Output = Cu<Single>;
 
-    fn mul(self, rhs: Self) -> Self {
-        let mut q = rhs;
-        let mut s = self;
-        s.mv(&mut q)
+    fn mul(self, rhs: Self) -> Cu<Single> {
+        self.mv(rhs)
+    }
+}
+impl Mul<f32> for &Cu<Single> {
+    type Output = Cu<Single>;
+
+    fn mul(self, rhs: f32) -> Cu<Single> {
+        let mut other = self.clone();
+        unsafe {
+            other._c_.scale(rhs);
+        }
+        other
     }
 }
 impl AddAssign for Cu<Single> {
