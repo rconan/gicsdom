@@ -1,13 +1,15 @@
 use super::{
+    cu::Single,
     element::{GMT, SOURCE},
     shackhartmann::Geometric,
-    Cu, cu::Single, Gmt, ShackHartmann, Source, CEO, CEOWFS,
+    Cu, Gmt, ShackHartmann, Source, CEO, CEOWFS,
 };
+use log;
 use std::ops::Range;
 use std::sync::Arc;
 //use std::time::Instant;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// GMT mirror functions
 pub enum Mirror {
     /// M1 rigid body motion
@@ -20,8 +22,8 @@ pub enum Mirror {
     M2MODES,
 }
 
-#[derive(Clone)]
 /// GMT segment functions
+#[derive(Clone, Debug)]
 pub enum Segment {
     /// Rigid body translations (stroke[m],range(`None`: 0..3))
     Txyz(f64, Option<Range<usize>>),
@@ -129,6 +131,7 @@ impl Calibration {
         mirror: &Mirror,
         k: usize,
         stroke: f64,
+        valids: bool,
     ) -> Vec<f32> {
         let mut m1_rbm = vec![vec![0.; 6]; 7];
         let mut m1_mode = vec![vec![0.; gmt.m1_n_mode]; 7];
@@ -159,14 +162,22 @@ impl Calibration {
         wfs.reset();
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
-        let c_push = wfs.get_data().from_dev();
+        let c_push = if valids {
+            wfs.get_data().from_dev()
+        } else {
+            wfs.centroids.from_dev()
+        };
         //println!("c push sum: {:?}", c_push.iter().sum::<f32>());
         // PULL
         update(-stroke, gmt);
         wfs.reset();
         src.through(gmt).xpupil().through(wfs);
         wfs.process();
-        let c_pull = wfs.get_data().from_dev();
+        let c_pull = if valids {
+            wfs.get_data().from_dev()
+        } else {
+            wfs.centroids.from_dev()
+        };
         //println!("c pull sum: {:?}", c_pull.iter().sum::<f32>());
         // RESET
         update(0f64, gmt);
@@ -194,10 +205,11 @@ impl Calibration {
             * mirror.len();
         let mut calibration: Vec<f32> = vec![];
         let mut nnz = 0_usize;
-        let wfs_intensity_threshold = wfs_intensity_threshold.unwrap_or(0.5);
+        let wfs_intensity_threshold = wfs_intensity_threshold.unwrap_or(0.0);
         for (k, segment) in segments.iter().enumerate() {
             for m in mirror.iter() {
                 for rbm in segment.iter() {
+                    log::trace!("segment: {:?}", rbm);
                     let (stroke, idx) = rbm.strip();
                     let mut gmt = self.gmt_blueprint.clone().build();
                     let mut wfs = self.wfs_blueprint.clone().build();
@@ -208,14 +220,21 @@ impl Calibration {
                     //println!("# valid lenslet: {}", wfs.n_valid_lenslet());
                     for l in idx {
                         calibration.extend::<Vec<f32>>(Calibration::sample(
-                            &mut gmt, &mut src, &mut wfs, k, m, l, stroke,
+                            &mut gmt,
+                            &mut src,
+                            &mut wfs,
+                            k,
+                            m,
+                            l,
+                            stroke,
+                            wfs_intensity_threshold > 0f64,
                         ));
                     }
                 }
             }
         }
         self.n_data = nnz * 2;
-        println!("calibration len: {}/{}", calibration.len(), nnz * 2 * 14);
+        log::info!("Calibration matrix: [{}x{}]", self.n_data, self.n_mode);
         self.poke = Cu::array(nnz * 2, self.n_mode);
         self.poke.to_dev(&mut calibration);
     }
