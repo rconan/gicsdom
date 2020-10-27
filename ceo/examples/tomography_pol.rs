@@ -3,12 +3,12 @@ use ceo::{
     shackhartmann::Geometric, CEOInit, Calibration, Conversion, Cu, CEO,
 };
 use serde_pickle as pickle;
-use simple_logger;
+use simple_logger::SimpleLogger;
 use std::fs::File;
 use std::rc::Rc;
 
 fn main() {
-    simple_logger::init().unwrap();
+    SimpleLogger::new().init().unwrap();
 
     let n_actuator = 49;
     let n_kl = 70;
