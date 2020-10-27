@@ -57,7 +57,6 @@ pub struct Cu<T: CuType> {
     m: usize,
     n: usize,
     dev_alloc: bool,
-    marker: std::marker::PhantomData<T>,
 }
 impl<T: CuType> Cu<T> {
     pub fn new() -> Cu<T> {
@@ -66,7 +65,6 @@ impl<T: CuType> Cu<T> {
             m: 0,
             n: 0,
             dev_alloc: false,
-            marker: std::marker::PhantomData,
         }
     }
     pub fn array(m: usize, n: usize) -> Cu<T> {
@@ -75,7 +73,6 @@ impl<T: CuType> Cu<T> {
             m: m,
             n: n,
             dev_alloc: false,
-            marker: std::marker::PhantomData,
         }
     }
     pub fn vector(m: usize) -> Cu<T> {
@@ -84,7 +81,6 @@ impl<T: CuType> Cu<T> {
             m: m,
             n: 1,
             dev_alloc: false,
-            marker: std::marker::PhantomData,
         }
     }
     pub fn size(&mut self) -> usize {
