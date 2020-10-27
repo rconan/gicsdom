@@ -5,6 +5,7 @@ use ceo::{
 use serde_pickle as pickle;
 use simple_logger;
 use std::fs::File;
+use std::rc::Rc;
 
 fn main() {
     simple_logger::init().unwrap();
@@ -61,7 +62,7 @@ fn main() {
     println!("WFE RMS: {}nm", src.wfe_rms_10e(-9)[0]);
     println!("WFE RMS: {:?}nm", src.segment_wfe_rms_10e(-9));
 
-    let mut data = vec![];
+    //let mut data = vec![];
 
     for _ in 0..20 {
         wfs.reset();
@@ -70,13 +71,12 @@ fn main() {
             .through(&mut atm)
             .through(&mut wfs);
         wfs.process();
-        let s_cl: Vec<f32> = wfs.centroids.from_dev();
+        //let s_cl: Vec<f32> = wfs.centroids.from_dev();
 
-        let s_kl = m2_2_wfs.poke.clone()
-            * Cu::<Single>::from(kl_coefs.iter().map(|x| *x as f32).collect::<Vec<f32>>());
-        wfs.centroids -= s_kl.clone();
-        let s_ol: Vec<f32> = wfs.centroids.from_dev();
-        data.push((s_cl, Vec::<f32>::from(s_kl), s_ol));
+        wfs.centroids -= &m2_2_wfs.poke
+            * &Cu::<Single>::from(kl_coefs.iter().map(|x| *x as f32).collect::<Vec<f32>>());
+        //let s_ol: Vec<f32> = wfs.centroids.from_dev();
+        //data.push((s_cl, Vec::<f32>::from(s_kl), s_ol));
         //let mut lmmse_phase = lmmse.get_wavefront_estimate(&mut wfs).phase_as_ptr();
         lmmse.get_wavefront_estimate(&mut wfs);
         let kl_coefs_residuals = lmmse.get_karhunen_loeve_coefficients(&kln, None);
@@ -99,8 +99,8 @@ fn main() {
         //println!("Residual WFE RMS: {}nm", mmse_src.wfe_rms_10e(-9)[0]);
     }
 
-    let mut file = File::create("slopes.pkl").unwrap();
-    pickle::to_writer(&mut file, &data, true).unwrap();
+    //let mut file = File::create("slopes.pkl").unwrap();
+    //pickle::to_writer(&mut file, &data, true).unwrap();
 
     /*
     let phase = Vec::<f32>::from(lmmse_phase);
