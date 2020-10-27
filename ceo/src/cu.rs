@@ -220,7 +220,7 @@ impl<T: CuType> Drop for Cu<T> {
 }
 impl From<Vec<f32>> for Cu<Single> {
     fn from(item: Vec<f32>) -> Self {
-        let mut this = Cu::vector(item.len());
+        let mut this = Cu::<Single>::vector(item.len());
         this.to_dev(&mut item.clone());
         this
     }
@@ -230,6 +230,12 @@ impl From<Cu<Single>> for Vec<f32> {
     fn from(item: Cu<Single>) -> Self {
         let mut q = item;
         q.from_dev()
+    }
+}
+
+impl From<&mut Cu<Single>> for Vec<f32> {
+    fn from(item: &mut Cu<Single>) -> Self {
+        item.from_dev()
     }
 }
 
