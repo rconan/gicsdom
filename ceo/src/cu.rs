@@ -1,5 +1,5 @@
 use super::ceo_bindings::{gpu_double, gpu_float};
-use core::ops::Mul;
+use core::ops::{AddAssign, Mul, SubAssign};
 use std::mem;
 
 pub type Single = gpu_float;
@@ -177,6 +177,20 @@ impl Mul for Cu<Single> {
         let mut q = rhs;
         let mut s = self;
         s.mv(&mut q)
+    }
+}
+impl AddAssign for Cu<Single> {
+    fn add_assign(&mut self, other: Self) {
+        unsafe {
+            self._c_.axpy(&other._c_, 1.0);
+        }
+    }
+}
+impl SubAssign for Cu<Single> {
+    fn sub_assign(&mut self, other: Self) {
+        unsafe {
+            self._c_.axpy(&other._c_, -1.0);
+        }
     }
 }
 impl Clone for Cu<Single> {
