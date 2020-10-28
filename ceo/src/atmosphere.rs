@@ -56,8 +56,25 @@ impl CEO<element::ATMOSPHERE> {
         self.args.zenith_angle = zenith_angle;
         self
     }
+    /// Set the turbulence profile
     pub fn set_turbulence_profile(mut self, turbulence: element::TurbulenceProfile) -> Self {
         self.args.turbulence = turbulence;
+        self
+    }
+    /// Set a single turbulence layer
+    pub fn set_single_turbulence_layer(
+        mut self,
+        altitude: f32,
+        wind_speed: Option<f32>,
+        wind_direction: Option<f32>,
+    ) -> Self {
+        self.args.turbulence = element::TurbulenceProfile {
+            n_layer: 1,
+            altitude: vec![altitude],
+            xi0: vec![1f32],
+            wind_speed: vec![wind_speed.unwrap_or(0f32)],
+            wind_direction: vec![wind_direction.unwrap_or(0f32)],
+        };
         self
     }
     /// Set parameters for atmosphere ray tracing
