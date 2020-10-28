@@ -1,4 +1,4 @@
-use ceo::{Cu, Propagation, Source};
+use ceo::{Cu, cu::Single, Propagation, Source};
 use cirrus;
 
 pub struct DomeSeeing {
@@ -11,7 +11,7 @@ pub struct DomeSeeing {
     pub opd: Vec<Vec<f32>>,
     step: usize,
     pub n_step: usize,
-    buffer: Cu<f32>,
+    buffer: Cu<Single>,
     duration: usize,
     rate: usize,
     time: Vec<f64>,

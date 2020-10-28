@@ -1,7 +1,7 @@
 use crate::system::{GlaoField, System};
 use ceo::{
-    pssn::AtmosphereTelescopeError as ATE, pssn::TelescopeError as TE, Atmosphere, Conversion, Cu,
-    Gmt, Mask, PSSn, Source,
+    cu::Single, pssn::AtmosphereTelescopeError as ATE, pssn::TelescopeError as TE, Atmosphere,
+    Conversion, Cu, Gmt, Mask, PSSn, Source,
 };
 use cfd::DomeSeeing;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -123,7 +123,7 @@ impl ScienceField {
         self.fwhms.glao_fwhm = glao_fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>();
         self
     }
-    pub fn glao_wrap_up(&mut self) -> (f64,Vec<f64>) {
+    pub fn glao_wrap_up(&mut self) -> (f64, Vec<f64>) {
         let mut fwhm = ceo::Fwhm::new();
         fwhm.build(&mut self.src);
         fwhm.upper_bracket = 2f64 / self.pssn.r0() as f64;
@@ -132,9 +132,12 @@ impl ScienceField {
             self.pssn.r0() as f64,
             self.pssn.oscale as f64,
         )
-            .to_arcsec();
+        .to_arcsec();
         let fwhm = fwhm.from_complex_otf(&self.pssn.telescope_error_otf());
-        (atm_fwhm_x,fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>())
+        (
+            atm_fwhm_x,
+            fwhm.iter().map(|x| x.to_arcsec()).collect::<Vec<_>>(),
+        )
     }
     pub fn results(&self) -> (Vec<f32>, Vec<f32>, f64, Vec<f64>, Vec<f64>) {
         (
@@ -171,12 +174,12 @@ impl Serialize for ScienceField {
 pub struct GlaoSys<'a, 'b> {
     pub sys: System,
     lenslet_mask: Mask,
-    calib: Cu<f32>,
+    calib: Cu<Single>,
     step: usize,
     pub atm: &'a mut Atmosphere,
     pub science: &'b mut ScienceField,
-    d_mean_c: ceo::Cu<f32>,
-    x: ceo::Cu<f32>,
+    d_mean_c: ceo::Cu<Single>,
+    x: ceo::Cu<Single>,
     pub s12: Option<((usize, usize), (usize, usize))>,
 }
 
@@ -192,12 +195,12 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         Self {
             sys: System::new(pupil_size, n_sensor as i32, n_lenslet, n_px_lenslet),
             lenslet_mask: Mask::new(),
-            calib: Cu::new(),
+            calib: Cu::<Single>::new(),
             step: 0,
             atm,
             science,
-            d_mean_c: Cu::new(),
-            x: Cu::new(),
+            d_mean_c: Cu::<Single>::new(),
+            x: Cu::<Single>::new(),
             s12: None,
         }
     }
@@ -205,12 +208,12 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         Self {
             sys: System::new(25.5, 4, 48, 16),
             lenslet_mask: Mask::new(),
-            calib: Cu::new(),
+            calib: Cu::<Single>::new(),
             step: 0,
             atm,
             science,
-            d_mean_c: Cu::new(),
-            x: Cu::new(),
+            d_mean_c: Cu::<Single>::new(),
+            x: Cu::<Single>::new(),
             s12: None,
         }
     }
@@ -249,7 +252,7 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         log::info!("Centroid mask: [{}], nnz: {}", mask.len(), nnz);
 
         self.lenslet_mask.build(m);
-        let mut f: ceo::Cu<f32> = ceo::Cu::vector(m);
+        let mut f: ceo::Cu<Single> = ceo::Cu::<Single>::vector(m);
         let mut q = mask.iter().cloned().map(|x| x as f32).collect::<Vec<f32>>();
         f.to_dev(&mut q);
         self.lenslet_mask.filter(&mut f);
@@ -279,9 +282,9 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
             self.calib.n_row(),
             self.calib.n_col()
         );
-        self.d_mean_c = Cu::vector(self.calib.n_row());
+        self.d_mean_c = Cu::<Single>::vector(self.calib.n_row());
         self.d_mean_c.malloc();
-        self.x = Cu::vector(self.calib.n_col());
+        self.x = Cu::<Single>::vector(self.calib.n_col());
         self.x.malloc();
         self
     }

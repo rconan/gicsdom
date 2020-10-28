@@ -447,8 +447,8 @@ pub mod element {
         fn default() -> Self {
             ATMOSPHERE {
                 r0_at_zenith: 0.16,
-                oscale: 25.5,
-                zenith_angle: 30f64.to_radians(),
+                oscale: 25.,
+                zenith_angle: 30_f64.to_radians(),
                 turbulence: TurbulenceProfile::default(),
                 ray_tracing: None,
             }

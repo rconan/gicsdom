@@ -5,3 +5,6 @@ members = [
     "cirrus",
     "glao",
 ]
+
+[profile.release]
+debug = true

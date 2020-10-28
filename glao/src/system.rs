@@ -1,4 +1,4 @@
-use ceo::{Conversion, GeometricShackHartmann, Gmt, Source};
+use ceo::{cu::Single, Conversion, Cu, GeometricShackHartmann, Gmt, Source};
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use std::fs::File;
@@ -189,7 +189,7 @@ impl System {
     pub fn process(&mut self) {
         self.wfs.process();
     }
-    pub fn m2_mode_calibrate(&mut self) -> ceo::Cu<f32> {
+    pub fn m2_mode_calibrate(&mut self) -> ceo::Cu<Single> {
         let n_mode: usize = self.gmt.m2_n_mode;
         //print!("M2 KL[{}] calibration ...", n_mode);
         //let now = Instant::now();
@@ -233,11 +233,11 @@ impl System {
             calib.len() / self.wfs.n_centroids as usize
         );
         */
-        let mut a = ceo::Cu::<f32>::array(m, n);
+        let mut a = ceo::Cu::<Single>::array(m, n);
         a.to_dev(&mut calib);
         a
     }
-    pub fn m2_mode_calibrate_data(&mut self, lenslet_mask: &mut ceo::Mask) -> ceo::Cu<f32> {
+    pub fn m2_mode_calibrate_data(&mut self, lenslet_mask: &mut ceo::Mask) -> ceo::Cu<Single> {
         let n_mode: usize = self.gmt.m2_n_mode;
         //print!("M2 KL[{}] calibration ...", n_mode);
         //let now = Instant::now();
@@ -281,7 +281,7 @@ impl System {
         );
          */
         let m = calib.len() / n;
-        let mut a = ceo::Cu::<f32>::array(m, n);
+        let mut a = ceo::Cu::<Single>::array(m, n);
         a.to_dev(&mut calib);
         a
     }

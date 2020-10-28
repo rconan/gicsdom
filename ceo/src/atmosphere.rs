@@ -1,3 +1,4 @@
+use log;
 use serde::Deserialize;
 use std::ffi::CString;
 use std::{f32, mem};
@@ -75,6 +76,13 @@ impl CEO<element::ATMOSPHERE> {
             wind_speed: vec![wind_speed.unwrap_or(0f32)],
             wind_direction: vec![wind_direction.unwrap_or(0f32)],
         };
+    /// Remove a turbulence layer specifield by its zero based index
+    pub fn remove_turbulence_layer(mut self, layer_idx: usize) -> Self {
+        self.args.turbulence.n_layer -= 1;
+        self.args.turbulence.altitude.remove(layer_idx);
+        self.args.turbulence.xi0.remove(layer_idx);
+        self.args.turbulence.wind_speed.remove(layer_idx);
+        self.args.turbulence.wind_direction.remove(layer_idx);
         self
     }
     /// Set parameters for atmosphere ray tracing
@@ -109,7 +117,21 @@ impl CEO<element::ATMOSPHERE> {
             //k_duration: 0,
             propagate_ptr: |_, _, _| (),
         };
-        let r0 = (atm.r0_at_zenith.powf(-5.0 / 3.0) / atm.zenith_angle.cos()).powf(-3.0 / 5.0);
+        let secz = 1f64 / atm.zenith_angle.cos();
+        let r0 = (atm.r0_at_zenith.powf(-5.0 / 3.0) * secz).powf(-3.0 / 5.0);
+        log::info!(
+            "Atmosphere r0 at {:.3}degree from zenith: {:.3}m",
+            atm.zenith_angle.to_degrees(),
+            r0
+        );
+        self.args.turbulence.altitude = self.args.turbulence.altitude
+            .iter()
+            .map(|x| *x as f32 * secz as f32)
+            .collect::<Vec<f32>>();
+        self.args.turbulence.wind_direction = self.args.turbulence.altitude
+            .iter()
+            .map(|x| *x as f32 / secz as f32)
+            .collect::<Vec<f32>>();
         match self.args.ray_tracing {
             None => unsafe {
                 atm._c_.setup(
