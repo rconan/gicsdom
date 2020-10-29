@@ -1,5 +1,8 @@
 use super::ceo_bindings::LMMSE;
-use super::{ceo, element, Atmosphere, Cu, cu::Single, GeometricShackHartmann as WFS, Mask, Source, CEO};
+use super::{
+    ceo, cu::Single, element, Atmosphere, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
+    Source, CEO,
+};
 use std::ffi::CString;
 
 pub struct LinearMinimumMeanSquareError {
@@ -58,6 +61,7 @@ impl CEO<element::LMMSE> {
         let d = self.args.guide_star.args.pupil_size / self.args.n_side_lenslet as f64;
         match lmmse.fov_diameter {
             Some(fov) => unsafe {
+                log::info!("LMMSE for a {:.1}arcmin field of view", fov.to_arcmin());
                 lmmse._c_.setup3(
                     lmmse.atm.as_raw_mut_ptr(),
                     lmmse.guide_star.as_raw_mut_ptr(),
@@ -70,6 +74,7 @@ impl CEO<element::LMMSE> {
                 )
             },
             None => unsafe {
+                log::info!("LMMSE for a single point in the field");
                 lmmse._c_.setup2(
                     lmmse.atm.as_raw_mut_ptr(),
                     lmmse.guide_star.as_raw_mut_ptr(),
