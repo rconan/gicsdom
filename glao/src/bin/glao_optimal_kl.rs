@@ -60,7 +60,7 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
 
     let n = 7 * (n_kl - 1);
     let m = (n_lenslet * n_lenslet) as usize;
-    let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+    let mut calib: ceo::Cu<ceo::cu::Single> = ceo::Cu::array(2 * nnz, n);
     {
         let mut reduced_calib = {
             let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
@@ -121,9 +121,9 @@ fn glao(n_kl: usize, n_sample: usize) -> (f32, f32) {
         vec![0f32],
     );
 
-    let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
+    let mut d_mean_c: ceo::Cu<ceo::cu::Single> = ceo::Cu::vector(calib.n_row());
     let mut mean_c = vec![0f32; calib.n_row()];
-    let mut x = ceo::Cu::<f32>::vector(calib.n_col());
+    let mut x = ceo::Cu::<ceo::cu::Single>::vector(calib.n_col());
     x.malloc();
 
     let mut a_wfe_var = 0f32;

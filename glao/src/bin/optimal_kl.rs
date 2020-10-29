@@ -61,7 +61,7 @@ fn main() {
             .collect::<Vec<f32>>();
         //println!("Reduced calibration: {}",reduced_calib.len());
 
-        let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+        let mut calib: ceo::Cu<ceo::cu::Single> = ceo::Cu::array(2 * nnz, n);
         calib.to_dev(&mut reduced_calib);
         calib.qr();
 
@@ -102,7 +102,7 @@ fn main() {
                 .flatten()
                 .collect::<Vec<f32>>();
 
-            let mut c: ceo::Cu<f32> = ceo::Cu::vector(red_s.len());
+            let mut c: ceo::Cu<ceo::cu::Single> = ceo::Cu::vector(red_s.len());
             c.to_dev(&mut red_s);
             let mut x = calib.qr_solve(&mut c);
             let h_x = x.from_dev();

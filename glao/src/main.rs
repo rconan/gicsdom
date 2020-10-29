@@ -159,7 +159,7 @@ fn glao_pssn(
 
     let n = 7 * (n_kl - 1);
     let m = (n_lenslet * n_lenslet) as usize;
-    let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+    let mut calib: ceo::Cu<ceo::cu::Single> = ceo::Cu::array(2 * nnz, n);
     {
         let mut reduced_calib = {
             let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
@@ -217,9 +217,9 @@ fn glao_pssn(
         vec![0f32; n_layer],
     );
 
-    let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
+    let mut d_mean_c: ceo::Cu<ceo::cu::Single> = ceo::Cu::vector(calib.n_row());
     let mut mean_c = vec![0f32; calib.n_row()];
-    let mut x = ceo::Cu::<f32>::vector(calib.n_col());
+    let mut x = ceo::Cu::<ceo::cu::Single>::vector(calib.n_col());
     x.malloc();
 //    let now = Instant::now();
     for _k_sample in 0..n_sample {
@@ -350,7 +350,7 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
 
     let n = 7 * (n_kl - 1);
     let m = (n_lenslet * n_lenslet) as usize;
-    let mut calib: ceo::Cu<f32> = ceo::Cu::array(2 * nnz, n);
+    let mut calib: ceo::Cu<ceo::cu::Single> = ceo::Cu::array(2 * nnz, n);
     {
         let mut reduced_calib = {
             let mut on_axis_sys = System::new(pupil_size, 1, n_lenslet, n_px_lenslet);
@@ -404,9 +404,9 @@ fn glao_pssn_fiducial(n_sample: usize, src_zen: Vec<f32>, src_azi: Vec<f32>) -> 
         pssn.oscale,
     );
 
-    let mut d_mean_c: ceo::Cu<f32> = ceo::Cu::vector(calib.n_row());
+    let mut d_mean_c: ceo::Cu<ceo::cu::Single> = ceo::Cu::vector(calib.n_row());
     let mut mean_c = vec![0f32; calib.n_row()];
-    let mut x = ceo::Cu::<f32>::vector(calib.n_col());
+    let mut x = ceo::Cu::<ceo::cu::Single>::vector(calib.n_col());
     x.malloc();
 //    let now = Instant::now();
     for _k_sample in 0..n_sample {
