@@ -35,6 +35,7 @@ COPY --from=ceo-build /usr/src/gicsdom/target/release/fiducial /usr/local/bin/fi
 COPY --from=ceo-build /usr/src/gicsdom/target/release/dome_seeing /usr/local/bin/dome_seeing
 COPY --from=ceo-build /usr/src/gicsdom/target/release/glao_dome_seeing /usr/local/bin/glao_dome_seeing
 COPY --from=ceo-build /usr/src/gicsdom/target/release/fiducial_atmosphere /usr/local/bin/fiducial_atmosphere
+COPY --from=ceo-build /usr/src/gicsdom/target/release/tomography_pol /usr/local/bin/tomography_pol
 
 RUN chown -R $APP_USER:$APP_USER ${APP}
 
