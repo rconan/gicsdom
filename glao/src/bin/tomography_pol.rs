@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<usize>()
         .expect("DURATION parsing failed!");
 
-    //let _science_field = env::var("SCIENCE").expect("SCIENCE:[ONAXIS,DELAUNAY21] env var mission");
+    let science_field = env::var("SCIENCE").expect("SCIENCE:[ONAXIS,DELAUNAY21] env var missing");
     let rate = 54;
     let upload_results = true;
 
@@ -104,7 +104,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wfs.calibrate(&mut gs, wfs_intensity_threshold);
 
     let n_px = 769;
-    let mut src = ceo!(FIELDDELAUNAY21, set_pupil_sampling = [n_px]);
+    let mut src = match science_field.as_str() {
+        "ONAXIS" => ceo!(SOURCE, set_pupil_sampling = [n_px]),
+        "DELAUNAY21" => ceo!(FIELDDELAUNAY21, set_pupil_sampling = [n_px]),
+        _ => panic!("SCIENCE is either ONAXIS or DELAUNAY21"),
+    };
     src.through(&mut gmt).xpupil();
 
     let mut pssn = CEO::<PSSN>::new().build::<PE>(&mut src);
