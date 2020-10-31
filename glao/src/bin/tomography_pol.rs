@@ -55,6 +55,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .expect("LOOP is either OPEN or CLOSED");
 
+    let closed_loop_estimator = match env::var("ESTIMATOR")
+        .expect("ESTIMATOR:[LSQ,LMMSE] env var missing")
+        .as_str()
+    {
+        "LSQ" => Some(Estimator::LSQ),
+        "LMMSE" => Some(Estimator::LMMSE),
+        _ => None,
+    }
+    .expect("ESTIMATOR is either LSQ or LMMSE");
+
     let duration = env::var("DURATION")
         .expect("DURATION env var missing")
         .parse::<usize>()
@@ -137,7 +147,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .build();
 
-    let closed_loop_estimator = Estimator::LMMSE;
     lmmse.set_n_iteration(5);
     let wfs_rate = 18;
     let rate_ratio = rate / wfs_rate;
@@ -164,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(p) => {
                         if p == rate {
                             println!("Step #{}: reset PSSn!", p);
-                            //pssn.reset();
+                            pssn.reset();
                         }
                     }
                     None => break,
@@ -187,17 +196,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     m2_2_wfs.qr();
                     println!("M2 calibration in {}s", now.elapsed().as_secs());
                     loop {
+                        t.push(ds.current_time);
                         atm.secs = ds.current_time;
 
-                        src.through(&mut gmt)
+                        let wfe_rms = src
+                            .through(&mut gmt)
                             .xpupil()
                             .through(&mut ds)
                             .through(&mut atm)
-                            .through(&mut pssn);
-                        //println!("WFE RMS: {}nm", src.wfe_rms_10e(-9)[0]);
-                        //println!("WFE RMS: {:?}nm", src.segment_wfe_rms_10e(-9));
+                            .through(&mut pssn)
+                            .wfe_rms_10e(-9);
+                        wfe.push((
+                            wfe_rms,
+                            src.segment_wfe_rms_10e(-9),
+                            src.segment_piston_10e(-9),
+                        ));
 
-                        for _ in 0..rate_ratio {
+                        let mut frame = rate_ratio;
+                        let state = loop {
                             wfs.reset();
                             gs.through(&mut gmt)
                                 .xpupil()
@@ -205,15 +221,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .through(&mut atm)
                                 .through(&mut wfs);
                             match ds.next() {
+                                None => break None,
                                 Some(p) => {
-                                    if p == rate {
-                                        println!("Step #{}: reset PSSn!", p);
-                                        //pssn.reset();
+                                    frame -= 1;
+                                    if frame == 0 {
+                                        break Some(p);
                                     }
                                 }
-                                None => break,
-                            };
-                        }
+                            }
+                        };
+                        match state {
+                            Some(p) => {
+                                if p == rate {
+                                    println!("Step #{}: reset PSSn!", p);
+                                    pssn.reset();
+                                }
+                            }
+                            None => break,
+                        };
                         wfs.process();
 
                         let mut kl_coefs_residuals: Vec<f32> =
@@ -223,7 +248,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .iter_mut()
                             .zip(kl_coefs_residuals.into_iter())
                             .for_each(|a| {
-                                *a.0 = -gain * a.1 as f64;
+                                *a.0 -= gain * a.1 as f64;
                             });
                         gmt.set_m2_modes(&mut kl_coefs);
                     }
@@ -278,7 +303,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Some(p) => {
                                 if p == rate {
                                     println!("Step #{}: reset PSSn!", p);
-                                    //pssn.reset();
+                                    pssn.reset();
                                 }
                             }
                             None => break,
@@ -289,7 +314,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             * &Cu::<Single>::from(
                                 kl_coefs.iter().map(|x| *x as f32).collect::<Vec<f32>>(),
                             );
+                        //let now = Instant::now();
                         lmmse.get_wavefront_estimate(&mut wfs);
+                        //println!("LMMSE in {}micros",now.elapsed().as_micros());
                         let kl_coefs_residuals = lmmse.get_karhunen_loeve_coefficients(&kln, None);
 
                         kl_coefs
