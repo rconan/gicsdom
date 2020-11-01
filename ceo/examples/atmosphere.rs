@@ -11,7 +11,7 @@ fn main() {
         .build();
     let mut atm_2 = CEO::<ATMOSPHERE>::new()
         .set_single_turbulence_layer(0f32, None, None)
-        .set_ray_tracing(25.5, 512, 0., 1., None, None)
+        .set_ray_tracing(25.5, 512, 0., 1., Some("atm_2.bin".to_owned()), None)
         .build();
 
     let dump = |data: &Vec<f32>, filename: &str| {
