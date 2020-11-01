@@ -1,10 +1,37 @@
 //!
 //! # CEO wrapper crate
 //!
-//!The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
-//! The simplest method to build CEO element is to use the [`ceo!`][macro] macro builder
+//! The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
+//! The simplest method to build CEO elements is to use the generic builder pattern [`CEO`][CEO].
+//! CEO elements (GMT, source, atmosphere, ...) are selected by passing to [`CEO`][CEO], as a type, one a structure defined in the [`element`][element] module.
+//! Each structure in [`element`][element] implements the `Default` trait meaning it is already set with default parameters.
 //!
+//! For example, a `GMT` and a `SOURCE` CEO elements with default parameters can be build either with the builder pattern:
+//! ```rust
+//! use ceo::{CEO, CEOInit, element};
+//! let mut gmt = CEO::<element::GMT>::new().build();
+//! let mut src = CEO::<element::SOURCE>::new().build();
+//! src.through(&mut gmt).xpupil();
+//! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
+//! ```
+//! or with the [`ceo!`][macro] macro
+//! ```rust
+//! use ceo::{ceo, CEO, CEOInit, element::{GMT, SOURCE}};
+//! let mut gmt = ceo!(GMT);
+//! let mut src = ceo!(SOURCE);
+//! src.through(&mut gmt).xpupil();
+//! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
+//! ```
+//!
+//! [CEO]: struct.CEO.html
+//! [element]: element
 //! [macro]: macro.ceo.html
+//!
+//! ## Default parameters
+//!
+//! [`SOURCE`][SOURCE.default]
+//!
+//! [SOURCE.default]: element/struct.SOURCE.html#impl-Default
 
 use std::{error::Error, f32, f64, fmt, mem};
 
@@ -59,14 +86,14 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * GMT
 ///
 /// ```
-/// use ceo::{ceo, element::*};
+/// use ceo::{ceo, CEO, CEOInit, element::*};
 /// let gmt = ceo!(GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
 /// ```
 ///
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*, shackhartmann::Geometric};
+/// use ceo::{ceo, CEO, CEOInit, element::*, shackhartmann::Geometric};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Geometric,
 ///     set_n_sensor = [1],
@@ -81,7 +108,7 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*, shackhartmann::Diffractive};
+/// use ceo::{ceo, CEO, CEOInit, element::*, shackhartmann::Diffractive};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN: Diffractive,
 ///     set_n_sensor = [1],

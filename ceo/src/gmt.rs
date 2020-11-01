@@ -48,7 +48,7 @@ struct Mirror<'a> {
 /// # Examples
 ///
 /// ```
-/// use ceo::{ceo,element::{GMT,SOURCE}};
+/// use ceo::{ceo,CEO, CEOInit,element::{GMT,SOURCE}};
 /// let mut src = ceo!(SOURCE);
 /// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil();

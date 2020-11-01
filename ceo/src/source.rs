@@ -16,7 +16,7 @@ pub trait Propagation {
 /// # Examples
 ///
 /// ```
-/// use ceo::{ceo,element::SOURCE};
+/// use ceo::{ceo,CEO,element::SOURCE};
 /// let mut src = ceo!(SOURCE);
 /// ```
 pub struct Source {
