@@ -1,7 +1,7 @@
 use super::ceo_bindings::LMMSE;
 use super::{
     ceo, cu::Single, element, Atmosphere, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
-    Source, CEO,
+    Source, CEO, Builder,
 };
 use std::ffi::CString;
 
@@ -14,11 +14,6 @@ pub struct LinearMinimumMeanSquareError {
     pupil_mask: Mask,
 }
 impl CEO<element::LMMSE> {
-    pub fn new() -> CEO<element::LMMSE> {
-        CEO {
-            args: element::LMMSE::default(),
-        }
-    }
     pub fn set_atmosphere(mut self, atm: &CEO<element::ATMOSPHERE>) -> Self {
         self.args.atm = atm.clone();
         self

@@ -8,7 +8,7 @@
 //!
 //! For example, a `GMT` and a `SOURCE` CEO elements with default parameters can be build either with the builder pattern:
 //! ```rust
-//! use ceo::{CEO, CEOInit, element};
+//! use ceo::{Builder, CEO, element};
 //! let mut gmt = CEO::<element::GMT>::new().build();
 //! let mut src = CEO::<element::SOURCE>::new().build();
 //! src.through(&mut gmt).xpupil();
@@ -16,7 +16,7 @@
 //! ```
 //! or with the [`ceo!`][macro] macro
 //! ```rust
-//! use ceo::{ceo, CEO, CEOInit, element::{GMT, SOURCE}};
+//! use ceo::{ceo, element::{GMT, SOURCE}};
 //! let mut gmt = ceo!(GMT);
 //! let mut src = ceo!(SOURCE);
 //! src.through(&mut gmt).xpupil();
@@ -86,16 +86,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * GMT
 ///
 /// ```
-/// use ceo::{ceo, CEO, CEOInit, element::*};
+/// use ceo::{ceo, element::*};
 /// let gmt = ceo!(GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
 /// ```
 ///
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, CEO, CEOInit, element::*, shackhartmann::Geometric};
+/// use ceo::{ceo, element::*, shackhartmann::Geometric};
 /// let mut wfs = ceo!(
-///     SHACKHARTMANN: Geometric,
+///     SHACKHARTMANN<Geometric>,
 ///     set_n_sensor = [1],
 ///     set_lenslet_array = [48, 16, 25.5 / 48f64]
 /// );
@@ -108,9 +108,9 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, CEO, CEOInit, element::*, shackhartmann::Diffractive};
+/// use ceo::{ceo, element::*, shackhartmann::Diffractive};
 /// let mut wfs = ceo!(
-///     SHACKHARTMANN: Diffractive,
+///     SHACKHARTMANN<Diffractive>,
 ///     set_n_sensor = [1],
 ///     set_lenslet_array = [48, 16, 25.5 / 48f64],
 ///     set_detector = [8, Some(24), None]
@@ -123,16 +123,10 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        CEO::<$element>::new().build()
-    };
-    ($element:ty:$model:ty) => {
-        CEO::<$element>::new().build::<$model>()
+        $crate::Builder::build(&$crate::CEO::<$element>::new())
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build()
-    };
-    ($element:ty:$model:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        CEO::<$element>::new()$(.$arg($($val),+))*.build::<$model>()
+        $crate::Builder::build(&$crate::CEO::<$element>::new()$(.$arg($($val),+))*)
     };
 }
 /*
@@ -168,19 +162,17 @@ pub trait CEOType: Clone + Default {}
 pub struct CEO<T: CEOType> {
     args: T,
 }
-pub trait CEOInit<T: CEOType> {
-    fn new() -> CEO<T>;
+pub trait Builder {
+    type Component;
+    fn build(&self) -> Self::Component;
 }
-impl<T: CEOType> CEOInit<T> for CEO<T> {
-    fn new() -> Self {
+impl<T: CEOType> CEO<T> {
+    /// Create a new CEO builder with default parameters
+    pub fn new() -> Self {
         CEO {
             args: Default::default(),
         }
     }
-}
-pub trait CEOWFS {
-    fn build(&self) -> ShackHartmann<shackhartmann::Geometric>;
-    fn get_n_data(&self) -> usize;
 }
 pub mod element {
     use super::CEOType;
@@ -366,38 +358,42 @@ pub mod element {
     }
     #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
-    pub struct SHACKHARTMANN {
+    pub struct SHACKHARTMANN<T: super::shackhartmann::Model> {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
+        marker: std::marker::PhantomData<T>,
     }
-    impl Default for SHACKHARTMANN {
+    impl<T: super::shackhartmann::Model> Default for SHACKHARTMANN<T> {
         fn default() -> Self {
             SHACKHARTMANN {
                 n_sensor: 1,
                 lenslet_array: LensletArray::default(),
                 detector: Detector::default(),
+                marker: std::marker::PhantomData,
             }
         }
     }
-    impl ShWfs for SHACKHARTMANN {}
+    impl<T: super::shackhartmann::Model> ShWfs for SHACKHARTMANN<T> {}
     #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-7) specialized [`ShackHartmann`](../struct.ShackHartmann.html) builder type
-    pub struct SH48 {
+    pub struct SH48<T: super::shackhartmann::Model>  {
         pub n_sensor: usize,
         pub lenslet_array: LensletArray,
         pub detector: Detector,
+        marker: std::marker::PhantomData<T>,
     }
-    impl Default for SH48 {
+    impl<T: super::shackhartmann::Model>  Default for SH48<T> {
         fn default() -> Self {
             SH48 {
                 n_sensor: 4,
                 lenslet_array: LensletArray(48, 16, 25.5 / 48.0),
                 detector: Detector(8, Some(24), Some(2)),
+                marker: std::marker::PhantomData,
             }
         }
     }
-    impl ShWfs for SH48 {}
+    impl<T: super::shackhartmann::Model>  ShWfs for SH48<T> {}
     // ---------------------------------------------------------------------------------------------
     #[derive(Debug, Clone)]
     /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
@@ -514,11 +510,13 @@ pub mod element {
     impl_ceotype!(
         GMT,
         SOURCE,
-        SHACKHARTMANN,
+        SHACKHARTMANN<super::shackhartmann::Geometric>,
+        SHACKHARTMANN<super::shackhartmann::Diffractive>,
         PSSN,
         FIELDDELAUNAY21,
         ATMOSPHERE,
-        SH48,
+        SH48<super::shackhartmann::Geometric>,
+        SH48<super::shackhartmann::Diffractive>,
         LMMSE
     );
 }

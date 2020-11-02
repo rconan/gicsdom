@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::atmosphere;
-use super::{element, Propagation, Source, CEO};
+use super::{element, Propagation, Source, CEO, Builder};
 
 #[derive(Deserialize, Debug)]
 struct GmtAtmosphere {
@@ -36,12 +36,6 @@ pub struct Atmosphere {
 }
 /// ## `Atmosphere` builder
 impl CEO<element::ATMOSPHERE> {
-    /// Create a new `Atmosphere` builder
-    pub fn new() -> CEO<element::ATMOSPHERE> {
-        CEO {
-            args: element::ATMOSPHERE::default(),
-        }
-    }
     /// Set r0 value taken at pointing the zenith in meters
     pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
         self.args.r0_at_zenith = r0_at_zenith;
@@ -107,8 +101,11 @@ impl CEO<element::ATMOSPHERE> {
         });
         self
     }
+}
+impl Builder for CEO<element::ATMOSPHERE> {
+    type Component = Atmosphere;
     /// Build the `Atmosphere`
-    pub fn build(mut self) -> Atmosphere {
+    fn build(&self) -> Atmosphere {
         let mut atm = Atmosphere {
             _c_: unsafe { mem::zeroed() },
             r0_at_zenith: self.args.r0_at_zenith,
@@ -126,30 +123,30 @@ impl CEO<element::ATMOSPHERE> {
             atm.zenith_angle.to_degrees(),
             r0
         );
-        self.args.turbulence.altitude = self
+        let mut altitude = self
             .args
             .turbulence
             .altitude
             .iter()
             .map(|x| *x as f32 * secz as f32)
             .collect::<Vec<f32>>();
-        self.args.turbulence.wind_direction = self
+        let mut wind_speed = self
             .args
             .turbulence
             .altitude
             .iter()
             .map(|x| *x as f32 / secz as f32)
             .collect::<Vec<f32>>();
-        match self.args.ray_tracing {
+        match &self.args.ray_tracing {
             None => unsafe {
                 atm._c_.setup(
                     r0 as f32,
                     self.args.oscale as f32,
                     self.args.turbulence.n_layer as i32,
-                    self.args.turbulence.altitude.as_mut_ptr(),
-                    self.args.turbulence.xi0.as_mut_ptr(),
-                    self.args.turbulence.wind_speed.as_mut_ptr(),
-                    self.args.turbulence.wind_direction.as_mut_ptr(),
+                    altitude.as_mut_ptr(),
+                    self.args.turbulence.xi0.clone().as_mut_ptr(),
+                    wind_speed.as_mut_ptr(),
+                    self.args.turbulence.wind_direction.clone().as_mut_ptr(),
                 );
                 atm.propagate_ptr = |a, s, t| {
                     let n_xy = s.pupil_sampling;
@@ -158,17 +155,17 @@ impl CEO<element::ATMOSPHERE> {
                         .get_phase_screen4(s.as_raw_mut_ptr(), d_xy, n_xy, d_xy, n_xy, t);
                 };
             },
-            Some(rtc) => match rtc.filepath {
+            Some(rtc) => match &rtc.filepath {
                 Some(file) => unsafe {
                     log::info!("Looking up phase screen from file {}", file);
                     atm._c_.setup2(
                         r0 as f32,
                         self.args.oscale as f32,
                         self.args.turbulence.n_layer as i32,
-                        self.args.turbulence.altitude.as_mut_ptr(),
-                        self.args.turbulence.xi0.as_mut_ptr(),
-                        self.args.turbulence.wind_speed.as_mut_ptr(),
-                        self.args.turbulence.wind_direction.as_mut_ptr(),
+                        altitude.as_mut_ptr(),
+                        self.args.turbulence.xi0.clone().as_mut_ptr(),
+                        wind_speed.as_mut_ptr(),
+                        self.args.turbulence.wind_direction.clone().as_mut_ptr(),
                         rtc.width,
                         rtc.n_width_px,
                         rtc.field_size,
@@ -190,10 +187,10 @@ impl CEO<element::ATMOSPHERE> {
                         r0 as f32,
                         self.args.oscale as f32,
                         self.args.turbulence.n_layer as i32,
-                        self.args.turbulence.altitude.as_mut_ptr(),
-                        self.args.turbulence.xi0.as_mut_ptr(),
-                        self.args.turbulence.wind_speed.as_mut_ptr(),
-                        self.args.turbulence.wind_direction.as_mut_ptr(),
+                        altitude.as_mut_ptr(),
+                        self.args.turbulence.xi0.clone().as_mut_ptr(),
+                        wind_speed.as_mut_ptr(),
+                        self.args.turbulence.wind_direction.clone().as_mut_ptr(),
                         rtc.width,
                         rtc.n_width_px,
                         rtc.field_size,

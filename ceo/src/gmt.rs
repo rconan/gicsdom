@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
-use super::{element, Propagation, Source, CEO};
+use super::{element, Builder, Propagation, Source, CEO};
 
 /*
 struct RigidBody<'a> {
@@ -48,7 +48,7 @@ struct Mirror<'a> {
 /// # Examples
 ///
 /// ```
-/// use ceo::{ceo,CEO, CEOInit,element::{GMT,SOURCE}};
+/// use ceo::{ceo, element::{GMT,SOURCE}};
 /// let mut src = ceo!(SOURCE);
 /// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil();
@@ -70,40 +70,54 @@ pub struct Gmt {
 }
 /// ## `Gmt` builder
 impl CEO<element::GMT> {
-    pub fn new() -> CEO<element::GMT> {
-        CEO {
-            args: element::GMT::default(),
+    pub fn set_m1(self, mode_type: &str, n_mode: usize) -> Self {
+        Self {
+            args: element::GMT {
+                m1: element::Mirror {
+                    mode_type: mode_type.into(),
+                    n_mode,
+                },
+                ..self.args
+            },
         }
     }
-    pub fn set_m1(mut self, mode_type: &str, n_mode: usize) -> Self {
-        self.args.m1 = element::Mirror {
-            mode_type: mode_type.into(),
-            n_mode: n_mode,
-        };
-        self
+    pub fn set_m1_n_mode(self, n_mode: usize) -> Self {
+        Self {
+            args: element::GMT {
+                m1: element::Mirror {
+                    n_mode,
+                    ..self.args.m1
+                },
+                ..self.args
+            },
+        }
     }
-    pub fn set_m1_n_mode(mut self, n_mode: usize) -> Self {
-        self.args.m1 = element::Mirror {
-            mode_type: self.args.m1.mode_type,
-            n_mode: n_mode,
-        };
-        self
+    pub fn set_m2(self, mode_type: &str, n_mode: usize) -> Self {
+        Self {
+            args: element::GMT {
+                m2: element::Mirror {
+                    mode_type: mode_type.into(),
+                    n_mode,
+                },
+                ..self.args
+            },
+        }
     }
-    pub fn set_m2(mut self, mode_type: &str, n_mode: usize) -> Self {
-        self.args.m2 = element::Mirror {
-            mode_type: mode_type.into(),
-            n_mode: n_mode,
-        };
-        self
+    pub fn set_m2_n_mode(self, n_mode: usize) -> Self {
+        Self {
+            args: element::GMT {
+                m2: element::Mirror {
+                    n_mode,
+                    ..self.args.m2
+                },
+                ..self.args
+            },
+        }
     }
-    pub fn set_m2_n_mode(mut self, n_mode: usize) -> Self {
-        self.args.m2 = element::Mirror {
-            mode_type: self.args.m2.mode_type,
-            n_mode: n_mode,
-        };
-        self
-    }
-    pub fn build(&self) -> Gmt {
+}
+impl Builder for CEO<element::GMT> {
+    type Component = Gmt;
+    fn build(&self) -> Gmt {
         let mut gmt = Gmt {
             _c_m1_modes: unsafe { mem::zeroed() },
             _c_m2_modes: unsafe { mem::zeroed() },
@@ -438,6 +452,7 @@ impl Propagation for Gmt {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Builder;
 
     #[test]
     fn gmt_new() {

@@ -1,5 +1,5 @@
 use ceo::{
-    calibrations, ceo, element::*, shackhartmann::Geometric as WFS_TYPE, CEOInit, Calibration, CEO,
+    calibrations, ceo, element::*, shackhartmann::Geometric as WFS_TYPE, Builder, Calibration, CEO,
 };
 use serde_pickle as pickle;
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::time::Instant;
 
 fn main() {
     let gmt_blueprint = CEO::<GMT>::new();
-    let wfs_blueprint = CEO::<SH48>::new().set_n_sensor(1);
+    let wfs_blueprint = CEO::<SH48<WFS_TYPE>>::new().set_n_sensor(1);
     let gs_blueprint = wfs_blueprint.guide_stars();
 
     let mut gmt2wfs = Calibration::new(&gmt_blueprint, &gs_blueprint, &wfs_blueprint);
@@ -28,7 +28,7 @@ fn main() {
     pickle::to_writer(&mut file, &gmt2wfs.poke.from_dev(), true).unwrap();
 
     let mut gmt = gmt_blueprint.build();
-    let mut wfs = wfs_blueprint.build::<WFS_TYPE>();
+    let mut wfs = wfs_blueprint.build();
     let mut gs = gs_blueprint.build();
     let mut src = ceo!(SOURCE);
     let mut atm = ceo!(ATMOSPHERE);
@@ -45,8 +45,8 @@ fn main() {
     gs.through(&mut gmt).xpupil().through(&mut wfs);
     wfs.process();
 
-    let mut a = gmt2wfs.qr().solve(&mut wfs.get_data());
-    let s: Vec<f32> = (gmt2wfs.poke*a.clone()).into();
+    let a = gmt2wfs.qr().solve(&mut wfs.get_data());
+    let s: Vec<f32> = (&gmt2wfs.poke*&a).into();
 
     let mut file = File::create("slopes.pkl").unwrap();
     pickle::to_writer(&mut file,  &(wfs.get_data().from_dev(),s), true).unwrap();

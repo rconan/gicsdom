@@ -2,7 +2,7 @@ use super::{
     cu::Single,
     element::{GMT, SOURCE},
     shackhartmann::Geometric,
-    Cu, Gmt, ShackHartmann, Source, CEO, CEOWFS,
+    Builder, Cu, Gmt, ShackHartmann, Source, CEO,
 };
 use log;
 use std::ops::Range;
@@ -91,26 +91,26 @@ impl Segment {
 
 /// GMT segment rigid body motion and surface figure calibration
 ///
-/// `Calibration` creates its own GMT simulation with a `Gmt`, a `Source` and a `CEOWFS`.
+/// `Calibration` creates its own GMT simulation with a `Gmt`, a `Source` and a `Builder`.
 /// The calibration is performed by estimating the geometric centroids associated with the calibrated functions.
 pub struct Calibration {
     gmt_blueprint: Arc<CEO<GMT>>,
     src_blueprint: Arc<CEO<SOURCE>>,
-    wfs_blueprint: Arc<dyn CEOWFS>,
+    wfs_blueprint: Arc<dyn Builder<Component = ShackHartmann<Geometric>>>,
     pub n_data: usize,
     pub n_mode: usize,
     pub poke: Cu<Single>,
     poke_qr: Cu<Single>,
 }
 impl Calibration {
-    /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `CEOWFS`
+    /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `Builder`
     pub fn new<P>(
         gmt_blueprint: &CEO<GMT>,
         src_blueprint: &CEO<SOURCE>,
         wfs_blueprint: &P,
     ) -> Calibration
     where
-        P: CEOWFS + std::clone::Clone + 'static,
+        P: Builder<Component = ShackHartmann<Geometric>> + std::clone::Clone + 'static,
     {
         Calibration {
             gmt_blueprint: Arc::new(gmt_blueprint.clone()),

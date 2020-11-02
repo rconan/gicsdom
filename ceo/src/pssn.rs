@@ -19,11 +19,6 @@ pub struct PSSn<S> {
     pub otf: Vec<f32>,
 }
 impl CEO<element::PSSN> {
-    pub fn new() -> CEO<element::PSSN> {
-        CEO {
-            args: element::PSSN::default()
-        }
-    }
     pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
         self.args.r0_at_zenith = r0_at_zenith;
         self
@@ -235,6 +230,7 @@ impl<S> Propagation for PSSn<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Builder;
 
     #[test]
     fn pssn_new() {

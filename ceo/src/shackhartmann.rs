@@ -1,7 +1,9 @@
 use std::{f32, mem};
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{element, element::ShWfs, Cu, cu::Single, Mask, Propagation, Source, CEO};
+use super::{
+    cu::Single, element, element::ShWfs, Builder, Cu, Mask, Propagation, Source, CEO,
+};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -83,7 +85,31 @@ pub struct ShackHartmann<S: Model> {
     /// The centroids
     pub centroids: Cu<Single>,
 }
-impl CEO<element::SHACKHARTMANN> {
+impl CEO<element::SHACKHARTMANN<Geometric>> {
+    pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
+        self.args.n_sensor = n_sensor;
+        self
+    }
+    pub fn set_lenslet_array(mut self, n_side_lenslet: usize, n_px_lenslet: usize, d: f64) -> Self {
+        self.args.lenslet_array = element::LensletArray(n_side_lenslet, n_px_lenslet, d);
+        self
+    }
+    pub fn guide_stars(&self) -> CEO<element::SOURCE> {
+        self.args
+            .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
+    }
+}
+impl Builder for CEO<element::SHACKHARTMANN<Geometric>> {
+    type Component = ShackHartmann<Geometric>;
+    fn build(&self) -> ShackHartmann<Geometric> {
+        self.args.build::<Geometric>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+}
+impl CEO<element::SHACKHARTMANN<Diffractive>> {
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
         self.args.n_sensor = n_sensor;
         self
@@ -105,15 +131,18 @@ impl CEO<element::SHACKHARTMANN> {
         self.args
             .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
     }
-    pub fn build<T: Model>(&self) -> ShackHartmann<T> {
-        self.args.build::<T>(
+}
+impl Builder for CEO<element::SHACKHARTMANN<Diffractive>> {
+    type Component = ShackHartmann<Diffractive>;
+    fn build(&self) -> ShackHartmann<Diffractive> {
+        self.args.build::<Diffractive>(
             self.args.n_sensor,
             self.args.lenslet_array.clone(),
             self.args.detector.clone(),
         )
     }
 }
-impl CEO<element::SH48> {
+impl CEO<element::SH48<Geometric>> {
     pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
         self.args.n_sensor = n_sensor;
         self
@@ -122,14 +151,38 @@ impl CEO<element::SH48> {
         self.args
             .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
     }
-    pub fn build<T: Model>(&self) -> ShackHartmann<T> {
-        self.args.build::<T>(
+}
+impl Builder for CEO<element::SH48<Geometric>> {
+    type Component = ShackHartmann<Geometric>;
+    fn build(&self) -> ShackHartmann<Geometric> {
+        self.args.build::<Geometric>(
             self.args.n_sensor,
             self.args.lenslet_array.clone(),
             self.args.detector.clone(),
         )
     }
 }
+impl CEO<element::SH48<Diffractive>> {
+    pub fn set_n_sensor(mut self, n_sensor: usize) -> Self {
+        self.args.n_sensor = n_sensor;
+        self
+    }
+    pub fn guide_stars(&self) -> CEO<element::SOURCE> {
+        self.args
+            .guide_stars(self.args.n_sensor, self.args.lenslet_array.clone())
+    }
+}
+impl Builder for CEO<element::SH48<Diffractive>> {
+    type Component = ShackHartmann<Diffractive>;
+    fn build(&self) -> ShackHartmann<Diffractive> {
+        self.args.build::<Diffractive>(
+            self.args.n_sensor,
+            self.args.lenslet_array.clone(),
+            self.args.detector.clone(),
+        )
+    }
+}
+/*
 use super::CEOWFS;
 impl CEOWFS for CEO<element::SHACKHARTMANN> {
     fn build(&self) -> ShackHartmann<Geometric> {
@@ -140,7 +193,7 @@ impl CEOWFS for CEO<element::SHACKHARTMANN> {
         )
     }
     fn get_n_data(&self) -> usize {
-        2*self.args.lenslet_array.0.pow(2)*self.args.n_sensor
+        2 * self.args.lenslet_array.0.pow(2) * self.args.n_sensor
     }
 }
 impl CEOWFS for CEO<element::SH48> {
@@ -152,9 +205,10 @@ impl CEOWFS for CEO<element::SH48> {
         )
     }
     fn get_n_data(&self) -> usize {
-        2*self.args.lenslet_array.0.pow(2)*self.args.n_sensor
+        2 * self.args.lenslet_array.0.pow(2) * self.args.n_sensor
     }
 }
+*/
 impl<S: Model> ShackHartmann<S> {
     /// Creates a new `ShackHartmann` as either `Geometric` or `Diffractive` type
     ///
@@ -392,12 +446,12 @@ mod tests {
 
     #[test]
     fn shack_hartmann_geometric_new() {
+        use crate::Builder;
         use element::*;
-        use crate::CEOInit;
-        let mut wfs = CEO::<SHACKHARTMANN>::new()
+        let mut wfs = CEO::<SHACKHARTMANN<Geometric>>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
-            .build::<Geometric>();
+            .build();
         let mut src = CEO::<SOURCE>::new().set_pupil_sampling(48 * 16 + 1).build();
         let mut gmt = CEO::<GMT>::new().build();
         src.through(&mut gmt).xpupil().through(&mut wfs);
@@ -407,9 +461,8 @@ mod tests {
     #[test]
     fn shack_hartmann_geometric_new_with_macro() {
         use element::*;
-        use crate::CEOInit;
         let mut wfs = crate::ceo!(
-            SHACKHARTMANN: Geometric,
+            SHACKHARTMANN<Geometric>,
             set_n_sensor = [1],
             set_lenslet_array = [48, 16, 25.5 / 48f64]
         );
@@ -421,13 +474,13 @@ mod tests {
 
     #[test]
     fn shack_hartmann_diffractive_new() {
+        use crate::Builder;
         use element::*;
-        use crate::CEOInit;
-        let mut wfs = CEO::<SHACKHARTMANN>::new()
+        let mut wfs = CEO::<SHACKHARTMANN<Diffractive>>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)
             .set_detector(8, Some(24), None)
-            .build::<Diffractive>();
+            .build();
         let mut src = CEO::<SOURCE>::new().set_pupil_sampling(48 * 16 + 1).build();
         let mut gmt = CEO::<GMT>::new().build();
         src.through(&mut gmt).xpupil().through(&mut wfs);
@@ -437,9 +490,8 @@ mod tests {
     #[test]
     fn shack_hartmann_diffractive_new_with_macro() {
         use element::*;
-        use crate::CEOInit;
         let mut wfs = crate::ceo!(
-            SHACKHARTMANN: Diffractive,
+            SHACKHARTMANN<Diffractive>,
             set_n_sensor = [1],
             set_lenslet_array = [48, 16, 25.5 / 48f64],
             set_detector = [8, Some(24), None]

@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{element, Centroiding, Cu, cu::Single, CEO};
+use super::{cu::Single, element, Builder, Centroiding, Cu, CEO};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -16,7 +16,7 @@ pub trait Propagation {
 /// # Examples
 ///
 /// ```
-/// use ceo::{ceo,CEO,element::SOURCE};
+/// use ceo::{ceo, element::SOURCE};
 /// let mut src = ceo!(SOURCE);
 /// ```
 pub struct Source {
@@ -35,12 +35,6 @@ pub struct Source {
 }
 /// ## `Source` builder for a 21 source field
 impl CEO<element::FIELDDELAUNAY21> {
-    /// Create a new `Source` builder
-    pub fn new() -> CEO<element::FIELDDELAUNAY21> {
-        CEO {
-            args: element::FIELDDELAUNAY21::default(),
-        }
-    }
     /// Set the sampling of the pupil in pixels
     pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
         self.args.pupil_sampling = pupil_sampling;
@@ -56,8 +50,11 @@ impl CEO<element::FIELDDELAUNAY21> {
         self.args.band = band.to_owned();
         self
     }
+}
+impl Builder for CEO<element::FIELDDELAUNAY21> {
+    type Component = Source;
     /// Build the source object
-    pub fn build(&self) -> Source {
+    fn build(&self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },
             size: self.args.size as i32,
@@ -93,12 +90,6 @@ impl CEO<element::FIELDDELAUNAY21> {
 }
 /// ## `Source` builder
 impl CEO<element::SOURCE> {
-    /// Create a new `Source` builder
-    pub fn new() -> CEO<element::SOURCE> {
-        CEO {
-            args: element::SOURCE::default(),
-        }
-    }
     /// Set the number of sources
     pub fn set_size(mut self, size: usize) -> Self {
         self.args.size = size;
@@ -156,8 +147,11 @@ impl CEO<element::SOURCE> {
         self.args.magnitude = magnitude;
         self
     }
+}
+impl Builder for CEO<element::SOURCE> {
+    type Component = Source;
     /// Build the `Source`
-    pub fn build(&self) -> Source {
+    fn build(&self) -> Source {
         let mut src = Source {
             _c_: unsafe { mem::zeroed() },
             size: self.args.size as i32,
