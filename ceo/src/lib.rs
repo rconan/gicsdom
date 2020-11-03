@@ -2,19 +2,9 @@
 //! # CEO wrapper crate
 //!
 //! The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
-//! The simplest method to build CEO elements is to use the generic builder pattern.
-//! CEO elements (GMT, source, atmosphere, ...) are created by using the element builder.
-//! Each structure in [`element`][element] implements the `Default` trait meaning it is already set with default parameters.
+//! CEO elements are created using the builder associated to each element.
 //!
-//! For example, a `GMT` and a `SOURCE` CEO elements with default parameters can be build either with the builder pattern:
-//! ```rust
-//! use ceo::{CEOType, Builder, GMT, SOURCE};
-//! let mut gmt = GMT::new().build();
-//! let mut src = SOURCE::new().build();
-//! src.through(&mut gmt).xpupil();
-//! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
-//! ```
-//! or with the [`ceo!`][macro] macro
+//! For example, the default CEO elements `Gmt` and `Source` are built with:
 //! ```rust
 //! use ceo::ceo;
 //! let mut gmt = ceo!(GMT);
@@ -22,6 +12,7 @@
 //! src.through(&mut gmt).xpupil();
 //! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
 //! ```
+//! [`ceo!`](macro.ceo.html) is a macro that incorporates the necessary boilerplate code to create CEO elements.
 
 use std::{error::Error, f32, f64, fmt, mem};
 
