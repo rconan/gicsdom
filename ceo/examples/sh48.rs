@@ -1,6 +1,6 @@
 use ceo::{
     calibrations, ceo, shackhartmann::Geometric as WFS_TYPE, Builder, CEOType, Calibration,
-    ATMOSPHERE, GMT, SH48, SOURCE,
+    GMT, SH48,
 };
 use serde_pickle as pickle;
 use std::fs::File;

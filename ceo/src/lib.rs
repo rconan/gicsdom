@@ -22,16 +22,6 @@
 //! src.through(&mut gmt).xpupil();
 //! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
 //! ```
-//!
-//! [CEO]: struct.CEO.html
-//! [element]: element
-//! [macro]: macro.ceo.html
-//!
-//! ## Default parameters
-//!
-//! [`SOURCE`][SOURCE.default]
-//!
-//! [SOURCE.default]: element/struct.SOURCE.html#impl-Default
 
 use std::{error::Error, f32, f64, fmt, mem};
 

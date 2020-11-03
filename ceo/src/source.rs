@@ -1,3 +1,26 @@
+//!
+//! # CEO source wrapper
+//!
+//! Provides a structure `Source` that is a wrapper for [CEO](https://github.com/rconan/CEO) source C++ structure.
+//! `Source` is instantiated and initialized with the `SOURCE` builder
+//!
+//! # Examples
+//!
+//! - on-axis source with default parameters
+//!
+//! ```
+//! use ceo::ceo;
+//! // Creates a source with default parameters
+//! let mut src = ceo!(SOURCE);
+//! ```
+//!
+//! - 3 sources evenly spread on a ring with a 8 arcminute radius
+//!
+//! ```
+//! use ceo::{ceo, Conversion};
+//! let mut src = ceo!(SOURCE, set_size = [3] , set_on_ring = [8f32.from_arcmin()]);
+//! ```
+
 use std::f32;
 use std::ffi::CString;
 use std::mem;
@@ -11,16 +34,33 @@ pub trait Propagation {
     fn time_propagate(&mut self, secs: f64, src: &mut Source) -> &mut Self;
 }
 
-/// CEO optical source model
+/// `Source` builder
+///
+/// Default properties:
+///  - size             : 1
+///  - pupil size       : 25.5m
+///  - pupil sampling   : 512px
+///  - photometric band : Vs (500nm)
+///  - zenith           : 0degree
+///  - azimuth          : 0degree
+///  - magnitude        : 0
 ///
 /// # Examples
 ///
+/// - on-axis source with default parameters
+///
 /// ```
-/// use ceo::{ceo, CEOType, SOURCE};
-/// let mut src = ceo!(SOURCE);
+/// use ceo::{Builder, CEOType, SOURCE};
+/// let mut src = SOURCE::new().build();
+/// ```
+///
+/// - 3 sources evenly spread on a ring with a 8 arcminute radius
+///
+/// ```
+/// use ceo::{Builder, CEOType, SOURCE, Conversion};
+/// let mut src = SOURCE::new().set_size(3).set_on_ring(8f32.from_arcmin()).build();
 /// ```
 #[derive(Debug, Clone)]
-/// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
 pub struct SOURCE {
     pub size: usize,
     pub pupil_size: f64,
@@ -30,14 +70,6 @@ pub struct SOURCE {
     pub azimuth: Vec<f32>,
     pub magnitude: Vec<f32>,
 }
-/// Default properties:
-///  * size             : 1
-///  * pupil size       : 25.5m
-///  * pupil sampling   : 512px
-///  * photometric band : Vs (500nm)
-///  * zenith           : 0degree
-///  * azimuth          : 0degree
-///  * magnitude        : 0
 impl Default for SOURCE {
     fn default() -> Self {
         SOURCE {
@@ -52,8 +84,26 @@ impl Default for SOURCE {
     }
 }
 // ---------------------------------------------------------------------------------------------
+/// A `Source` field builder
+///
+/// Builds a star field made of 21 sources located at the vertices of a Delaunay mesh sampling a 10 arcminute field of view
+///
+/// Default properties:
+///  * size             : 21
+///  * pupil size       : 25.5m
+///  * pupil sampling   : 512px
+///  * photometric band : Vs (500nm)
+///  * zenith           : ...
+///  * azimuth          : ...
+///  * magnitude        : 0
+///
+/// # Examples
+///
+/// ```
+/// use ceo::{Builder, CEOType, FIELDDELAUNAY21};
+/// let mut src = FIELDDELAUNAY21::new().build();
+/// ```
 #[derive(Debug, Clone)]
-/// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
 pub struct FIELDDELAUNAY21 {
     pub size: usize,
     pub pupil_size: f64,
@@ -74,8 +124,8 @@ impl Default for FIELDDELAUNAY21 {
         use super::Conversion;
         use serde_pickle as pickle;
         use std::fs::File;
-        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
-        let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
+        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("fielddelaunay21.pkl not found!");
+        let field: GlaoField = pickle::from_reader(field_reader).expect("fielddelaunay21.pkl loading failed!");
         let n_src = field.zenith_arcmin.len();
         FIELDDELAUNAY21 {
             size: n_src,
@@ -96,7 +146,6 @@ impl Default for FIELDDELAUNAY21 {
         }
     }
 }
-/// ## `Source` builder for a 21 source field
 impl FIELDDELAUNAY21 {
     /// Set the sampling of the pupil in pixels
     pub fn set_pupil_sampling(self, pupil_sampling: usize) -> Self {
@@ -256,6 +305,7 @@ impl Builder for SOURCE {
         src
     }
 }
+/// source wrapper
 pub struct Source {
     _c_: source,
     /// The number of sources
