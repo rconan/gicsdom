@@ -1,4 +1,4 @@
-use ceo::{ceo, element::*, CEO};
+use ceo::{ceo, GMT, SOURCE, ATMOSPHERE, CEOType, Builder};
 use serde_pickle as pkl;
 use std::fs::File;
 
@@ -6,10 +6,10 @@ fn main() {
     let mut gmt = ceo!(GMT);
     let mut src = ceo!(SOURCE);
 
-    let mut atm_1 = CEO::<ATMOSPHERE>::new()
+    let mut atm_1 = ATMOSPHERE::new()
         .set_single_turbulence_layer(0f32, None, None)
         .build();
-    let mut atm_2 = CEO::<ATMOSPHERE>::new()
+    let mut atm_2 = ATMOSPHERE::new()
         .set_single_turbulence_layer(0f32, None, None)
         .set_ray_tracing(25.5, 512, 0., 1., Some("atm_2.bin".to_owned()), None)
         .build();

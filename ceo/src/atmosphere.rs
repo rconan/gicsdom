@@ -415,10 +415,8 @@ impl Propagation for Atmosphere {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn atmosphere_new() {
-        crate::ceo!(element::ATMOSPHERE);
+        crate::ceo!(ATMOSPHERE);
     }
 }

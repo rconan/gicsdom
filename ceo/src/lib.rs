@@ -2,8 +2,8 @@
 //! # CEO wrapper crate
 //!
 //! The CEO wrapper is the interface to [CEO CUDA API](https://github.com/rconan/CEO).
-//! The simplest method to build CEO elements is to use the generic builder pattern [`CEO`][CEO].
-//! CEO elements (GMT, source, atmosphere, ...) are selected by passing to [`CEO`][CEO], as a type, one a structure defined in the [`element`][element] module.
+//! The simplest method to build CEO elements is to use the generic builder pattern.
+//! CEO elements (GMT, source, atmosphere, ...) are created by using the element builder.
 //! Each structure in [`element`][element] implements the `Default` trait meaning it is already set with default parameters.
 //!
 //! For example, a `GMT` and a `SOURCE` CEO elements with default parameters can be build either with the builder pattern:
@@ -16,7 +16,7 @@
 //! ```
 //! or with the [`ceo!`][macro] macro
 //! ```rust
-//! use ceo::{ceo, CEOType, GMT, SOURCE};
+//! use ceo::ceo;
 //! let mut gmt = ceo!(GMT);
 //! let mut src = ceo!(SOURCE);
 //! src.through(&mut gmt).xpupil();
@@ -67,7 +67,7 @@ pub use self::lmmse::{LinearMinimumMeanSquareError, LMMSE};
 #[doc(inline)]
 pub use self::pssn::{PSSn, PSSN};
 #[doc(inline)]
-pub use self::shackhartmann::{ShackHartmann, SH48, SHACKHARTMANN};
+pub use self::shackhartmann::{ShackHartmann, SH48, SHACKHARTMANN,Geometric,Diffractive};
 #[doc(inline)]
 pub use self::source::Propagation;
 #[doc(inline)]
@@ -86,16 +86,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * GMT
 ///
 /// ```
-/// use ceo::{ceo, CEOType, GMT};
+/// use ceo::ceo;
 /// let gmt = ceo!(GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
 /// ```
 ///
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, CEOType, SHACKHARTMANN, shackhartmann::Geometric, GMT, SOURCE};
+/// use ceo::ceo;
 /// let mut wfs = ceo!(
-///     SHACKHARTMANN<Geometric>,
+///     SHACKHARTMANN:Geometric,
 ///     set_n_sensor = [1],
 ///     set_lenslet_array = [48, 16, 25.5 / 48f64]
 /// );
@@ -108,7 +108,7 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, CEOType, SHACKHARTMANN, shackhartmann::Diffractive, GMT, SOURCE};
+/// /*use ceo::ceo;
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN<Diffractive>,
 ///     set_n_sensor = [1],
@@ -118,15 +118,18 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 /// let mut src = ceo!(SOURCE, set_pupil_sampling = [48 * 16 + 1]);
 /// let mut gmt = ceo!(GMT);
 /// src.through(&mut gmt).xpupil().through(&mut wfs);
-/// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);
+/// println!("WFE RMS: {:.3}nm", src.wfe_rms_10e(-9)[0]);*/
 /// ```
 #[macro_export]
 macro_rules! ceo {
-    ($element:ty) => {
-        $crate::Builder::build(<$element>::new())
+    ($element:ident) => {
+        $crate::Builder::build(<$crate::$element as $crate::CEOType>::new())
     };
-    ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$element>::new()$(.$arg($($val),+))*)
+    ($element:ident, $($arg:ident = [$($val:expr),+]),*) => {
+        $crate::Builder::build(<$crate::$element as $crate::CEOType>::new()$(.$arg($($val),+))*)
+    };
+    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
+        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::CEOType>::new()$(.$arg($($val),+))*)
     };
 }
 /*
@@ -171,25 +174,6 @@ impl_ceotype!(
     PSSN<pssn::TelescopeError>,
     PSSN<pssn::AtmosphereTelescopeError> //              SHACKHARTMANN<super::shackhartmann::Diffractive>,
 );
-/// CEO builder pattern
-///
-/// `CEO` is a generic builder pattern for all CEO elements.
-/// It will accept only the structures of the [`element`][element] module that implements the [`CEOtype`][ceotype] trait.
-///
-/// [element]: element/index.html
-/// [ceotype]: trait.CEOType.html
-#[derive(Debug, Clone)]
-pub struct CEO<T: CEOType> {
-    args: T,
-}
-impl<T: CEOType> CEO<T> {
-    /// Create a new CEO builder with default parameters
-    pub fn new() -> Self {
-        CEO {
-            args: Default::default(),
-        }
-    }
-}
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
