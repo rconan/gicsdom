@@ -1,12 +1,8 @@
 use super::{
-    cu::Single,
-    element::{GMT, SOURCE},
-    shackhartmann::Geometric,
-    Builder, Cu, Gmt, ShackHartmann, Source, CEO,
+    cu::Single, shackhartmann::Geometric, Builder, Cu, Gmt, ShackHartmann, Source, GMT, SOURCE,
 };
 use log;
 use std::ops::Range;
-use std::sync::Arc;
 //use std::time::Instant;
 
 #[derive(Clone, Debug)]
@@ -93,29 +89,23 @@ impl Segment {
 ///
 /// `Calibration` creates its own GMT simulation with a `Gmt`, a `Source` and a `Builder`.
 /// The calibration is performed by estimating the geometric centroids associated with the calibrated functions.
-pub struct Calibration {
-    gmt_blueprint: Arc<CEO<GMT>>,
-    src_blueprint: Arc<CEO<SOURCE>>,
-    wfs_blueprint: Arc<dyn Builder<Component = ShackHartmann<Geometric>>>,
+pub struct Calibration<T: Builder<Component = ShackHartmann<Geometric>>> {
+    gmt_blueprint: GMT,
+    src_blueprint: SOURCE,
+    wfs_blueprint: T,
     pub n_data: usize,
     pub n_mode: usize,
     pub poke: Cu<Single>,
     poke_qr: Cu<Single>,
 }
-impl Calibration {
+impl<T: Builder<Component = ShackHartmann<Geometric>>> Calibration<T> {
     /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `Builder`
-    pub fn new<P>(
-        gmt_blueprint: &CEO<GMT>,
-        src_blueprint: &CEO<SOURCE>,
-        wfs_blueprint: &P,
-    ) -> Calibration
-    where
-        P: Builder<Component = ShackHartmann<Geometric>> + std::clone::Clone + 'static,
+    pub fn new(gmt_blueprint: GMT, src_blueprint: SOURCE, wfs_blueprint: T) -> Calibration<T>
     {
         Calibration {
-            gmt_blueprint: Arc::new(gmt_blueprint.clone()),
-            src_blueprint: Arc::new(src_blueprint.clone()),
-            wfs_blueprint: Arc::new(wfs_blueprint.clone()),
+            gmt_blueprint: gmt_blueprint,
+            src_blueprint: src_blueprint,
+            wfs_blueprint: wfs_blueprint,
             n_data: 0,
             n_mode: 0,
             poke: Cu::new(),
@@ -219,7 +209,7 @@ impl Calibration {
                     nnz = wfs.n_valid_lenslet();
                     //println!("# valid lenslet: {}", wfs.n_valid_lenslet());
                     for l in idx {
-                        calibration.extend::<Vec<f32>>(Calibration::sample(
+                        calibration.extend::<Vec<f32>>(Calibration::<T>::sample(
                             &mut gmt,
                             &mut src,
                             &mut wfs,

@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::{f32, mem};
 
 use super::ceo_bindings::atmosphere;
-use super::{element, Propagation, Source, CEO, Builder};
+use super::{Builder, Propagation, Source};
 
 #[derive(Deserialize, Debug)]
 struct GmtAtmosphere {
@@ -24,66 +24,122 @@ struct GmtAtmosphere {
     seed: i32,
 }
 
-pub struct Atmosphere {
-    _c_: atmosphere,
+#[derive(Debug, Clone)]
+#[doc(hidden)]
+pub struct TurbulenceProfile {
+    pub n_layer: usize,
+    pub altitude: Vec<f32>,
+    pub xi0: Vec<f32>,
+    pub wind_speed: Vec<f32>,
+    pub wind_direction: Vec<f32>,
+}
+impl Default for TurbulenceProfile {
+    fn default() -> Self {
+        TurbulenceProfile {
+            n_layer: 7,
+            altitude: [25.0, 275.0, 425.0, 1_250.0, 4_000.0, 8_000.0, 13_000.0].to_vec(),
+            xi0: [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751].to_vec(),
+            wind_speed: [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187].to_vec(),
+            wind_direction: [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462].to_vec(),
+        }
+    }
+}
+#[derive(Debug, Clone)]
+#[doc(hidden)]
+pub struct RayTracing {
+    pub width: f32,
+    pub n_width_px: i32,
+    pub field_size: f32,
+    pub duration: f32,
+    pub filepath: Option<String>,
+    pub n_duration: Option<i32>,
+}
+/// [`CEO`](../struct.CEO.html#impl-6) [`Atmosphere`](../struct.Atmosphere.html) builder type
+#[derive(Debug, Clone)]
+pub struct ATMOSPHERE {
     pub r0_at_zenith: f64,
     pub oscale: f64,
     pub zenith_angle: f64,
-    pub secs: f64,
-    //filename: String,
-    //k_duration: i32,
-    propagate_ptr: fn(&mut Atmosphere, &mut Source, f32),
+    pub turbulence: TurbulenceProfile,
+    pub ray_tracing: Option<RayTracing>,
+}
+/// Default properties:
+///  * r0           : 16cm
+///  * L0           : 25m
+///  * zenith angle : 30 degrees
+///  * turbulence profile:
+///    * n_layer        : 7
+///    * altitude       : [25.0, 275.0, 425.0, 1250.0, 4000.0, 8000.0, 13000.0] m
+///    * xi0            : [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751]
+///    * wind speed     : [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187] m/s
+///    * wind direction : [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462] rd
+/// * ray tracing : none
+impl Default for ATMOSPHERE {
+    fn default() -> Self {
+        ATMOSPHERE {
+            r0_at_zenith: 0.16,
+            oscale: 25.,
+            zenith_angle: 30_f64.to_radians(),
+            turbulence: TurbulenceProfile::default(),
+            ray_tracing: None,
+        }
+    }
 }
 /// ## `Atmosphere` builder
-impl CEO<element::ATMOSPHERE> {
+impl ATMOSPHERE {
     /// Set r0 value taken at pointing the zenith in meters
-    pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
-        self.args.r0_at_zenith = r0_at_zenith;
-        self
+    pub fn set_r0_at_zenith(self, r0_at_zenith: f64) -> Self {
+        Self {
+            r0_at_zenith,
+            ..self
+        }
     }
     /// Set outer scale value in meters
-    pub fn set_oscale(mut self, oscale: f64) -> Self {
-        self.args.oscale = oscale;
-        self
+    pub fn set_oscale(self, oscale: f64) -> Self {
+        Self { oscale, ..self }
     }
     /// Set zenith angle value in radians
-    pub fn set_zenith_angle(mut self, zenith_angle: f64) -> Self {
-        self.args.zenith_angle = zenith_angle;
-        self
+    pub fn set_zenith_angle(self, zenith_angle: f64) -> Self {
+        Self {
+            zenith_angle,
+            ..self
+        }
     }
     /// Set the turbulence profile
-    pub fn set_turbulence_profile(mut self, turbulence: element::TurbulenceProfile) -> Self {
-        self.args.turbulence = turbulence;
-        self
+    pub fn set_turbulence_profile(self, turbulence: TurbulenceProfile) -> Self {
+        Self { turbulence, ..self }
     }
     /// Set a single turbulence layer
     pub fn set_single_turbulence_layer(
-        mut self,
+        self,
         altitude: f32,
         wind_speed: Option<f32>,
         wind_direction: Option<f32>,
     ) -> Self {
-        self.args.turbulence = element::TurbulenceProfile {
-            n_layer: 1,
-            altitude: vec![altitude],
-            xi0: vec![1f32],
-            wind_speed: vec![wind_speed.unwrap_or(0f32)],
-            wind_direction: vec![wind_direction.unwrap_or(0f32)],
-        };
-        self
+        Self {
+            turbulence: TurbulenceProfile {
+                n_layer: 1,
+                altitude: vec![altitude],
+                xi0: vec![1f32],
+                wind_speed: vec![wind_speed.unwrap_or(0f32)],
+                wind_direction: vec![wind_direction.unwrap_or(0f32)],
+            },
+            ..self
+        }
     }
     /// Remove a turbulence layer specifield by its zero based index
-    pub fn remove_turbulence_layer(mut self, layer_idx: usize) -> Self {
-        self.args.turbulence.n_layer -= 1;
-        self.args.turbulence.altitude.remove(layer_idx);
-        self.args.turbulence.xi0.remove(layer_idx);
-        self.args.turbulence.wind_speed.remove(layer_idx);
-        self.args.turbulence.wind_direction.remove(layer_idx);
-        self
+    pub fn remove_turbulence_layer(self, layer_idx: usize) -> Self {
+        let mut turbulence = self.turbulence;
+        turbulence.n_layer -= 1;
+        turbulence.altitude.remove(layer_idx);
+        turbulence.xi0.remove(layer_idx);
+        turbulence.wind_speed.remove(layer_idx);
+        turbulence.wind_direction.remove(layer_idx);
+        Self { turbulence, ..self }
     }
     /// Set parameters for atmosphere ray tracing
     pub fn set_ray_tracing(
-        mut self,
+        self,
         width: f32,
         n_width_px: i32,
         field_size: f32,
@@ -91,26 +147,28 @@ impl CEO<element::ATMOSPHERE> {
         filepath: Option<String>,
         n_duration: Option<i32>,
     ) -> Self {
-        self.args.ray_tracing = Some(element::RayTracing {
-            width,
-            n_width_px,
-            field_size,
-            duration,
-            filepath,
-            n_duration,
-        });
-        self
+        Self {
+            ray_tracing: Some(RayTracing {
+                width,
+                n_width_px,
+                field_size,
+                duration,
+                filepath,
+                n_duration,
+            }),
+            ..self
+        }
     }
 }
-impl Builder for CEO<element::ATMOSPHERE> {
+impl Builder for ATMOSPHERE {
     type Component = Atmosphere;
     /// Build the `Atmosphere`
-    fn build(&self) -> Atmosphere {
+    fn build(self) -> Atmosphere {
         let mut atm = Atmosphere {
             _c_: unsafe { mem::zeroed() },
-            r0_at_zenith: self.args.r0_at_zenith,
-            oscale: self.args.oscale,
-            zenith_angle: self.args.zenith_angle,
+            r0_at_zenith: self.r0_at_zenith,
+            oscale: self.oscale,
+            zenith_angle: self.zenith_angle,
             secs: 0.0,
             //filename: String::new(),
             //k_duration: 0,
@@ -124,29 +182,29 @@ impl Builder for CEO<element::ATMOSPHERE> {
             r0
         );
         let mut altitude = self
-            .args
             .turbulence
             .altitude
             .iter()
             .map(|x| *x as f32 * secz as f32)
             .collect::<Vec<f32>>();
         let mut wind_speed = self
-            .args
             .turbulence
             .altitude
             .iter()
             .map(|x| *x as f32 / secz as f32)
             .collect::<Vec<f32>>();
-        match &self.args.ray_tracing {
+        let mut xi0 = self.turbulence.xi0;
+        let mut wind_direction = self.turbulence.wind_direction;
+        match &self.ray_tracing {
             None => unsafe {
                 atm._c_.setup(
                     r0 as f32,
-                    self.args.oscale as f32,
-                    self.args.turbulence.n_layer as i32,
+                    self.oscale as f32,
+                    self.turbulence.n_layer as i32,
                     altitude.as_mut_ptr(),
-                    self.args.turbulence.xi0.clone().as_mut_ptr(),
+                    xi0.as_mut_ptr(),
                     wind_speed.as_mut_ptr(),
-                    self.args.turbulence.wind_direction.clone().as_mut_ptr(),
+                    wind_direction.as_mut_ptr(),
                 );
                 atm.propagate_ptr = |a, s, t| {
                     let n_xy = s.pupil_sampling;
@@ -160,12 +218,12 @@ impl Builder for CEO<element::ATMOSPHERE> {
                     log::info!("Looking up phase screen from file {}", file);
                     atm._c_.setup2(
                         r0 as f32,
-                        self.args.oscale as f32,
-                        self.args.turbulence.n_layer as i32,
+                        self.oscale as f32,
+                        self.turbulence.n_layer as i32,
                         altitude.as_mut_ptr(),
-                        self.args.turbulence.xi0.clone().as_mut_ptr(),
+                        xi0.as_mut_ptr(),
                         wind_speed.as_mut_ptr(),
-                        self.args.turbulence.wind_direction.clone().as_mut_ptr(),
+                        wind_direction.as_mut_ptr(),
                         rtc.width,
                         rtc.n_width_px,
                         rtc.field_size,
@@ -185,12 +243,12 @@ impl Builder for CEO<element::ATMOSPHERE> {
                 None => unsafe {
                     atm._c_.setup1(
                         r0 as f32,
-                        self.args.oscale as f32,
-                        self.args.turbulence.n_layer as i32,
+                        self.oscale as f32,
+                        self.turbulence.n_layer as i32,
                         altitude.as_mut_ptr(),
-                        self.args.turbulence.xi0.clone().as_mut_ptr(),
+                        xi0.as_mut_ptr(),
                         wind_speed.as_mut_ptr(),
-                        self.args.turbulence.wind_direction.clone().as_mut_ptr(),
+                        wind_direction.as_mut_ptr(),
                         rtc.width,
                         rtc.n_width_px,
                         rtc.field_size,
@@ -207,6 +265,16 @@ impl Builder for CEO<element::ATMOSPHERE> {
         }
         atm
     }
+}
+pub struct Atmosphere {
+    _c_: atmosphere,
+    pub r0_at_zenith: f64,
+    pub oscale: f64,
+    pub zenith_angle: f64,
+    pub secs: f64,
+    //filename: String,
+    //k_duration: i32,
+    propagate_ptr: fn(&mut Atmosphere, &mut Source, f32),
 }
 impl Atmosphere {
     pub fn new() -> Atmosphere {

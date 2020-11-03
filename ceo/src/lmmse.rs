@@ -1,59 +1,89 @@
-use super::ceo_bindings::LMMSE;
+use super::ceo_bindings::LMMSE as ceo_LMMSE;
 use super::{
-    ceo, cu::Single, element, Atmosphere, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
-    Source, CEO, Builder,
+    cu::Single, Atmosphere, Builder, CEOType, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
+    Source, ATMOSPHERE, GMT, SOURCE,
 };
 use std::ffi::CString;
 
 pub struct LinearMinimumMeanSquareError {
-    _c_: LMMSE,
+    _c_: ceo_LMMSE,
     atm: Atmosphere,
     guide_star: Source,
     mmse_star: Source,
     fov_diameter: Option<f64>,
     pupil_mask: Mask,
 }
-impl CEO<element::LMMSE> {
-    pub fn set_atmosphere(mut self, atm: &CEO<element::ATMOSPHERE>) -> Self {
-        self.args.atm = atm.clone();
-        self
+#[derive(Debug, Clone)]
+pub struct LMMSE {
+    pub atm: super::ATMOSPHERE,
+    pub guide_star: super::SOURCE,
+    pub mmse_star: super::SOURCE,
+    pub fov_diameter: Option<f64>,
+    pub n_side_lenslet: usize,
+    pub solver_id: String,
+    pub wavefront_osf: usize,
+}
+impl Default for LMMSE {
+    fn default() -> Self {
+        LMMSE {
+            atm: super::ATMOSPHERE::new(),
+            guide_star: super::SOURCE::new(),
+            mmse_star: super::SOURCE::new(),
+            fov_diameter: None,
+            n_side_lenslet: 0,
+            solver_id: "MINRES".to_owned(),
+            wavefront_osf: 1,
+        }
     }
-    pub fn set_guide_star(mut self, src: &CEO<element::SOURCE>) -> Self {
-        self.args.guide_star = src.clone();
-        self
+}
+impl LMMSE {
+    pub fn set_atmosphere(self, atm: ATMOSPHERE) -> Self {
+        Self { atm, ..self }
     }
-    pub fn set_mmse_star(mut self, src: &CEO<element::SOURCE>) -> Self {
-        self.args.mmse_star = src.clone();
-        self.args.fov_diameter = None;
-        self
+    pub fn set_guide_star(self, guide_star: SOURCE) -> Self {
+        Self { guide_star, ..self }
     }
-    pub fn set_fov_diameter(mut self, fov_diameter: f64) -> Self {
-        self.args.fov_diameter = Some(fov_diameter);
-        self
+    pub fn set_mmse_star(self, mmse_star: SOURCE) -> Self {
+        Self {
+            mmse_star,
+            fov_diameter: None,
+            ..self
+        }
     }
-    pub fn set_n_side_lenslet(mut self, n_side_lenslet: usize) -> Self {
-        self.args.n_side_lenslet = n_side_lenslet;
-        self
+    pub fn set_fov_diameter(self, fov_diameter: f64) -> Self {
+        Self {
+            fov_diameter: Some(fov_diameter),
+            ..self
+        }
     }
-    pub fn build(self) -> LinearMinimumMeanSquareError {
-        let mut gmt = ceo!(element::GMT);
-        let mut mmse_star = self.args.mmse_star.build();
+    pub fn set_n_side_lenslet(self, n_side_lenslet: usize) -> Self {
+        Self {
+            n_side_lenslet,
+            ..self
+        }
+    }
+}
+impl Builder for LMMSE {
+    type Component = LinearMinimumMeanSquareError;
+    fn build(self) -> LinearMinimumMeanSquareError {
+        let mut gmt = GMT::new().build();
+        let mut mmse_star = self.mmse_star.build();
         mmse_star.through(&mut gmt).xpupil();
         let mut pupil_mask = Mask::new();
-        let n_actuator = self.args.n_side_lenslet + 1;
+        let n_actuator = self.n_side_lenslet + 1;
+        let d = self.guide_star.pupil_size / self.n_side_lenslet as f64;
         pupil_mask
             .build(n_actuator * n_actuator)
             .filter(&mut mmse_star.amplitude().into());
         let mut lmmse = LinearMinimumMeanSquareError {
             _c_: unsafe { std::mem::zeroed() },
-            atm: self.args.atm.clone().build(),
-            guide_star: self.args.guide_star.build(),
+            atm: self.atm.build(),
+            guide_star: self.guide_star.build(),
             mmse_star,
-            fov_diameter: self.args.fov_diameter,
+            fov_diameter: self.fov_diameter,
             pupil_mask,
         };
-        let solver_id = CString::new(self.args.solver_id.clone().into_bytes()).unwrap();
-        let d = self.args.guide_star.args.pupil_size / self.args.n_side_lenslet as f64;
+        let solver_id = CString::new(self.solver_id.into_bytes()).unwrap();
         match lmmse.fov_diameter {
             Some(fov) => unsafe {
                 log::info!("LMMSE for a {:.1}arcmin field of view", fov.to_arcmin());
@@ -61,10 +91,10 @@ impl CEO<element::LMMSE> {
                     lmmse.atm.as_raw_mut_ptr(),
                     lmmse.guide_star.as_raw_mut_ptr(),
                     d as f32,
-                    self.args.n_side_lenslet as i32,
+                    self.n_side_lenslet as i32,
                     lmmse.pupil_mask.as_raw_mut_ptr(),
                     solver_id.into_raw(),
-                    self.args.wavefront_osf as i32,
+                    self.wavefront_osf as i32,
                     0.5 * fov as f32,
                 )
             },
@@ -75,10 +105,10 @@ impl CEO<element::LMMSE> {
                     lmmse.guide_star.as_raw_mut_ptr(),
                     lmmse.mmse_star.as_raw_mut_ptr(),
                     d as f32,
-                    self.args.n_side_lenslet as i32,
+                    self.n_side_lenslet as i32,
                     lmmse.pupil_mask.as_raw_mut_ptr(),
                     solver_id.into_raw(),
-                    self.args.wavefront_osf as i32,
+                    self.wavefront_osf as i32,
                 )
             },
         }
@@ -110,7 +140,7 @@ impl LinearMinimumMeanSquareError {
         first_kl: Option<usize>,
         stroke: Option<f64>,
     ) -> Vec<Vec<f64>> {
-        let mut gmt = ceo!(element::GMT, set_m2_n_mode = [n_kl]);
+        let mut gmt = GMT::new().set_m2_n_mode(n_kl).build();
         let mut kl: Vec<Vec<f32>> = vec![];
         let first_kl = first_kl.unwrap_or(0);
         let stroke = stroke.unwrap_or(1e-6);

@@ -1,11 +1,13 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{element, Cu, Propagation, Source, CEO};
+use super::{Builder, Cu, Propagation, Source, SOURCE};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
 /// CEO PSSn estimator
 ///
+#[derive(Debug, Clone)]
 pub struct TelescopeError;
+#[derive(Debug, Clone)]
 pub struct AtmosphereTelescopeError;
 pub struct PSSn<S> {
     pub _c_: ceo_pssn,
@@ -18,25 +20,65 @@ pub struct PSSn<S> {
     pub mode: std::marker::PhantomData<S>,
     pub otf: Vec<f32>,
 }
-impl CEO<element::PSSN> {
-    pub fn set_r0_at_zenith(mut self, r0_at_zenith: f64) -> Self {
-        self.args.r0_at_zenith = r0_at_zenith;
-        self
+#[derive(Debug, Clone)]
+/// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
+pub struct PSSN<T> {
+    pub r0_at_zenith: f64,
+    pub oscale: f64,
+    pub zenith_angle: f64,
+    pub src_blueprint: SOURCE,
+    marker: std::marker::PhantomData<T>,
+}
+/// Default properties:
+///  * r0           : 16cm
+///  * L0           : 25m
+///  * zenith angle : 30 degrees
+impl<T> Default for PSSN<T> {
+    fn default() -> Self {
+        PSSN {
+            r0_at_zenith: 0.16,
+            oscale: 25.0,
+            zenith_angle: 30_f64.to_radians(),
+            src_blueprint: SOURCE::default(),
+            marker: std::marker::PhantomData,
+        }
     }
-    pub fn set_outer_scale(mut self, oscale: f64) -> Self {
-        self.args.oscale = oscale;
-        self
+}
+impl<T> PSSN<T> {
+    pub fn set_r0_at_zenith(self, r0_at_zenith: f64) -> Self {
+        Self {
+            r0_at_zenith,
+            ..self
+        }
     }
-    pub fn set_zenith_angle(mut self, zenith_angle_degree: f64) -> Self {
-        self.args.zenith_angle = zenith_angle_degree.to_radians();
-        self
+    pub fn set_outer_scale(self, oscale: f64) -> Self {
+        Self {
+            oscale,
+            ..self
+        }
     }
-    pub fn build<T>(self, src: &mut Source) -> PSSn<T> {
+    pub fn set_zenith_angle(self, zenith_angle_degree: f64) -> Self {
+        Self {
+            zenith_angle: zenith_angle_degree.to_radians(),
+            ..self
+        }
+    }
+    pub fn set_source(self, src_blueprint: SOURCE) -> Self {
+        Self {
+            src_blueprint,
+            ..self
+        }
+    }
+}
+impl<T: std::clone::Clone> Builder for PSSN<T> {
+    type Component = PSSn<T>;
+    fn build(self) -> PSSn<T> {
+        let mut src = self.src_blueprint.build();
         let mut pssn = PSSn::<T> {
             _c_: unsafe { mem::zeroed() },
-            r0_at_zenith: self.args.r0_at_zenith as f32,
-            oscale: self.args.oscale as f32,
-            zenith_angle: self.args.zenith_angle as f32,
+            r0_at_zenith: self.r0_at_zenith as f32,
+            oscale: self.oscale as f32,
+            zenith_angle: self.zenith_angle as f32,
             wavelength: src.wavelength() as f32,
             estimates: vec![],
             mode: std::marker::PhantomData,
@@ -230,15 +272,14 @@ impl<S> Propagation for PSSn<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Builder;
 
     #[test]
     fn pssn_new() {
-        use element::*;
-        let mut src = CEO::<SOURCE>::new().build();
-        let mut gmt = CEO::<GMT>::new().build();
+        use crate::{SOURCE, GMT, CEOType};
+        let mut src = SOURCE::new().build();
+        let mut gmt = GMT::new().build();
         src.through(&mut gmt).xpupil();
-        let mut pssn = CEO::<PSSN>::new().build::<TelescopeError>(&mut src);
+        let mut pssn = PSSN::<TelescopeError>::new().build();
         src.through(&mut pssn);
         println!("PSSN: {}", pssn.peek());
     }

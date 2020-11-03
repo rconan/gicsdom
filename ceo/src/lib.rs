@@ -8,15 +8,15 @@
 //!
 //! For example, a `GMT` and a `SOURCE` CEO elements with default parameters can be build either with the builder pattern:
 //! ```rust
-//! use ceo::{Builder, CEO, element};
-//! let mut gmt = CEO::<element::GMT>::new().build();
-//! let mut src = CEO::<element::SOURCE>::new().build();
+//! use ceo::{CEOType, Builder, GMT, SOURCE};
+//! let mut gmt = GMT::new().build();
+//! let mut src = SOURCE::new().build();
 //! src.through(&mut gmt).xpupil();
 //! println!("WFE RMS: {:?}nm",src.wfe_rms_10e(-9));
 //! ```
 //! or with the [`ceo!`][macro] macro
 //! ```rust
-//! use ceo::{ceo, element::{GMT, SOURCE}};
+//! use ceo::{ceo, CEOType, GMT, SOURCE};
 //! let mut gmt = ceo!(GMT);
 //! let mut src = ceo!(SOURCE);
 //! src.through(&mut gmt).xpupil();
@@ -49,7 +49,7 @@ pub mod shackhartmann;
 pub mod source;
 
 #[doc(inline)]
-pub use self::atmosphere::Atmosphere;
+pub use self::atmosphere::{Atmosphere, ATMOSPHERE};
 #[doc(inline)]
 pub use self::calibrations::Calibration;
 #[doc(inline)]
@@ -59,19 +59,19 @@ pub use self::cu::Cu;
 #[doc(inline)]
 pub use self::fwhm::Fwhm;
 #[doc(inline)]
-pub use self::gmt::Gmt;
+pub use self::gmt::{Gmt, GMT};
 #[doc(inline)]
 pub use self::imaging::Imaging;
 #[doc(inline)]
-pub use self::lmmse::LinearMinimumMeanSquareError;
+pub use self::lmmse::{LinearMinimumMeanSquareError, LMMSE};
 #[doc(inline)]
-pub use self::pssn::PSSn;
+pub use self::pssn::{PSSn, PSSN};
 #[doc(inline)]
-pub use self::shackhartmann::ShackHartmann;
+pub use self::shackhartmann::{ShackHartmann, SH48, SHACKHARTMANN};
 #[doc(inline)]
 pub use self::source::Propagation;
 #[doc(inline)]
-pub use self::source::Source;
+pub use self::source::{Source, FIELDDELAUNAY21, SOURCE};
 #[doc(hidden)]
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
@@ -86,14 +86,14 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * GMT
 ///
 /// ```
-/// use ceo::{ceo, element::*};
+/// use ceo::{ceo, CEOType, GMT};
 /// let gmt = ceo!(GMT, set_m1_n_mode = [27], set_m2_n_mode = [123]);
 /// ```
 ///
 ///  * Geometric Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*, shackhartmann::Geometric};
+/// use ceo::{ceo, CEOType, SHACKHARTMANN, shackhartmann::Geometric, GMT, SOURCE};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN<Geometric>,
 ///     set_n_sensor = [1],
@@ -108,7 +108,7 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 ///  * Diffractive Shack-Hartmann
 ///
 /// ```
-/// use ceo::{ceo, element::*, shackhartmann::Diffractive};
+/// use ceo::{ceo, CEOType, SHACKHARTMANN, shackhartmann::Diffractive, GMT, SOURCE};
 /// let mut wfs = ceo!(
 ///     SHACKHARTMANN<Diffractive>,
 ///     set_n_sensor = [1],
@@ -123,10 +123,10 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ty) => {
-        $crate::Builder::build(&$crate::CEO::<$element>::new())
+        $crate::Builder::build(<$element>::new())
     };
     ($element:ty, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(&$crate::CEO::<$element>::new()$(.$arg($($val),+))*)
+        $crate::Builder::build(<$element>::new()$(.$arg($($val),+))*)
     };
 }
 /*
@@ -146,11 +146,31 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
 }
 
 /// CEO builder type trait
-///
-/// Only structures in the [`element`][element] module implement the trait
-///
-/// [element]: element/index.html
-pub trait CEOType: Clone + Default {}
+pub trait Builder: Clone {
+    type Component;
+    fn build(self) -> Self::Component;
+}
+pub trait CEOType: Builder + Clone + Default {
+    fn new() -> Self {
+        Default::default()
+    }
+}
+macro_rules! impl_ceotype {
+    ($($element:ty),+) => {
+        $(impl CEOType for $element {})+
+    };
+}
+impl_ceotype!(
+    GMT,
+    SOURCE,
+    FIELDDELAUNAY21,
+    ATMOSPHERE,
+    SHACKHARTMANN<shackhartmann::Geometric>,
+    SH48<shackhartmann::Geometric>,
+    LMMSE,
+    PSSN<pssn::TelescopeError>,
+    PSSN<pssn::AtmosphereTelescopeError> //              SHACKHARTMANN<super::shackhartmann::Diffractive>,
+);
 /// CEO builder pattern
 ///
 /// `CEO` is a generic builder pattern for all CEO elements.
@@ -162,10 +182,6 @@ pub trait CEOType: Clone + Default {}
 pub struct CEO<T: CEOType> {
     args: T,
 }
-pub trait Builder {
-    type Component;
-    fn build(&self) -> Self::Component;
-}
 impl<T: CEOType> CEO<T> {
     /// Create a new CEO builder with default parameters
     pub fn new() -> Self {
@@ -173,352 +189,6 @@ impl<T: CEOType> CEO<T> {
             args: Default::default(),
         }
     }
-}
-pub mod element {
-    use super::CEOType;
-    #[doc(hidden)]
-    #[derive(Debug, Clone)]
-    pub struct Mirror {
-        pub mode_type: String,
-        pub n_mode: usize,
-    }
-    /// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
-    #[derive(Debug, Clone)]
-    pub struct GMT {
-        pub m1: Mirror,
-        pub m2: Mirror,
-    }
-    /// Default properties:
-    ///  * M1:
-    ///    * mode type : "bending modes"
-    ///    * \# mode    : 0
-    ///  * M2:
-    ///    * mode type : "Karhunen-Loeve"
-    ///    * \# mode    : 0
-    impl Default for GMT {
-        fn default() -> Self {
-            GMT {
-                m1: Mirror {
-                    mode_type: "bending modes".into(),
-                    n_mode: 0,
-                },
-                m2: Mirror {
-                    mode_type: "Karhunen-Loeve".into(),
-                    n_mode: 0,
-                },
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug, Clone)]
-    /// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
-    pub struct SOURCE {
-        pub size: usize,
-        pub pupil_size: f64,
-        pub pupil_sampling: usize,
-        pub band: String,
-        pub zenith: Vec<f32>,
-        pub azimuth: Vec<f32>,
-        pub magnitude: Vec<f32>,
-    }
-    /// Default properties:
-    ///  * size             : 1
-    ///  * pupil size       : 25.5m
-    ///  * pupil sampling   : 512px
-    ///  * photometric band : Vs (500nm)
-    ///  * zenith           : 0degree
-    ///  * azimuth          : 0degree
-    ///  * magnitude        : 0
-    impl Default for SOURCE {
-        fn default() -> Self {
-            SOURCE {
-                size: 1,
-                pupil_size: 25.5,
-                pupil_sampling: 512,
-                band: "Vs".into(),
-                zenith: vec![0f32],
-                azimuth: vec![0f32],
-                magnitude: vec![0f32],
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug, Clone)]
-    /// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
-    pub struct FIELDDELAUNAY21 {
-        pub size: usize,
-        pub pupil_size: f64,
-        pub pupil_sampling: usize,
-        pub band: String,
-        pub zenith: Vec<f32>,
-        pub azimuth: Vec<f32>,
-        pub magnitude: Vec<f32>,
-    }
-    use serde::{Deserialize, Serialize};
-    #[derive(Debug, Deserialize, Serialize, Default)]
-    struct GlaoField {
-        pub zenith_arcmin: Vec<f32>,
-        pub azimuth_degree: Vec<f32>,
-    }
-    impl Default for FIELDDELAUNAY21 {
-        fn default() -> Self {
-            use super::Conversion;
-            use serde_pickle as pickle;
-            use std::fs::File;
-            let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
-            let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
-            let n_src = field.zenith_arcmin.len();
-            FIELDDELAUNAY21 {
-                size: n_src,
-                pupil_size: 25.5,
-                pupil_sampling: 512,
-                band: "Vs".into(),
-                zenith: field
-                    .zenith_arcmin
-                    .iter()
-                    .map(|x| x.from_arcmin())
-                    .collect::<Vec<f32>>(),
-                azimuth: field
-                    .azimuth_degree
-                    .iter()
-                    .map(|x| x.to_radians())
-                    .collect::<Vec<f32>>(),
-                magnitude: vec![0f32; n_src],
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    // n_side_lenslet, n_px_lenslet, d
-    #[doc(hidden)]
-    #[derive(Debug, Clone)]
-    pub struct LensletArray(pub usize, pub usize, pub f64);
-    impl Default for LensletArray {
-        fn default() -> Self {
-            LensletArray(1, 511, 25.5)
-        }
-    }
-    // n_px_framelet, n_px_imagelet, osf
-    #[doc(hidden)]
-    #[derive(Debug, Clone)]
-    pub struct Detector(pub usize, pub Option<usize>, pub Option<usize>);
-    impl Default for Detector {
-        fn default() -> Self {
-            Detector(512, None, None)
-        }
-    }
-    pub trait ShWfs {
-        fn build<T: super::shackhartmann::Model>(
-            &self,
-            n_sensor: usize,
-            lenslet_array: LensletArray,
-            detector: Detector,
-        ) -> super::ShackHartmann<T> {
-            let LensletArray(n_side_lenslet, n_px_lenslet, d) = lenslet_array;
-            let mut wfs = super::ShackHartmann::<T> {
-                _c_: unsafe { std::mem::zeroed() },
-                n_side_lenslet: n_side_lenslet as i32,
-                n_px_lenslet: n_px_lenslet as i32,
-                d,
-                n_sensor: n_sensor as i32,
-                n_centroids: 0,
-                centroids: super::Cu::vector(
-                    (n_side_lenslet * n_side_lenslet * 2 * n_sensor) as usize,
-                ),
-            };
-            let Detector(n_px_framelet, n_px_imagelet, osf) = detector;
-            let n_px = match n_px_imagelet {
-                Some(n_px_imagelet) => n_px_imagelet,
-                None => n_px_framelet,
-            };
-            let b = n_px / n_px_framelet;
-            let o = match osf {
-                Some(osf) => osf,
-                None => 2,
-            };
-            wfs.n_centroids = wfs.n_side_lenslet * wfs.n_side_lenslet * 2 * wfs.n_sensor;
-            wfs._c_.build(
-                wfs.n_side_lenslet,
-                wfs.d as f32,
-                wfs.n_sensor,
-                wfs.n_px_lenslet,
-                o as i32,
-                n_px as i32,
-                b as i32,
-            );
-            wfs.centroids.from_ptr(wfs._c_.get_c_as_mut_ptr());
-            wfs
-        }
-        fn guide_stars(&self, n_sensor: usize, lenslet_array: LensletArray) -> super::CEO<SOURCE> {
-            let LensletArray(n_side_lenslet, n_px_lenslet, d) = lenslet_array;
-            super::CEO::<SOURCE>::new()
-                .set_size(n_sensor)
-                .set_pupil_size(d * n_side_lenslet as f64)
-                .set_pupil_sampling(n_px_lenslet * n_side_lenslet + 1)
-        }
-    }
-    #[derive(Debug, Clone)]
-    /// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
-    pub struct SHACKHARTMANN<T: super::shackhartmann::Model> {
-        pub n_sensor: usize,
-        pub lenslet_array: LensletArray,
-        pub detector: Detector,
-        marker: std::marker::PhantomData<T>,
-    }
-    impl<T: super::shackhartmann::Model> Default for SHACKHARTMANN<T> {
-        fn default() -> Self {
-            SHACKHARTMANN {
-                n_sensor: 1,
-                lenslet_array: LensletArray::default(),
-                detector: Detector::default(),
-                marker: std::marker::PhantomData,
-            }
-        }
-    }
-    impl<T: super::shackhartmann::Model> ShWfs for SHACKHARTMANN<T> {}
-    #[derive(Debug, Clone)]
-    /// [`CEO`](../struct.CEO.html#impl-7) specialized [`ShackHartmann`](../struct.ShackHartmann.html) builder type
-    pub struct SH48<T: super::shackhartmann::Model>  {
-        pub n_sensor: usize,
-        pub lenslet_array: LensletArray,
-        pub detector: Detector,
-        marker: std::marker::PhantomData<T>,
-    }
-    impl<T: super::shackhartmann::Model>  Default for SH48<T> {
-        fn default() -> Self {
-            SH48 {
-                n_sensor: 4,
-                lenslet_array: LensletArray(48, 16, 25.5 / 48.0),
-                detector: Detector(8, Some(24), Some(2)),
-                marker: std::marker::PhantomData,
-            }
-        }
-    }
-    impl<T: super::shackhartmann::Model>  ShWfs for SH48<T> {}
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug, Clone)]
-    /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
-    pub struct PSSN {
-        pub r0_at_zenith: f64,
-        pub oscale: f64,
-        pub zenith_angle: f64,
-    }
-    /// Default properties:
-    ///  * r0           : 16cm
-    ///  * L0           : 25m
-    ///  * zenith angle : 30 degrees
-    impl Default for PSSN {
-        fn default() -> Self {
-            PSSN {
-                r0_at_zenith: 0.16,
-                oscale: 25.0,
-                zenith_angle: 30_f64.to_radians(),
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug, Clone)]
-    #[doc(hidden)]
-    pub struct TurbulenceProfile {
-        pub n_layer: usize,
-        pub altitude: Vec<f32>,
-        pub xi0: Vec<f32>,
-        pub wind_speed: Vec<f32>,
-        pub wind_direction: Vec<f32>,
-    }
-    impl Default for TurbulenceProfile {
-        fn default() -> Self {
-            TurbulenceProfile {
-                n_layer: 7,
-                altitude: [25.0, 275.0, 425.0, 1_250.0, 4_000.0, 8_000.0, 13_000.0].to_vec(),
-                xi0: [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751].to_vec(),
-                wind_speed: [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187].to_vec(),
-                wind_direction: [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462].to_vec(),
-            }
-        }
-    }
-    #[derive(Debug, Clone)]
-    #[doc(hidden)]
-    pub struct RayTracing {
-        pub width: f32,
-        pub n_width_px: i32,
-        pub field_size: f32,
-        pub duration: f32,
-        pub filepath: Option<String>,
-        pub n_duration: Option<i32>,
-    }
-    /// [`CEO`](../struct.CEO.html#impl-6) [`Atmosphere`](../struct.Atmosphere.html) builder type
-    #[derive(Debug, Clone)]
-    pub struct ATMOSPHERE {
-        pub r0_at_zenith: f64,
-        pub oscale: f64,
-        pub zenith_angle: f64,
-        pub turbulence: TurbulenceProfile,
-        pub ray_tracing: Option<RayTracing>,
-    }
-    /// Default properties:
-    ///  * r0           : 16cm
-    ///  * L0           : 25m
-    ///  * zenith angle : 30 degrees
-    ///  * turbulence profile:
-    ///    * n_layer        : 7
-    ///    * altitude       : [25.0, 275.0, 425.0, 1250.0, 4000.0, 8000.0, 13000.0] m
-    ///    * xi0            : [0.1257, 0.0874, 0.0666, 0.3498, 0.2273, 0.0681, 0.0751]
-    ///    * wind speed     : [5.6540, 5.7964, 5.8942, 6.6370, 13.2925, 34.8250, 29.4187] m/s
-    ///    * wind direction : [0.0136, 0.1441, 0.2177, 0.5672, 1.2584, 1.6266, 1.7462] rd
-    /// * ray tracing : none
-    impl Default for ATMOSPHERE {
-        fn default() -> Self {
-            ATMOSPHERE {
-                r0_at_zenith: 0.16,
-                oscale: 25.,
-                zenith_angle: 30_f64.to_radians(),
-                turbulence: TurbulenceProfile::default(),
-                ray_tracing: None,
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    #[derive(Debug, Clone)]
-    pub struct LMMSE {
-        pub atm: super::CEO<ATMOSPHERE>,
-        pub guide_star: super::CEO<SOURCE>,
-        pub mmse_star: super::CEO<SOURCE>,
-        pub fov_diameter: Option<f64>,
-        pub n_side_lenslet: usize,
-        pub solver_id: String,
-        pub wavefront_osf: usize,
-    }
-    impl Default for LMMSE {
-        fn default() -> Self {
-            LMMSE {
-                atm: super::CEO::<ATMOSPHERE>::new(),
-                guide_star: super::CEO::<SOURCE>::new(),
-                mmse_star: super::CEO::<SOURCE>::new(),
-                fov_diameter: None,
-                n_side_lenslet: 0,
-                solver_id: "MINRES".to_owned(),
-                wavefront_osf: 1,
-            }
-        }
-    }
-    // ---------------------------------------------------------------------------------------------
-    macro_rules! impl_ceotype {
-        ($($element:ty),+) => {
-            $(impl CEOType for $element {})+
-        };
-    }
-    impl_ceotype!(
-        GMT,
-        SOURCE,
-        SHACKHARTMANN<super::shackhartmann::Geometric>,
-        SHACKHARTMANN<super::shackhartmann::Diffractive>,
-        PSSN,
-        FIELDDELAUNAY21,
-        ATMOSPHERE,
-        SH48<super::shackhartmann::Geometric>,
-        SH48<super::shackhartmann::Diffractive>,
-        LMMSE
-    );
 }
 
 pub trait Conversion<T> {

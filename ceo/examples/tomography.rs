@@ -1,4 +1,7 @@
-use ceo::{ceo, element::*, shackhartmann::Geometric, CEOInit, Conversion, CEO};
+use ceo::{
+    ceo, shackhartmann::Geometric, Builder, CEOType, Conversion, ATMOSPHERE, GMT, LMMSE,
+    SHACKHARTMANN, SOURCE,
+};
 use serde_pickle as pickle;
 use std::fs::File;
 
@@ -6,34 +9,36 @@ fn main() {
     let n_actuator = 61;
     let n_kl = 70;
 
-    let atm_blueprint = CEO::<ATMOSPHERE>::new()
+    let atm_blueprint = ATMOSPHERE::new()
         .set_r0_at_zenith(0.15)
         .set_oscale(60.)
-        .set_zenith_angle(0.);/*
-        .set_turbulence_profile(TurbulenceProfile {
-            n_layer: 1,
-            altitude: vec![0f32],
-            xi0: vec![1f32],
-            wind_speed: vec![0f32],
-            wind_direction: vec![0f32],
-        });*/
-    let wfs_blueprint = CEO::<SHACKHARTMANN>::new().set_n_sensor(6).set_lenslet_array(n_actuator-1,16,25.5/(n_actuator-1) as f64);
+        .set_zenith_angle(0.); /*
+                               .set_turbulence_profile(TurbulenceProfile {
+                                   n_layer: 1,
+                                   altitude: vec![0f32],
+                                   xi0: vec![1f32],
+                                   wind_speed: vec![0f32],
+                                   wind_direction: vec![0f32],
+                               });*/
+    let wfs_blueprint = SHACKHARTMANN::<Geometric>::new()
+        .set_n_sensor(6)
+        .set_lenslet_array(n_actuator - 1, 16, 25.5 / (n_actuator - 1) as f64);
     let gs_blueprint = wfs_blueprint.guide_stars().set_on_ring(30f32.from_arcsec());
-    let src_blueprint = CEO::<SOURCE>::new().set_pupil_sampling(n_actuator);
+    let src_blueprint = SOURCE::new().set_pupil_sampling(n_actuator);
 
     let mut gmt = ceo!(GMT, set_m2_n_mode = [n_kl]);
-    let mut mmse_src = src_blueprint.build();
+    let mut mmse_src = src_blueprint.clone().build();
 
-    let mut lmmse = CEO::<LMMSE>::new()
-        .set_atmosphere(&atm_blueprint)
-        .set_guide_star(&gs_blueprint)
-        .set_mmse_star(&src_blueprint)
+    let mut lmmse = LMMSE::new()
+        .set_atmosphere(atm_blueprint.clone())
+        .set_guide_star(gs_blueprint.clone())
+        .set_mmse_star(src_blueprint)
         .set_n_side_lenslet(n_actuator - 1)
         .build();
 
     let mut atm = atm_blueprint.build();
     let mut gs = gs_blueprint.build();
-    let mut wfs = wfs_blueprint.build::<Geometric>();
+    let mut wfs = wfs_blueprint.build();
 
     gs.through(&mut gmt).xpupil();
     wfs.calibrate(&mut gs, 0.5);

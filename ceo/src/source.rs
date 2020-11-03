@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
-use super::{cu::Single, element, Builder, Centroiding, Cu, CEO};
+use super::{cu::Single, Builder, Centroiding, Cu};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -16,9 +16,246 @@ pub trait Propagation {
 /// # Examples
 ///
 /// ```
-/// use ceo::{ceo, element::SOURCE};
+/// use ceo::{ceo, CEOType, SOURCE};
 /// let mut src = ceo!(SOURCE);
 /// ```
+#[derive(Debug, Clone)]
+/// [`CEO`](../struct.CEO.html#impl-4) [`Source`](../struct.Source.html) builder type
+pub struct SOURCE {
+    pub size: usize,
+    pub pupil_size: f64,
+    pub pupil_sampling: usize,
+    pub band: String,
+    pub zenith: Vec<f32>,
+    pub azimuth: Vec<f32>,
+    pub magnitude: Vec<f32>,
+}
+/// Default properties:
+///  * size             : 1
+///  * pupil size       : 25.5m
+///  * pupil sampling   : 512px
+///  * photometric band : Vs (500nm)
+///  * zenith           : 0degree
+///  * azimuth          : 0degree
+///  * magnitude        : 0
+impl Default for SOURCE {
+    fn default() -> Self {
+        SOURCE {
+            size: 1,
+            pupil_size: 25.5,
+            pupil_sampling: 512,
+            band: "Vs".into(),
+            zenith: vec![0f32],
+            azimuth: vec![0f32],
+            magnitude: vec![0f32],
+        }
+    }
+}
+// ---------------------------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+/// [`CEO`](../struct.CEO.html#impl-3) specialized [`Source`](../struct.Source.html) builder type
+pub struct FIELDDELAUNAY21 {
+    pub size: usize,
+    pub pupil_size: f64,
+    pub pupil_sampling: usize,
+    pub band: String,
+    pub zenith: Vec<f32>,
+    pub azimuth: Vec<f32>,
+    pub magnitude: Vec<f32>,
+}
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Deserialize, Serialize, Default)]
+struct GlaoField {
+    pub zenith_arcmin: Vec<f32>,
+    pub azimuth_degree: Vec<f32>,
+}
+impl Default for FIELDDELAUNAY21 {
+    fn default() -> Self {
+        use super::Conversion;
+        use serde_pickle as pickle;
+        use std::fs::File;
+        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("File not found!");
+        let field: GlaoField = pickle::from_reader(field_reader).expect("File loading failed!");
+        let n_src = field.zenith_arcmin.len();
+        FIELDDELAUNAY21 {
+            size: n_src,
+            pupil_size: 25.5,
+            pupil_sampling: 512,
+            band: "Vs".into(),
+            zenith: field
+                .zenith_arcmin
+                .iter()
+                .map(|x| x.from_arcmin())
+                .collect::<Vec<f32>>(),
+            azimuth: field
+                .azimuth_degree
+                .iter()
+                .map(|x| x.to_radians())
+                .collect::<Vec<f32>>(),
+            magnitude: vec![0f32; n_src],
+        }
+    }
+}
+/// ## `Source` builder for a 21 source field
+impl FIELDDELAUNAY21 {
+    /// Set the sampling of the pupil in pixels
+    pub fn set_pupil_sampling(self, pupil_sampling: usize) -> Self {
+        Self {
+            pupil_sampling,
+            ..self
+        }
+    }
+    /// Set the pupil size in meters
+    pub fn set_pupil_size(self, pupil_size: f64) -> Self {
+        Self { pupil_size, ..self }
+    }
+    /// Set the photometric band
+    pub fn set_band(self, band: &str) -> Self {
+        Self {
+            band: band.to_owned(),
+            ..self
+        }
+    }
+}
+impl Builder for FIELDDELAUNAY21 {
+    type Component = Source;
+    /// Build the source object
+    fn build(self) -> Source {
+        let mut src = Source {
+            _c_: unsafe { mem::zeroed() },
+            size: self.size as i32,
+            pupil_size: self.pupil_size,
+            pupil_sampling: self.pupil_sampling as i32,
+            _wfe_rms: vec![0.0; self.size],
+            _phase: vec![0.0; self.pupil_sampling * self.pupil_sampling * self.size],
+            zenith: self.zenith,
+            azimuth: self.azimuth,
+            magnitude: self.magnitude,
+        };
+        unsafe {
+            let origin = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 25.0,
+            };
+            let src_band = CString::new(self.band.into_bytes()).unwrap();
+            src._c_.setup7(
+                src_band.into_raw(),
+                src.magnitude.as_mut_ptr(),
+                src.zenith.as_mut_ptr(),
+                src.azimuth.as_mut_ptr(),
+                f32::INFINITY,
+                self.size as i32,
+                self.pupil_size,
+                self.pupil_sampling as i32,
+                origin,
+            );
+        }
+        src
+    }
+}
+/// ## `Source` builder
+impl SOURCE {
+    /// Set the number of sources
+    pub fn set_size(self, size: usize) -> Self {
+        Self { size, ..self }
+    }
+    /// Set the sampling of the pupil in pixels
+    pub fn set_pupil_sampling(self, pupil_sampling: usize) -> Self {
+        Self {
+            pupil_sampling,
+            ..self
+        }
+    }
+    /// Set the pupil size in meters
+    pub fn set_pupil_size(self, pupil_size: f64) -> Self {
+        Self { pupil_size, ..self }
+    }
+    /// Set the photometric band
+    pub fn set_band(self, band: &str) -> Self {
+        Self {
+            band: band.to_owned(),
+            ..self
+        }
+    }
+    /// Set the source zenith and azimuth angles
+    pub fn set_zenith_azimuth(self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
+        assert_eq!(
+            self.size,
+            zenith.len(),
+            "zenith vector must be of length {}",
+            self.size
+        );
+        assert_eq!(
+            self.size,
+            azimuth.len(),
+            "azimuth vector must be of length {}",
+            self.size
+        );
+        Self {
+            zenith,
+            azimuth,
+            ..self
+        }
+    }
+    /// Set n sources at zenith angle evenly spread of a ring
+    pub fn set_on_ring(self, zenith: f32) -> Self {
+        Self {
+            zenith: vec![zenith; self.size],
+            azimuth: (0..self.size)
+                .map(|x| 2. * std::f32::consts::PI * x as f32 / self.size as f32)
+                .collect::<Vec<f32>>(),
+            ..self
+        }
+    }
+    /// Set the source magnitude
+    pub fn set_magnitude(self, magnitude: Vec<f32>) -> Self {
+        assert_eq!(
+            self.size,
+            magnitude.len(),
+            "azimuth vector must be of length {}",
+            self.size
+        );
+        Self { magnitude, ..self }
+    }
+}
+impl Builder for SOURCE {
+    type Component = Source;
+    /// Build the `Source`
+    fn build(self) -> Source {
+        let mut src = Source {
+            _c_: unsafe { mem::zeroed() },
+            size: self.size as i32,
+            pupil_size: self.pupil_size,
+            pupil_sampling: self.pupil_sampling as i32,
+            _wfe_rms: vec![0.0; self.size],
+            _phase: vec![0.0; self.pupil_sampling * self.pupil_sampling * self.size],
+            zenith: self.zenith,
+            azimuth: self.azimuth,
+            magnitude: self.magnitude,
+        };
+        unsafe {
+            let origin = vector {
+                x: 0.0,
+                y: 0.0,
+                z: 25.0,
+            };
+            let src_band = CString::new(self.band.into_bytes()).unwrap();
+            src._c_.setup7(
+                src_band.into_raw(),
+                src.magnitude.as_mut_ptr(),
+                src.zenith.as_mut_ptr(),
+                src.azimuth.as_mut_ptr(),
+                f32::INFINITY,
+                self.size as i32,
+                self.pupil_size,
+                self.pupil_sampling as i32,
+                origin,
+            );
+        }
+        src
+    }
+}
 pub struct Source {
     _c_: source,
     /// The number of sources
@@ -32,158 +269,6 @@ pub struct Source {
     pub zenith: Vec<f32>,
     pub azimuth: Vec<f32>,
     pub magnitude: Vec<f32>,
-}
-/// ## `Source` builder for a 21 source field
-impl CEO<element::FIELDDELAUNAY21> {
-    /// Set the sampling of the pupil in pixels
-    pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
-        self.args.pupil_sampling = pupil_sampling;
-        self
-    }
-    /// Set the pupil size in meters
-    pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
-        self.args.pupil_size = pupil_size;
-        self
-    }
-    /// Set the photometric band
-    pub fn set_band(mut self, band: &str) -> Self {
-        self.args.band = band.to_owned();
-        self
-    }
-}
-impl Builder for CEO<element::FIELDDELAUNAY21> {
-    type Component = Source;
-    /// Build the source object
-    fn build(&self) -> Source {
-        let mut src = Source {
-            _c_: unsafe { mem::zeroed() },
-            size: self.args.size as i32,
-            pupil_size: self.args.pupil_size,
-            pupil_sampling: self.args.pupil_sampling as i32,
-            _wfe_rms: vec![0.0; self.args.size],
-            _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
-            zenith: self.args.zenith.clone(),
-            azimuth: self.args.azimuth.clone(),
-            magnitude: self.args.magnitude.clone(),
-        };
-        unsafe {
-            let origin = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 25.0,
-            };
-            let src_band = CString::new(self.args.band.clone().into_bytes()).unwrap();
-            src._c_.setup7(
-                src_band.into_raw(),
-                src.magnitude.as_mut_ptr(),
-                src.zenith.as_mut_ptr(),
-                src.azimuth.as_mut_ptr(),
-                f32::INFINITY,
-                self.args.size as i32,
-                self.args.pupil_size,
-                self.args.pupil_sampling as i32,
-                origin,
-            );
-        }
-        src
-    }
-}
-/// ## `Source` builder
-impl CEO<element::SOURCE> {
-    /// Set the number of sources
-    pub fn set_size(mut self, size: usize) -> Self {
-        self.args.size = size;
-        self
-    }
-    /// Set the sampling of the pupil in pixels
-    pub fn set_pupil_sampling(mut self, pupil_sampling: usize) -> Self {
-        self.args.pupil_sampling = pupil_sampling;
-        self
-    }
-    /// Set the pupil size in meters
-    pub fn set_pupil_size(mut self, pupil_size: f64) -> Self {
-        self.args.pupil_size = pupil_size;
-        self
-    }
-    /// Set the photometric band
-    pub fn set_band(mut self, band: &str) -> Self {
-        self.args.band = band.to_owned();
-        self
-    }
-    /// Set the source zenith and azimuth angles
-    pub fn set_zenith_azimuth(mut self, zenith: Vec<f32>, azimuth: Vec<f32>) -> Self {
-        assert_eq!(
-            self.args.size,
-            zenith.len(),
-            "zenith vector must be of length {}",
-            self.args.size
-        );
-        assert_eq!(
-            self.args.size,
-            azimuth.len(),
-            "azimuth vector must be of length {}",
-            self.args.size
-        );
-        self.args.zenith = zenith;
-        self.args.azimuth = azimuth;
-        self
-    }
-    /// Set n sources at zenith angle evenly spread of a ring
-    pub fn set_on_ring(mut self, zenith: f32) -> Self {
-        self.args.zenith = vec![zenith; self.args.size];
-        self.args.azimuth = (0..self.args.size)
-            .map(|x| 2. * std::f32::consts::PI * x as f32 / self.args.size as f32)
-            .collect::<Vec<f32>>();
-        self
-    }
-    /// Set the source magnitude
-    pub fn set_magnitude(mut self, magnitude: Vec<f32>) -> Self {
-        assert_eq!(
-            self.args.size,
-            magnitude.len(),
-            "azimuth vector must be of length {}",
-            self.args.size
-        );
-        self.args.magnitude = magnitude;
-        self
-    }
-}
-impl Builder for CEO<element::SOURCE> {
-    type Component = Source;
-    /// Build the `Source`
-    fn build(&self) -> Source {
-        let mut src = Source {
-            _c_: unsafe { mem::zeroed() },
-            size: self.args.size as i32,
-            pupil_size: self.args.pupil_size,
-            pupil_sampling: self.args.pupil_sampling as i32,
-            _wfe_rms: vec![0.0; self.args.size],
-            _phase: vec![0.0; self.args.pupil_sampling * self.args.pupil_sampling * self.args.size],
-            zenith: self.args.zenith.clone(),
-            azimuth: self.args.azimuth.clone(),
-            magnitude: self.args.magnitude.clone(),
-        };
-        unsafe {
-            let origin = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 25.0,
-            };
-            let src_band = CString::new(self.args.band.clone().into_bytes()).unwrap();
-            src._c_.setup7(
-                src_band.into_raw(),
-                src.magnitude.as_mut_ptr(),
-                src.zenith.as_mut_ptr(),
-                src.azimuth.as_mut_ptr(),
-                f32::INFINITY,
-                self.args.size as i32,
-                self.args.pupil_size,
-                self.args.pupil_sampling as i32,
-                origin,
-            );
-        }
-        src
-    }
 }
 impl Source {
     /// Creates and empty `Source`
