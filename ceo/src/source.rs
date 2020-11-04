@@ -203,7 +203,6 @@ impl Builder for FIELDDELAUNAY21 {
         src
     }
 }
-/// ## `Source` builder
 impl SOURCE {
     /// Set the number of sources
     pub fn set_size(self, size: usize) -> Self {

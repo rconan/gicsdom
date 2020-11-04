@@ -1,71 +1,38 @@
+//!
+//! # CEO gmt wrapper
+//!
+//! Provides a structure `Gmt` that is a wrapper for [CEO](https://github.com/rconan/CEO) gmt C++ structure.
+//! `Gmt` is instantiated and initialized with the `GMT` builder
+//!
+//! # Examples
+//!
+//! ```
+//! use ceo::ceo;
+//! // Creates a gmt instance with default parameters
+//! let mut src = ceo!(GMT);
+//! ```
+//!
+//! ```
+//! use ceo::ceo;
+//! // Creates a gmt instance with 27 M1 bending modes
+//! let mut src = ceo!(GMT, set_m1_n_mode = [27]);
+//! ```
+
 use std::ffi::CString;
 use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
 use super::{Builder, Propagation, Source};
 
-/*
-struct RigidBody<'a> {
-    _c_: &'a mut coordinate_system,
-}
-impl<'a> RigidBody<'a> {
-    pub fn new(cs: &'a mut coordinate_system) -> RigidBody<'a> {
-        RigidBody { _c_: cs }
-    }
-    pub fn update(&mut self, sid: i32, t_xyz: &[f64], r_xyz: &[f64]) {
-        let t_xyz = vector {
-            x: t_xyz[0],
-            y: t_xyz[1],
-            z: t_xyz[2],
-        };
-        let r_xyz = vector {
-            x: r_xyz[0],
-            y: r_xyz[1],
-            z: r_xyz[2],
-        };
-        unsafe {
-            self._c_.update1(t_xyz, r_xyz, sid);
-        }
-    }
-}
-struct Modes<'a> {
-    _c_: &'a mut modes,
-}
 
-struct Segment<'a> {
-    id: u8,
-    rigid_body: Option<RigidBody<'a>>,
-    modes: Option<Modes<'a>>,
-}
-
-struct Mirror<'a> {
-    segment: Vec<Segment<'a>>,
-}
- */
-
-/// # CEO GMT M1 and M2 model
-///
-/// # Examples
-///
-/// ```
-/// use ceo::{ceo, CEOType, GMT,SOURCE};
-/// let mut src = ceo!(SOURCE);
-/// let mut gmt = ceo!(GMT);
-/// src.through(&mut gmt).xpupil();
-/// println!("WFE RMS: {:.3}nm",src.wfe_rms_10e(-9)[0]);
-/// ```
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct Mirror {
     pub mode_type: String,
     pub n_mode: usize,
 }
-/// [`CEO`](../struct.CEO.html#impl) [`Gmt`](../struct.Gmt.html) builder type
-#[derive(Debug, Clone)]
-pub struct GMT {
-    pub m1: Mirror,
-    pub m2: Mirror,
-}
+/// `Gmt` builder
+///
 /// Default properties:
 ///  * M1:
 ///    * mode type : "bending modes"
@@ -73,6 +40,23 @@ pub struct GMT {
 ///  * M2:
 ///    * mode type : "Karhunen-Loeve"
 ///    * \# mode    : 0
+///
+/// # Examples
+///
+/// ```
+/// use ceo::{Builder, CEOType, GMT};
+/// let mut src = GMT::new().build();
+/// ```
+///
+/// ```
+/// use ceo::{Builder, CEOType, GMT};
+/// let mut src = GMT::new().set_m1_n_mode(27).build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct GMT {
+    pub m1: Mirror,
+    pub m2: Mirror,
+}
 impl Default for GMT {
     fn default() -> Self {
         GMT {
@@ -87,8 +71,6 @@ impl Default for GMT {
         }
     }
 }
-
-/// ## `Gmt` builder
 impl GMT {
     pub fn set_m1(self, mode_type: &str, n_mode: usize) -> Self {
         Self {
@@ -154,6 +136,7 @@ impl Builder for GMT {
         gmt
     }
 }
+/// gmt wrapper
 pub struct Gmt {
     pub _c_m1_modes: modes,
     pub _c_m2_modes: modes,
