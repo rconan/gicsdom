@@ -1,7 +1,20 @@
-use std::{f32, mem};
+//!
+//! # CEO shackhartmann wrapper
+//!
+//! Provides a structure `ShackHartmann` that is a wrapper for [CEO](https://github.com/rconan/CEO) shackhartmann C++ structure.
+//! `ShackHartmann<M: Model>` is instantiated and initialized with the `SHACKHARTMANN<M: Model>` builder where `Model` is either type `Geometric` of `Diffractive`
+//!
+//! # Examples
+//!
+//! ```
+//! use ceo::ceo;
+//! // Creates a gmt instance with default parameters
+//! let mut wfs = ceo!(SHACKHARTMANN:Geometric);
+//! ```
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
 use super::{cu::Single, Builder, CEOType, Cu, Mask, Propagation, Source, SOURCE};
+use std::{f32, mem};
 
 pub type Geometric = geometricShackHartmann;
 pub type Diffractive = shackHartmann;
@@ -85,8 +98,26 @@ impl Default for Detector {
         Detector(512, None, None)
     }
 }
+/// `ShackHartmann` builder
+///
+/// Default properties:
+///  - n_sensor: 1
+///  - lenslet_array:
+///    - n_lenslet: 1
+///    - n_px_lenslet: 511px
+///    - lenslet_pitch: 25.5m
+///  - detector:
+///    - n_px_framelet: 512px
+///    - n_px_imagelet: None[512px]
+///    - osf: None[2]
+///
+/// # Examples
+///
+/// ```
+/// use ceo::{Builder, CEOType, SHACKHARTMANN, Geometric};
+/// let mut wfs = SHACKHARTMANN::<Geometric>::new().build();
+/// ```
 #[derive(Debug, Clone)]
-/// [`CEO`](../struct.CEO.html#impl-2) [`ShackHartmann`](../struct.ShackHartmann.html) builder type
 pub struct SHACKHARTMANN<T: Model> {
     pub n_sensor: usize,
     pub lenslet_array: LensletArray,
@@ -160,8 +191,26 @@ impl<T: Model> Builder for SHACKHARTMANN<T> {
         wfs
     }
 }
+/// `ShackHartmann` "SH48" builder for GMT AGWS model
+///
+/// Default properties:
+///  - n_sensor: 4
+///  - lenslet_array:
+///    - n_lenslet: 48
+///    - n_px_lenslet: 16px
+///    - lenslet_pitch: 25.5m/48
+///  - detector:
+///    - n_px_framelet: 8px
+///    - n_px_imagelet: Some(24px)
+///    - osf: Some(2)
+///
+/// # Examples
+///
+/// ```
+/// use ceo::{Builder, CEOType, SH48, Geometric};
+/// let mut wfs = SH48::<Geometric>::new().build();
+/// ```
 #[derive(Debug, Clone)]
-/// [`CEO`](../struct.CEO.html#impl-7) specialized [`ShackHartmann`](../struct.ShackHartmann.html) builder type
 pub struct SH48<T: Model> {
     pub n_sensor: usize,
     pub lenslet_array: LensletArray,
@@ -229,34 +278,7 @@ impl<T: Model> Builder for SH48<T> {
         wfs
     }
 }
-/*
-use super::CEOWFS;
-impl CEOWFS for CEO<element::SHACKHARTMANN> {
-    fn build(&self) -> ShackHartmann<Geometric> {
-        self.args.build::<Geometric>(
-            self.args.n_sensor,
-            self.args.lenslet_array.clone(),
-            self.args.detector.clone(),
-        )
-    }
-    fn get_n_data(&self) -> usize {
-        2 * self.args.lenslet_array.0.pow(2) * self.args.n_sensor
-    }
-}
-impl CEOWFS for CEO<element::SH48> {
-    fn build(&self) -> ShackHartmann<Geometric> {
-        self.args.build::<Geometric>(
-            self.args.n_sensor,
-            self.args.lenslet_array.clone(),
-            self.args.detector.clone(),
-        )
-    }
-    fn get_n_data(&self) -> usize {
-        2 * self.args.lenslet_array.0.pow(2) * self.args.n_sensor
-    }
-}
-*/
-/// Shack-Hartmann wavefront sensor model
+/// shackhartmann wrapper
 pub struct ShackHartmann<S: Model> {
     pub _c_: S,
     /// The size of the square lenslet array
@@ -509,7 +531,7 @@ mod tests {
 
     #[test]
     fn shack_hartmann_geometric_new() {
-        use crate::{GMT};
+        use crate::GMT;
         let mut wfs = SHACKHARTMANN::<Geometric>::new()
             .set_n_sensor(1)
             .set_lenslet_array(48, 16, 25.5 / 48f64)

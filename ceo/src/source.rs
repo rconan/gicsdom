@@ -21,12 +21,9 @@
 //! let mut src = ceo!(SOURCE, set_size = [3] , set_on_ring = [8f32.from_arcmin()]);
 //! ```
 
-use std::f32;
-use std::ffi::CString;
-use std::mem;
-
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
 use super::{cu::Single, Builder, Centroiding, Cu};
+use std::{f32, ffi::CString, mem};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -124,8 +121,10 @@ impl Default for FIELDDELAUNAY21 {
         use super::Conversion;
         use serde_pickle as pickle;
         use std::fs::File;
-        let field_reader = File::open("ceo/fielddelaunay21.pkl").expect("fielddelaunay21.pkl not found!");
-        let field: GlaoField = pickle::from_reader(field_reader).expect("fielddelaunay21.pkl loading failed!");
+        let field_reader =
+            File::open("ceo/fielddelaunay21.pkl").expect("fielddelaunay21.pkl not found!");
+        let field: GlaoField =
+            pickle::from_reader(field_reader).expect("fielddelaunay21.pkl loading failed!");
         let n_src = field.zenith_arcmin.len();
         FIELDDELAUNAY21 {
             size: n_src,

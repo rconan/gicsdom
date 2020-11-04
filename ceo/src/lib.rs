@@ -110,6 +110,9 @@ macro_rules! ceo {
         $crate::Builder::build(<$crate::$element as $crate::CEOType>::new()$(.$arg($($val),+))*)
     };
     ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
+        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::CEOType>::new())
+    };
+    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
         $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::CEOType>::new()$(.$arg($($val),+))*)
     };
 }

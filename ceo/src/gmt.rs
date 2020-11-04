@@ -15,15 +15,12 @@
 //! ```
 //! use ceo::ceo;
 //! // Creates a gmt instance with 27 M1 bending modes
-//! let mut src = ceo!(GMT, set_m1_n_mode = [27]);
+//! let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
 //! ```
-
-use std::ffi::CString;
-use std::mem;
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
 use super::{Builder, Propagation, Source};
-
+use std::{ffi::CString, mem};
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -34,12 +31,12 @@ pub struct Mirror {
 /// `Gmt` builder
 ///
 /// Default properties:
-///  * M1:
-///    * mode type : "bending modes"
-///    * \# mode    : 0
-///  * M2:
-///    * mode type : "Karhunen-Loeve"
-///    * \# mode    : 0
+///  - M1:
+///    - mode type : "bending modes"
+///    - \# mode    : 0
+///  - M2:
+///    - mode type : "Karhunen-Loeve"
+///    - \# mode    : 0
 ///
 /// # Examples
 ///
@@ -50,7 +47,7 @@ pub struct Mirror {
 ///
 /// ```
 /// use ceo::{Builder, CEOType, GMT};
-/// let mut src = GMT::new().set_m1_n_mode(27).build();
+/// let mut gmt = GMT::new().set_m1_n_mode(27).build();
 /// ```
 #[derive(Debug, Clone)]
 pub struct GMT {
