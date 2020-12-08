@@ -84,6 +84,8 @@ impl<T: std::clone::Clone> Builder for PSSN<T> {
             mode: std::marker::PhantomData,
             otf: Vec::new(),
         };
+        let mut gmt = super::ceo!(GMT);
+        src.through(&mut gmt).xpupil();
         unsafe {
             pssn._c_.setup(src.as_raw_mut_ptr(), pssn.r0(), pssn.oscale);
         }
