@@ -1,9 +1,10 @@
-use ceo::{ceo, pssn::TelescopeError, Builder, CEOType, PSSN, SOURCE};
+use ceo::{ceo, pssn::TelescopeError, Builder, CEOType, PSSN, SOURCE, FIELDDELAUNAY21};
+use cirrus;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use std::fs::File;
 use std::io::BufReader;
-use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug, Deserialize, Default)]
 struct FemRbm {
@@ -41,23 +42,34 @@ struct Band {
     psu: f32,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
-    let _src_ = SOURCE::new();
+    let _src_ = FIELDDELAUNAY21::new();
     let mut src = _src_.clone().build();
-    let mut pssn = PSSN::<TelescopeError>::new().build();
+    let mut pssn = PSSN::<TelescopeError>::new().set_source(_src_).build();
     src.through(&mut gmt).xpupil().through(&mut pssn);
     println!(
-        "WFE RMS: {}nm ; PSSn: {}",
-        src.wfe_rms_10e(-9)[0],
+        "WFE RMS: {:?}nm ; PSSn: {}",
+        src.wfe_rms_10e(-9),
         pssn.peek()
     );
 
-    let filename = "/home/rconan/DATA/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl";
-    let f = File::open(filename).unwrap();
-    let r = BufReader::with_capacity(1000_0000, f);
-    let data: Data = pickle::from_reader(r).expect("Failed");
-
+    let use_s3 = true;
+    let data: Data = if use_s3 {
+        let cfd_case = "b2019_0z_0az_cd_12ms";
+        let key = format!(
+            "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
+            "Baseline2020", cfd_case
+        );
+        let r = cirrus::reader("us-east-2", "gmto.starccm", &key).await.unwrap();
+        pickle::from_reader(r).expect("Failed")
+    } else {
+        let filename = "/home/ubuntu/DATA/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl";
+        let f = File::open(filename).unwrap();
+        let r = BufReader::with_capacity(1000_0000, f);
+        pickle::from_reader(r).expect("Failed")
+    };
     let mut fem: FemRbm = data.data.fem;
     let n_sample = fem.m1_rbm.len();
     println!("# sample: {}", n_sample);
@@ -87,7 +99,7 @@ fn main() {
             pssn.peek();
             pssn_sec.push(pssn.estimates.clone());
             //println!("PSSn[{}]: {}", k, pssn);
-            bar.set_message(&format!("{}", pssn));
+            bar.set_message(&format!("{}", pssn.estimates[0]));
         }
     }
     bar.finish();
