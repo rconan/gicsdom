@@ -1,5 +1,5 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{Builder, Cu, Propagation, Source, SOURCE};
+use super::{Builder, Cu, Propagation, Source};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
@@ -20,13 +20,13 @@ pub struct PSSn<S> {
     pub mode: std::marker::PhantomData<S>,
     pub otf: Vec<f32>,
 }
-#[derive(Debug, Clone)]
+
 /// [`CEO`](../struct.CEO.html#impl-1) [`PSSn`](../struct.PSSn.html) builder type
 pub struct PSSN<T> {
     pub r0_at_zenith: f64,
     pub oscale: f64,
     pub zenith_angle: f64,
-    pub src_blueprint: SOURCE,
+    src: Source,
     marker: std::marker::PhantomData<T>,
 }
 /// Default properties:
@@ -39,7 +39,7 @@ impl<T> Default for PSSN<T> {
             r0_at_zenith: 0.16,
             oscale: 25.0,
             zenith_angle: 30_f64.to_radians(),
-            src_blueprint: SOURCE::default(),
+            src: Source::default(),
             marker: std::marker::PhantomData,
         }
     }
@@ -63,9 +63,9 @@ impl<T> PSSN<T> {
             ..self
         }
     }
-    pub fn set_source(self, src_blueprint: SOURCE) -> Self {
+    pub fn set_source(self, src_blueprint: impl Builder<Component=Source>) -> Self {
         Self {
-            src_blueprint,
+            src: src_blueprint.build(),
             ..self
         }
     }
@@ -73,7 +73,7 @@ impl<T> PSSN<T> {
 impl<T: std::clone::Clone> Builder for PSSN<T> {
     type Component = PSSn<T>;
     fn build(self) -> PSSn<T> {
-        let mut src = self.src_blueprint.build();
+        let mut src = self.src;
         let mut pssn = PSSn::<T> {
             _c_: unsafe { mem::zeroed() },
             r0_at_zenith: self.r0_at_zenith as f32,

@@ -89,7 +89,7 @@ impl Segment {
 ///
 /// `Calibration` creates its own GMT simulation with a `Gmt`, a `Source` and a `Builder`.
 /// The calibration is performed by estimating the geometric centroids associated with the calibrated functions.
-pub struct Calibration<T: Builder<Component = ShackHartmann<Geometric>>> {
+pub struct Calibration<T: Clone +  Builder<Component = ShackHartmann<Geometric>>> {
     gmt_blueprint: GMT,
     src_blueprint: SOURCE,
     wfs_blueprint: T,
@@ -98,7 +98,7 @@ pub struct Calibration<T: Builder<Component = ShackHartmann<Geometric>>> {
     pub poke: Cu<Single>,
     poke_qr: Cu<Single>,
 }
-impl<T: Builder<Component = ShackHartmann<Geometric>>> Calibration<T> {
+impl<T: Clone + Builder<Component = ShackHartmann<Geometric>>> Calibration<T> {
     /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `Builder`
     pub fn new(gmt_blueprint: GMT, src_blueprint: SOURCE, wfs_blueprint: T) -> Calibration<T>
     {

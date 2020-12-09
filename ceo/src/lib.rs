@@ -133,11 +133,11 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
 }
 
 /// CEO builder type trait
-pub trait Builder: Clone {
+pub trait Builder {
     type Component;
     fn build(self) -> Self::Component;
 }
-pub trait CEOType: Builder + Clone + Default {
+pub trait CEOType: Builder + Default {
     fn new() -> Self {
         Default::default()
     }
