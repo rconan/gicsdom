@@ -13,7 +13,7 @@
 //! ```
 
 use super::ceo_bindings::{geometricShackHartmann, shackHartmann};
-use super::{cu::Single, Builder, CEOType, Cu, Mask, Propagation, Source, SOURCE};
+use super::{cu::Single, Builder, Cu, Mask, Propagation, Source, SOURCE};
 use std::{f32, mem};
 
 pub type Geometric = geometricShackHartmann;

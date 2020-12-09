@@ -1,6 +1,6 @@
 use super::ceo_bindings::LMMSE as ceo_LMMSE;
 use super::{
-    cu::Single, Atmosphere, Builder, CEOType, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
+    cu::Single, Atmosphere, Builder, Conversion, Cu, GeometricShackHartmann as WFS, Mask,
     Source, ATMOSPHERE, GMT, SOURCE,
 };
 use std::ffi::CString;

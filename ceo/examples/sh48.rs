@@ -1,5 +1,5 @@
 use ceo::{
-    calibrations, ceo, shackhartmann::Geometric as WFS_TYPE, Builder, CEOType, Calibration,
+    calibrations, ceo, shackhartmann::Geometric as WFS_TYPE, Builder, Calibration,
     GMT, SH48,
 };
 use serde_pickle as pickle;

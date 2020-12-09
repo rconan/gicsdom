@@ -104,16 +104,16 @@ pub type GeometricShackHartmann = ShackHartmann<shackhartmann::Geometric>;
 #[macro_export]
 macro_rules! ceo {
     ($element:ident) => {
-        $crate::Builder::build(<$crate::$element as $crate::CEOType>::new())
+        $crate::Builder::build(<$crate::$element as $crate::Builder>::new())
     };
     ($element:ident, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$crate::$element as $crate::CEOType>::new()$(.$arg($($val),+))*)
+        $crate::Builder::build(<$crate::$element as $crate::Builder>::new()$(.$arg($($val),+))*)
     };
     ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::CEOType>::new())
+        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::Builder>::new())
     };
     ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::CEOType>::new()$(.$arg($($val),+))*)
+        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::Builder>::new()$(.$arg($($val),+))*)
     };
 }
 /*
@@ -133,31 +133,13 @@ impl<T: std::fmt::Debug> fmt::Display for CeoError<T> {
 }
 
 /// CEO builder type trait
-pub trait Builder {
+pub trait Builder: Default {
     type Component;
-    fn build(self) -> Self::Component;
-}
-pub trait CEOType: Builder + Default {
     fn new() -> Self {
         Default::default()
     }
+    fn build(self) -> Self::Component;
 }
-macro_rules! impl_ceotype {
-    ($($element:ty),+) => {
-        $(impl CEOType for $element {})+
-    };
-}
-impl_ceotype!(
-    GMT,
-    SOURCE,
-    FIELDDELAUNAY21,
-    ATMOSPHERE,
-    SHACKHARTMANN<shackhartmann::Geometric>,
-    SH48<shackhartmann::Geometric>,
-    LMMSE,
-    PSSN<pssn::TelescopeError>,
-    PSSN<pssn::AtmosphereTelescopeError> //              SHACKHARTMANN<super::shackhartmann::Diffractive>,
-);
 
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
