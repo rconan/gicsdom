@@ -65,7 +65,7 @@ pub async fn load_serial(region: &str, bucket: &str, keys: &[String]) -> Vec<Vec
         match result {
             Ok(response) => {
                 let stream = response.body.unwrap();
-                let body = stream
+                let body: BytesMut = stream
                     .map_ok(|b| BytesMut::from(&b[..]))
                     .try_concat()
                     .await
@@ -140,6 +140,47 @@ pub async fn load<T: 'static + serde::de::DeserializeOwned + std::marker::Send>(
         }
     }
     Ok(data)
+}
+pub async fn reader(
+    region: &str,
+    bucket: &str,
+    key: &str,
+) -> Result<Cursor<BytesMut>, Box<dyn Error>> {
+    let region = Region::from_str(region);
+    let s3_client = Arc::new(S3Client::new(region.unwrap_or(Region::default())));
+
+    let request = GetObjectRequest {
+        bucket: bucket.to_string(),
+        key: key.to_string(),
+        ..Default::default()
+    };
+    let s3_client = s3_client.clone();
+    let n_retry = 10usize;
+    let mut k_retry = 0usize;
+    loop {
+        let result = s3_client.get_object(request.clone()).await;
+        match result {
+            Ok(response) => {
+                let stream = response.body.unwrap();
+                let body: BytesMut = stream
+                    .map_ok(|b| BytesMut::from(&b[..]))
+                    .try_concat()
+                    .await
+                    .unwrap();
+                let r = Cursor::new(body);
+                break Ok(r);
+            }
+            Err(e) => {
+                log::error!("{:?}", e);
+                k_retry += 1;
+                if k_retry <= n_retry {
+                    log::info!("{}/{} retry", k_retry, n_retry);
+                } else {
+                    break Err(Box::new(e));
+                };
+            }
+        }
+    }
 }
 
 pub async fn dump<T: Serialize>(
