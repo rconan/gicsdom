@@ -52,10 +52,7 @@ impl<T> PSSN<T> {
         }
     }
     pub fn set_outer_scale(self, oscale: f64) -> Self {
-        Self {
-            oscale,
-            ..self
-        }
+        Self { oscale, ..self }
     }
     pub fn set_zenith_angle(self, zenith_angle_degree: f64) -> Self {
         Self {
@@ -63,7 +60,7 @@ impl<T> PSSN<T> {
             ..self
         }
     }
-    pub fn set_source(self, src_blueprint: impl Builder<Component=Source>) -> Self {
+    pub fn set_source(self, src_blueprint: impl Builder<Component = Source>) -> Self {
         Self {
             src: src_blueprint.build(),
             ..self
@@ -155,6 +152,7 @@ impl<S> PSSn<S> {
     }
     pub fn r0(&self) -> f32 {
         (self.r0_at_zenith.powf(-5_f32 / 3_f32) / self.zenith_angle.cos()).powf(-3_f32 / 5_f32)
+            * (self.wavelength / 0.5e-6_f32).powf(1.2_f32)
     }
     pub fn r0_at_z(r0_at_zenith: f32, zenith_angle: f32) -> f32 {
         (r0_at_zenith.powf(-5_f32 / 3_f32) / zenith_angle.cos()).powf(-3_f32 / 5_f32)
@@ -277,7 +275,7 @@ mod tests {
 
     #[test]
     fn pssn_new() {
-        use crate::{SOURCE, GMT, CEOType};
+        use crate::{CEOType, GMT, SOURCE};
         let mut src = SOURCE::new().build();
         let mut gmt = GMT::new().build();
         src.through(&mut gmt).xpupil();
