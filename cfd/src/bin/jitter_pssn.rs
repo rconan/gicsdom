@@ -1,4 +1,4 @@
-use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, FIELDDELAUNAY21, PSSN};
+use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, FIELDDELAUNAY21, PSSN, SOURCE};
 use rayon;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -6,6 +6,7 @@ use serde_pickle as pickle;
 use serde_yaml as yaml;
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::BufReader;
 
 #[derive(Debug, Deserialize, Default)]
 struct FemRbm {
@@ -43,7 +44,7 @@ struct Band {
     psu: f32,
 }
 
-const DATAPATH: &str = "/home/rconan/DATA";
+const DATAPATH: &str = "/home/ubuntu/DATA";
 
 fn main() {
     let n_gpu = 1 as usize;
@@ -55,8 +56,8 @@ fn main() {
         .unwrap();
 
     let filename = "/home/ubuntu/CFD/CFD_CASES.yaml";
-    let r = File::open(filename).unwrap();
-    let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(r).unwrap();
+    let f = File::open(filename).unwrap();
+    let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(f).unwrap();
     let b2020_cases = cfd_cases.get_mut("baseline 2020").unwrap();
     b2020_cases.truncate(1);
     println!("CFD CASES: {:?}", b2020_cases);
@@ -72,26 +73,28 @@ fn main() {
 }
 
 fn rbm_to_pssn(cfd_case: &str) {
-    let data: Data = {
+/*    let data: Data = {
         let key = String::from(format!(
-            "{}/Baseline2020/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
+            "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
             DATAPATH, cfd_case
         ));
-        let r = File::open(key).unwrap();
-        //print!("Loading data ...");
+        println!("Loading data {}", key.clone());
+        let f = File::open(&key).expect(&format!("Failed to open {}", key));
+        let mut r = BufReader::with_capacity(1_000_000, f);
         pickle::from_reader(r).expect("Failed")
     };
 
     let mut fem: FemRbm = data.data.fem;
-    //let n_sample = fem.m1_rbm.len();
+*/    //let n_sample = fem.m1_rbm.len();
     //println!("# sample: {}", n_sample);
 
     let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
-    let _src_ = FIELDDELAUNAY21::new().set_band("H");
+    let _src_ = SOURCE::new().set_band("H");
     let mut src = _src_.clone().build();
+    src.through(&mut gmt).xpupil();
     let mut pssn = PSSN::<TelescopeError>::new().set_source(_src_).build();
     //println!("r0: {}m", pssn.r0());
-    src.through(&mut gmt).xpupil().through(&mut pssn);
+    /*    src.through(&mut gmt).xpupil().through(&mut pssn);
     pssn.reset();
 
     let sampling_time = 0.5e-3_f64;
@@ -126,8 +129,8 @@ fn rbm_to_pssn(cfd_case: &str) {
     };
 
     let key = format!(
-        "{}/{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.pssn.pkl",
-        DATAPATH, "Baseline2020", cfd_case
+        "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.pssn.pkl",
+        DATAPATH, cfd_case
     );
     let v_band_pssn: Band = {
         let r = File::open(&key).unwrap();
@@ -140,4 +143,5 @@ fn rbm_to_pssn(cfd_case: &str) {
     let mut file = File::create(&key).unwrap();
     //println!("Saving {}...", filename);
     pickle::to_writer(&mut file, &results, true).unwrap();
+    */
 }
