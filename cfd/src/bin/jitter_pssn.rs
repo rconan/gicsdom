@@ -1,5 +1,6 @@
-use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, FIELDDELAUNAY21, PSSN, SOURCE};
-use cirrus;
+use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, FIELDDELAUNAY21, PSSN};
+use rayon;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_pickle as pickle;
 use serde_yaml as yaml;
@@ -42,9 +43,47 @@ struct Band {
     psu: f32,
 }
 
-fn rbm_to_pssn(data: Data) -> Band {
+const DATAPATH: &str = "/home/rconan/DATA";
+
+fn main() {
+    let n_gpu = 1 as usize;
+    let n_thread = 1;
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(n_thread)
+        .build()
+        .unwrap();
+
+    let filename = "/home/ubuntu/CFD/CFD_CASES.yaml";
+    let r = File::open(filename).unwrap();
+    let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(r).unwrap();
+    let b2020_cases = cfd_cases.get_mut("baseline 2020").unwrap();
+    b2020_cases.truncate(1);
+    println!("CFD CASES: {:?}", b2020_cases);
+
+    pool.install(|| {
+        b2020_cases.par_iter().for_each(|c| {
+            let thread_id = pool.current_thread_index().unwrap();
+            //        println!("Thread ID#{}",thread_id);
+            set_gpu((thread_id % n_gpu) as i32);
+            rbm_to_pssn(c)
+        })
+    });
+}
+
+fn rbm_to_pssn(cfd_case: &str) {
+    let data: Data = {
+        let key = String::from(format!(
+            "{}/Baseline2020/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
+            DATAPATH, cfd_case
+        ));
+        let r = File::open(key).unwrap();
+        //print!("Loading data ...");
+        pickle::from_reader(r).expect("Failed")
+    };
+
     let mut fem: FemRbm = data.data.fem;
-    let n_sample = fem.m1_rbm.len();
+    //let n_sample = fem.m1_rbm.len();
     //println!("# sample: {}", n_sample);
 
     let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
@@ -80,60 +119,25 @@ fn rbm_to_pssn(data: Data) -> Band {
     pssn.peek();
     pssn_sec.push(pssn.estimates.clone());
     let psu = pssn.spatial_uniformity();
-    Band {
+
+    let h_band_pssn = Band {
         pssn: pssn_sec,
         psu: psu,
-    }
-}
+    };
 
-#[tokio::main]
-async fn main() {
-    let n_gpu = 1 as usize;
-
-    let filename = "/home/ubuntu/CFD/CFD_CASES.yaml";
-    let r = File::open(filename).unwrap();
-    let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(r).unwrap();
-    let mut b2020_cases = cfd_cases.remove("baseline 2020").unwrap();
-    b2020_cases.truncate(1);
-    println!("CFD CASES: {:?}", b2020_cases);
-
-    let mut handle = vec![];
-    let cfd_cases = b2020_cases.clone();
-    for (k, c) in cfd_cases.into_iter().enumerate() {
-        handle.push(tokio::spawn(async move {
-            set_gpu((k % n_gpu) as i32);
-            let data: Data = {
-                let key = format!(
-                    "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
-                    "Baseline2020", c
-                );
-                let r = cirrus::reader("us-east-2", "gmto.starccm", &key)
-                    .await
-                    .unwrap();
-                pickle::from_reader(r).expect("Failed")
-            };
-            rbm_to_pssn(data)
-        }))
-    }
-    for (h,c) in handle.iter_mut().zip(b2020_cases.iter()) {
-        let h_band_pssn = h.await.unwrap();
-        let key = format!(
-            "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.pssn.pkl",
-            "Baseline2020", c
-        );
-        let v_band_pssn: Band = {
-            let r = cirrus::reader("us-east-2", "gmto.starccm", &key)
-                .await
-                .unwrap();
-            pickle::from_reader(r).expect("Failed")
-        };
-        let results = Results {
-            v_band: v_band_pssn,
-            h_band: h_band_pssn,
-        };
-
-        cirrus::dump("us-east-2", "gmto.starccm", &key, &results)
-            .await
-            .unwrap();
-    }
+    let key = format!(
+        "{}/{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.pssn.pkl",
+        DATAPATH, "Baseline2020", cfd_case
+    );
+    let v_band_pssn: Band = {
+        let r = File::open(&key).unwrap();
+        pickle::from_reader(r).expect("Failed")
+    };
+    let results = Results {
+        v_band: v_band_pssn,
+        h_band: h_band_pssn,
+    };
+    let mut file = File::create(&key).unwrap();
+    //println!("Saving {}...", filename);
+    pickle::to_writer(&mut file, &results, true).unwrap();
 }
