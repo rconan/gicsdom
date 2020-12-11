@@ -1,5 +1,5 @@
 use super::ceo_bindings::pssn as ceo_pssn;
-use super::{Builder, Cu, Propagation, Source};
+use super::{Builder, Cu, Propagation, Source, SOURCE};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::{fmt, mem};
 
@@ -39,7 +39,7 @@ impl<T> Default for PSSN<T> {
             r0_at_zenith: 0.16,
             oscale: 25.0,
             zenith_angle: 30_f64.to_radians(),
-            src: Source::default(),
+            src: SOURCE::default().build(),
             marker: std::marker::PhantomData,
         }
     }
