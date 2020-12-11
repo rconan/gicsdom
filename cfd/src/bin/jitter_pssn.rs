@@ -1,4 +1,5 @@
 use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, FIELDDELAUNAY21, PSSN, SOURCE};
+use oqueue;
 use rayon;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,7 @@ struct Band {
     psu: f32,
 }
 
-const DATAPATH: &str = "/home/ubuntu/DATA";
+const DATAPATH: &str = "/mnt/fsx/Baseline2020";
 
 fn main() {
     let n_gpu = 1 as usize;
@@ -54,47 +55,49 @@ fn main() {
         .num_threads(n_thread)
         .build()
         .unwrap();
+    let oqueue = oqueue::Sequencer::stderr();
 
     let filename = "/home/ubuntu/CFD/CFD_CASES.yaml";
     let f = File::open(filename).unwrap();
     let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(f).unwrap();
     let b2020_cases = cfd_cases.get_mut("baseline 2020").unwrap();
     b2020_cases.truncate(1);
-    println!("CFD CASES: {:?}", b2020_cases);
 
     pool.install(|| {
         b2020_cases.par_iter().for_each(|c| {
+            let task = oqueue.begin();
+            write!(task, "CFD CASES: {}", c);
             let thread_id = pool.current_thread_index().unwrap();
             //        println!("Thread ID#{}",thread_id);
             set_gpu((thread_id % n_gpu) as i32);
-            rbm_to_pssn(c)
+            rbm_to_pssn(task, c)
         })
     });
 }
 
-fn rbm_to_pssn(cfd_case: &str) {
-/*    let data: Data = {
+fn rbm_to_pssn(task: oqueue::Task, cfd_case: &str) {
+    let data: Data = {
         let key = String::from(format!(
             "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.rs.pkl",
             DATAPATH, cfd_case
         ));
-        println!("Loading data {}", key.clone());
+        write!(task, ", Loading {}", cfd_case.clone());
         let f = File::open(&key).expect(&format!("Failed to open {}", key));
-        let mut r = BufReader::with_capacity(1_000_000, f);
+        let r = BufReader::with_capacity(1_000_000, f);
         pickle::from_reader(r).expect("Failed")
     };
 
     let mut fem: FemRbm = data.data.fem;
-*/    //let n_sample = fem.m1_rbm.len();
+    //let n_sample = fem.m1_rbm.len();
     //println!("# sample: {}", n_sample);
 
     let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
-    let _src_ = SOURCE::new().set_band("H");
+    let _src_ = FIELDDELAUNAY21::new().set_band("H");
     let mut src = _src_.clone().build();
     src.through(&mut gmt).xpupil();
     let mut pssn = PSSN::<TelescopeError>::new().set_source(_src_).build();
     //println!("r0: {}m", pssn.r0());
-    /*    src.through(&mut gmt).xpupil().through(&mut pssn);
+    src.through(&mut gmt).xpupil().through(&mut pssn);
     pssn.reset();
 
     let sampling_time = 0.5e-3_f64;
@@ -111,6 +114,7 @@ fn rbm_to_pssn(cfd_case: &str) {
         .drain(k0..)
         .step_by(step)
         .zip(fem.m2_rbm.drain(k0..).step_by(step));
+    write!(task, ", Running ...");
     for (k, (m1_rbm, m2_rbm)) in rbm.enumerate() {
         gmt.update42(Some(&m1_rbm), Some(&m2_rbm), None, None);
         src.through(&mut gmt).xpupil().through(&mut pssn);
@@ -132,6 +136,7 @@ fn rbm_to_pssn(cfd_case: &str) {
         "{}/{}/MT_FSM_IO_FSM_MountCtrl_TT7.pssn.pkl",
         DATAPATH, cfd_case
     );
+    writeln!(task, ", Saving to {}", cfd_case);
     let v_band_pssn: Band = {
         let r = File::open(&key).unwrap();
         pickle::from_reader(r).expect("Failed")
@@ -143,5 +148,4 @@ fn rbm_to_pssn(cfd_case: &str) {
     let mut file = File::create(&key).unwrap();
     //println!("Saving {}...", filename);
     pickle::to_writer(&mut file, &results, true).unwrap();
-    */
 }
