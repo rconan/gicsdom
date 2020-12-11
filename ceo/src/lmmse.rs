@@ -40,12 +40,12 @@ impl LMMSE {
     pub fn set_atmosphere(self, atm: ATMOSPHERE) -> Self {
         Self { atm, ..self }
     }
-    pub fn set_guide_star(self, guide_star: SOURCE) -> Self {
-        Self { guide_star, ..self }
+    pub fn set_guide_star(self, guide_star: &Source) -> Self {
+        Self { guide_star: SOURCE::from(guide_star), ..self }
     }
-    pub fn set_mmse_star(self, mmse_star: SOURCE) -> Self {
+    pub fn set_mmse_star(self, mmse_star: &Source) -> Self {
         Self {
-            mmse_star,
+            mmse_star: SOURCE::from(mmse_star),
             fov_diameter: None,
             ..self
         }
