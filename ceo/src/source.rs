@@ -23,7 +23,11 @@
 
 use super::ceo_bindings::{dev2host, dev2host_int, source, vector};
 use super::{cu::Single, Builder, Centroiding, Cu};
-use std::{f32, ffi::CString, mem};
+use std::{
+    f32,
+    ffi::{CStr, CString},
+    mem,
+};
 
 /// A system that mutates `Source` arguments should implement the `Propagation` trait
 pub trait Propagation {
@@ -303,6 +307,33 @@ impl Builder for SOURCE {
         src
     }
 }
+
+impl From<&Source> for SOURCE {
+    fn from(src: &Source) -> Self {
+        Self {
+            size: src.size as usize,
+            pupil_size: src.pupil_size,
+            pupil_sampling: src.pupil_sampling as usize,
+            band: src.get_photometric_band(),
+            zenith: src.zenith.clone(),
+            azimuth: src.azimuth.clone(),
+            magnitude: src.magnitude.clone(),
+        }
+    }
+}
+impl From<&Source> for FIELDDELAUNAY21 {
+    fn from(src: &Source) -> Self {
+        Self {
+            size: src.size as usize,
+            pupil_size: src.pupil_size,
+            pupil_sampling: src.pupil_sampling as usize,
+            band: src.get_photometric_band(),
+            zenith: src.zenith.clone(),
+            azimuth: src.azimuth.clone(),
+            magnitude: src.magnitude.clone(),
+        }
+    }
+}
 /// source wrapper
 pub struct Source {
     _c_: source,
@@ -392,6 +423,16 @@ impl Source {
     }
     pub fn as_raw_mut_ptr(&mut self) -> &mut source {
         &mut self._c_
+    }
+    /// Returns the `Source` photometric band
+    pub fn get_photometric_band(&self) -> String {
+        unsafe {
+            String::from(
+                CStr::from_ptr(self._c_.photometric_band)
+                    .to_str()
+                    .expect("CStr::to_str failed"),
+            )
+        }
     }
     /// Returns the `Source` wavelength [m]
     pub fn wavelength(&mut self) -> f64 {

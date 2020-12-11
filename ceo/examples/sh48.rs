@@ -7,13 +7,16 @@ use std::fs::File;
 use std::time::Instant;
 
 fn main() {
-    let gmt_blueprint = GMT::new();
+    let mut gmt = ceo!(GMT);
+    println!("M1 mode: {}",gmt.get_m1_mode_type());
+    println!("M2 mode: {}",gmt.get_m2_mode_type());
     let wfs_blueprint = SH48::<WFS_TYPE>::new().set_n_sensor(1);
-    let gs_blueprint = wfs_blueprint.guide_stars();
+    let mut gs = wfs_blueprint.guide_stars().build();
+    println!("GS band: {}",gs.get_photometric_band());
 
     let mut gmt2wfs = Calibration::new(
-        gmt_blueprint.clone(),
-        gs_blueprint.clone(),
+        &gmt,
+        &gs,
         wfs_blueprint.clone(),
     );
     let mirror = vec![calibrations::Mirror::M2];
@@ -32,11 +35,10 @@ fn main() {
     let mut file = File::create("poke.pkl").unwrap();
     pickle::to_writer(&mut file, &gmt2wfs.poke.from_dev(), true).unwrap();
 
-    let mut gmt = gmt_blueprint.build();
     let mut wfs = wfs_blueprint.build();
-    let mut gs = gs_blueprint.build();
     let mut src = ceo!(SOURCE);
     let mut atm = ceo!(ATMOSPHERE);
+
 
     gs.through(&mut gmt).xpupil();
     println!("GS WFE RMS: {}nm", gs.wfe_rms_10e(-9)[0]);

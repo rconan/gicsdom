@@ -20,7 +20,7 @@
 
 use super::ceo_bindings::{bundle, gmt_m1, gmt_m2, modes, vector};
 use super::{Builder, Propagation, Source};
-use std::{ffi::CString, mem};
+use std::{ffi::{CString,CStr}, mem};
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -133,6 +133,11 @@ impl Builder for GMT {
         gmt
     }
 }
+impl From<&Gmt> for GMT {
+    fn from(gmt: &Gmt) -> Self {
+        Self { m1: gmt.get_m1(), m2: gmt.get_m2()}
+    }
+}
 /// gmt wrapper
 pub struct Gmt {
     pub _c_m1_modes: modes,
@@ -239,7 +244,40 @@ impl Gmt {
         }
         self
     }
-
+    /// Returns `Gmt` M1 mode type
+    pub fn get_m1_mode_type(&self) -> String {
+        unsafe {
+            String::from(
+                CStr::from_ptr(self._c_m1_modes.filename.as_ptr())
+                    .to_str()
+                    .expect("CStr::to_str failed"),
+            )
+        }
+    }
+    /// Returns `Gmt` M1 properties
+    pub fn get_m1(&self) -> Mirror {
+        Mirror {
+            mode_type: self.get_m1_mode_type(),
+            n_mode: self.m1_n_mode,
+        }
+    }
+    /// Returns `Gmt` M2 properties
+    pub fn get_m2(&self) -> Mirror {
+        Mirror {
+            mode_type: self.get_m2_mode_type(),
+            n_mode: self.m2_n_mode,
+        }
+    }
+    /// Returns `Gmt` M2 mode type
+    pub fn get_m2_mode_type(&self) -> String {
+        unsafe {
+            String::from(
+                CStr::from_ptr(self._c_m2_modes.filename.as_ptr())
+                    .to_str()
+                    .expect("CStr::to_str failed"),
+            )
+        }
+    }
     /// Resets M1 and M2 to their aligned states
     pub fn reset(&mut self) -> &mut Self {
         let mut a1: Vec<f64> = vec![0.0; 7 * self.m1_n_mode as usize];

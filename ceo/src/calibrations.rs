@@ -1,5 +1,5 @@
 use super::{
-    cu::Single, shackhartmann::Geometric, Builder, Cu, Gmt, ShackHartmann, Source, GMT, SOURCE,
+    cu::Single, shackhartmann::Geometric, Builder, Cu, Gmt, ShackHartmann, Source, GMT, SOURCE
 };
 use log;
 use std::ops::Range;
@@ -100,11 +100,11 @@ pub struct Calibration<T: Clone +  Builder<Component = ShackHartmann<Geometric>>
 }
 impl<T: Clone + Builder<Component = ShackHartmann<Geometric>>> Calibration<T> {
     /// Creates a new `Calibration` with the blueprints of the `Gmt`, the `Source` and the `Builder`
-    pub fn new(gmt_blueprint: GMT, src_blueprint: SOURCE, wfs_blueprint: T) -> Calibration<T>
+    pub fn new(gmt: &Gmt, src: &Source, wfs_blueprint: T) -> Calibration<T>
     {
         Calibration {
-            gmt_blueprint: gmt_blueprint,
-            src_blueprint: src_blueprint,
+            gmt_blueprint: gmt.into(),
+            src_blueprint: src.into(),
             wfs_blueprint: wfs_blueprint,
             n_data: 0,
             n_mode: 0,
