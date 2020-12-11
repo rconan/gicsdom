@@ -1,8 +1,8 @@
-use ceo::{CEO, element::ATMOSPHERE, Conversion};
+use ceo::{Builder, Conversion, ATMOSPHERE};
 
 fn main() {
     let n_px = 769;
-    let atm_blueprint = CEO::<ATMOSPHERE>::new()
+    let _atm = ATMOSPHERE::new()
         .remove_turbulence_layer(0)
         .set_ray_tracing(
             25.5,

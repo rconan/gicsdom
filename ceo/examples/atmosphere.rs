@@ -1,4 +1,4 @@
-use ceo::{ceo, GMT, SOURCE, ATMOSPHERE, CEOType, Builder};
+use ceo::{ceo, ATMOSPHERE, Builder};
 use serde_pickle as pkl;
 use std::fs::File;
 

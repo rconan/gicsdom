@@ -1,7 +1,7 @@
 use ceo::{
-    calibrations::Mirror, calibrations::Segment, ceo, cu::Single, element::*,
-    pssn::AtmosphereTelescopeError as PE, shackhartmann::Geometric, CEOInit, Calibration,
-    Conversion, Cu, CEO,
+    calibrations::Mirror, calibrations::Segment, ceo, cu::Single,
+    pssn::AtmosphereTelescopeError as PE, shackhartmann::Geometric, Builder, Calibration,
+    Conversion, Cu, ATMOSPHERE, GMT, LMMSE, PSSN, SH48, SOURCE,
 };
 use cfd;
 use log::LevelFilter;
@@ -89,27 +89,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n_actuator = 49;
     let n_kl = 70;
 
-    let atm_blueprint = CEO::<ATMOSPHERE>::new();
-    let wfs_blueprint = CEO::<SH48>::new();
+    let atm_blueprint = ATMOSPHERE::new();
+    let wfs_blueprint = SH48::<Geometric>::new();
+    let mut wfs = wfs_blueprint.clone().build();
     let gs_blueprint = wfs_blueprint.guide_stars().set_on_ring(6f32.from_arcmin());
-    let src_blueprint = CEO::<SOURCE>::new().set_pupil_sampling(n_actuator);
 
-    let gmt_blueprint = CEO::<GMT>::new().set_m2_n_mode(n_kl);
+    let gmt_blueprint = GMT::new().set_m2_n_mode(n_kl);
+    let mut gmt = gmt_blueprint.build();
+    let mut gs = gs_blueprint.build();
 
-    let mut lmmse = CEO::<LMMSE>::new()
-        .set_atmosphere(&atm_blueprint)
-        .set_guide_star(&gs_blueprint)
-        .set_mmse_star(&src_blueprint)
+    let mut lmmse = LMMSE::new()
+        .set_atmosphere(atm_blueprint.clone())
+        .set_guide_star(&gs)
+        .set_mmse_star(&(SOURCE::new().set_pupil_sampling(n_actuator).build()))
         .set_n_side_lenslet(n_actuator - 1)
         .set_fov_diameter(10f64.from_arcmin())
         .build();
     let kln = lmmse.calibrate_karhunen_loeve(n_kl, None, None);
 
-    let mut gmt = gmt_blueprint.build();
-    let mut gs = gs_blueprint.build();
-    let mut wfs = wfs_blueprint.build::<Geometric>();
 
-    let wfs_intensity_threshold = 0.5;
+    let wfs_intensity_threshold = 0.5_f64;
     gs.through(&mut gmt).xpupil();
     wfs.calibrate(&mut gs, wfs_intensity_threshold);
 
@@ -121,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     src.through(&mut gmt).xpupil();
 
-    let mut pssn = CEO::<PSSN>::new().build::<PE>(&mut src);
+    let mut pssn = PSSN::<PE>::new().set_source(&src).build();
     let mut fwhm = ceo::Fwhm::new();
     fwhm.build(&mut src);
     fwhm.upper_bracket = 2f64 / pssn.r0() as f64;
@@ -187,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("... with LSQ estimator");
                     let now = Instant::now();
                     let mut m2_2_wfs =
-                        Calibration::new(&gmt_blueprint, &gs_blueprint, &wfs_blueprint);
+                        Calibration::new(&gmt, &gs, wfs_blueprint);
                     m2_2_wfs.calibrate(
                         vec![Mirror::M2MODES],
                         vec![vec![Segment::Modes(1e-6, 1..n_kl)]; 7],
@@ -257,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("... with LMMSE estimator");
                     let now = Instant::now();
                     let mut m2_2_wfs =
-                        Calibration::new(&gmt_blueprint, &gs_blueprint, &wfs_blueprint);
+                        Calibration::new(&gmt, &gs, wfs_blueprint);
                     m2_2_wfs.calibrate(
                         vec![Mirror::M2MODES],
                         vec![vec![Segment::Modes(1e-6, 0..n_kl)]; 7],

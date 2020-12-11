@@ -1,5 +1,5 @@
 use ceo::{
-    ceo, shackhartmann::Geometric, Builder, CEOType, Conversion, ATMOSPHERE, GMT, LMMSE,
+    ceo, shackhartmann::Geometric, Builder, Conversion, ATMOSPHERE, LMMSE,
     SHACKHARTMANN, SOURCE,
 };
 use serde_pickle as pickle;
