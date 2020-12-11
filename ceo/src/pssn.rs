@@ -60,9 +60,9 @@ impl<T> PSSN<T> {
             ..self
         }
     }
-    pub fn set_source(self, src_blueprint: impl Builder<Component = Source>) -> Self {
+    pub fn set_source(self, src: &Source) -> Self {
         Self {
-            src: src_blueprint.build(),
+            src: SOURCE::from(src).build(),
             ..self
         }
     }
