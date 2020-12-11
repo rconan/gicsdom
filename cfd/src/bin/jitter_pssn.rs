@@ -48,8 +48,8 @@ struct Band {
 const DATAPATH: &str = "/mnt/fsx/Baseline2020";
 
 fn main() {
-    let n_gpu = 1 as usize;
-    let n_thread = 1;
+    let n_gpu = 8 as usize;
+    let n_thread = 24;
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(n_thread)
@@ -61,19 +61,26 @@ fn main() {
     let f = File::open(filename).unwrap();
     let mut cfd_cases: BTreeMap<String, Vec<String>> = yaml::from_reader(f).unwrap();
     let b2020_cases = cfd_cases.get_mut("baseline 2020").unwrap();
-    b2020_cases.truncate(1);
+    //    b2020_cases.truncate(60);
+    let cases = &b2020_cases[1..60].to_vec();
 
     pool.install(|| {
-        b2020_cases.par_iter().for_each(|c| {
+        cases.par_iter().for_each(|c| {
             let task = oqueue.begin();
-            write!(task, "CFD CASES: {}", c);
             let thread_id = pool.current_thread_index().unwrap();
             //        println!("Thread ID#{}",thread_id);
-            set_gpu((thread_id % n_gpu) as i32);
+            let gpu_id = (thread_id % n_gpu) as i32;
+            write!(
+                task,
+                "CFD CASES: {} [thread #{:02}, gpu #{}]",
+                c, thread_id, gpu_id
+            );
+            set_gpu(gpu_id);
             rbm_to_pssn(task, c)
         })
     });
 }
+
 
 fn rbm_to_pssn(task: oqueue::Task, cfd_case: &str) {
     let data: Data = {
