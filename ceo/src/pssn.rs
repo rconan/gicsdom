@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn pssn_new() {
-        use crate::{CEOType, GMT, SOURCE};
+        use crate::{GMT, SOURCE};
         let mut src = SOURCE::new().build();
         let mut gmt = GMT::new().build();
         src.through(&mut gmt).xpupil();

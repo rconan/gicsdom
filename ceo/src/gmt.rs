@@ -494,7 +494,6 @@ mod tests {
 
     #[test]
     fn gmt_new() {
-        use crate::CEOType;
         GMT::new().set_m1_n_mode(27).set_m2_n_mode(123).build();
     }
 
@@ -505,7 +504,7 @@ mod tests {
 
     #[test]
     fn gmt_optical_alignment() {
-        use crate::{CEOType, SOURCE};
+        use crate::SOURCE;
         let mut src = SOURCE::new().set_pupil_sampling(1001).build();
         let mut gmt = GMT::new().build();
         src.through(&mut gmt).xpupil();
@@ -514,7 +513,7 @@ mod tests {
 
     #[test]
     fn gmt_m1_rx_optical_sensitity() {
-        use crate::{CEOType, SOURCE};
+        use crate::SOURCE;
         let mut src = SOURCE::new().set_pupil_sampling(1001).build();
         let mut gmt = GMT::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
@@ -531,7 +530,7 @@ mod tests {
 
     #[test]
     fn gmt_m1_ry_optical_sensitity() {
-        use crate::{CEOType, SOURCE};
+        use crate::SOURCE;
         let mut src = SOURCE::new().set_pupil_sampling(1001).build();
         let mut gmt = GMT::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
@@ -548,7 +547,7 @@ mod tests {
 
     #[test]
     fn gmt_m2_rx_optical_sensitity() {
-        use crate::{CEOType, SOURCE};
+        use crate::SOURCE;
         let mut src = SOURCE::new().set_pupil_sampling(1001).build();
         let mut gmt = GMT::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
@@ -565,7 +564,7 @@ mod tests {
 
     #[test]
     fn gmt_m2_ry_optical_sensitity() {
-        use crate::{CEOType, SOURCE};
+        use crate::SOURCE;
         let mut src = SOURCE::new().set_pupil_sampling(1001).build();
         let mut gmt = GMT::new().build();
         let seg_tts0 = src.through(&mut gmt).xpupil().segments_gradients();
