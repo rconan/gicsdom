@@ -1,4 +1,4 @@
-use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder,PSSN};
+use ceo::{ceo, pssn::TelescopeError, set_gpu, Builder, PSSN};
 use oqueue;
 use rayon;
 use rayon::prelude::*;
@@ -98,7 +98,7 @@ fn rbm_to_pssn(task: oqueue::Task, cfd_case: &str) {
     //println!("# sample: {}", n_sample);
 
     let mut gmt = ceo!(GMT, set_m1_n_mode = [27]);
-    let mut src = ceo!(FIELDDELAUNAY21, set_band = ["H"]);
+    let mut src = ceo!(SOURCE, set_field_delaunay21 = [], set_band = ["H"]);
     src.through(&mut gmt).xpupil();
     let mut pssn = PSSN::<TelescopeError>::new().set_source(&src).build();
     //println!("r0: {}m", pssn.r0());

@@ -107,7 +107,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     let kln = lmmse.calibrate_karhunen_loeve(n_kl, None, None);
 
-
     let wfs_intensity_threshold = 0.5_f64;
     gs.through(&mut gmt).xpupil();
     wfs.calibrate(&mut gs, wfs_intensity_threshold);
@@ -115,7 +114,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n_px = 769;
     let mut src = match science_field.as_str() {
         "ONAXIS" => ceo!(SOURCE, set_pupil_sampling = [n_px]),
-        "DELAUNAY21" => ceo!(FIELDDELAUNAY21, set_pupil_sampling = [n_px]),
+        "DELAUNAY21" => ceo!(
+            SOURCE,
+            set_field_delaunay21 = [],
+            set_pupil_sampling = [n_px]
+        ),
         _ => panic!("SCIENCE is either ONAXIS or DELAUNAY21"),
     };
     src.through(&mut gmt).xpupil();
@@ -185,8 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Estimator::LSQ => {
                     println!("... with LSQ estimator");
                     let now = Instant::now();
-                    let mut m2_2_wfs =
-                        Calibration::new(&gmt, &gs, wfs_blueprint);
+                    let mut m2_2_wfs = Calibration::new(&gmt, &gs, wfs_blueprint);
                     m2_2_wfs.calibrate(
                         vec![Mirror::M2MODES],
                         vec![vec![Segment::Modes(1e-6, 1..n_kl)]; 7],
@@ -255,8 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Estimator::LMMSE => {
                     println!("... with LMMSE estimator");
                     let now = Instant::now();
-                    let mut m2_2_wfs =
-                        Calibration::new(&gmt, &gs, wfs_blueprint);
+                    let mut m2_2_wfs = Calibration::new(&gmt, &gs, wfs_blueprint);
                     m2_2_wfs.calibrate(
                         vec![Mirror::M2MODES],
                         vec![vec![Segment::Modes(1e-6, 0..n_kl)]; 7],

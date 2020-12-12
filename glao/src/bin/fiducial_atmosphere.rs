@@ -1,6 +1,6 @@
 use ceo::{
     atmosphere::{RayTracing, TurbulenceProfile},
-    ceo, Conversion, PSSN, 
+    ceo, Conversion, PSSN,
 };
 use cirrus;
 use glao::glao_sys::ScienceField;
@@ -22,7 +22,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut gmt = ceo!(GMT);
     //    let mut src = ceo!(element::SOURCE, set_pupil_sampling = [n_px]);
-    let mut science = ceo!(FIELDDELAUNAY21, set_pupil_sampling = [n_px]);
+    let mut science = ceo!(
+        SOURCE,
+        set_field_delaunay21 = [],
+        set_pupil_sampling = [n_px]
+    );
     //let mut science = ScienceField::on_axis("Vs", n_px, None);
 
     let secz = 1f32 / 30f32.to_radians().cos();
@@ -64,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .through(&mut gmt)
                 .xpupil()
                 .through(&mut atm)
-//                .through(&mut science.pssn)
+                //                .through(&mut science.pssn)
                 .wfe_rms_10e(-9);
             (
                 wfe_rms,
@@ -82,16 +86,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //    cirrus::dump("us-west-2", "gmto.modeling", &key, &wfe_rms).await?;
     /*
-    let (atm_fwhm_x, fwhm) = science.glao_wrap_up();
-    let results = Results {
-        time: t,
-        wfe,
-        atm_fwhm_x,
-        fwhm,
-        pssn: science.pssn.peek().estimates.clone(),
-    };
-    println!("Uploading results to: s3://gmto.modeling/{}", key);
-    cirrus::dump("us-west-2", "gmto.modeling", &key, &results).await?;
-*/
+        let (atm_fwhm_x, fwhm) = science.glao_wrap_up();
+        let results = Results {
+            time: t,
+            wfe,
+            atm_fwhm_x,
+            fwhm,
+            pssn: science.pssn.peek().estimates.clone(),
+        };
+        println!("Uploading results to: s3://gmto.modeling/{}", key);
+        cirrus::dump("us-west-2", "gmto.modeling", &key, &results).await?;
+    */
     Ok(())
 }

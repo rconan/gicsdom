@@ -48,11 +48,11 @@ pub use self::lmmse::{LinearMinimumMeanSquareError, LMMSE};
 #[doc(inline)]
 pub use self::pssn::{PSSn, PSSN};
 #[doc(inline)]
-pub use self::shackhartmann::{ShackHartmann, SH48, SHACKHARTMANN,Geometric,Diffractive};
+pub use self::shackhartmann::{Diffractive, Geometric, ShackHartmann, SH48, SHACKHARTMANN};
 #[doc(inline)]
 pub use self::source::Propagation;
 #[doc(inline)]
-pub use self::source::{Source, FIELDDELAUNAY21, SOURCE};
+pub use self::source::{Source, SOURCE};
 #[doc(hidden)]
 pub use ceo_bindings::{geqrf, gpu_double, gpu_float, mask, ormqr, set_device};
 
@@ -106,14 +106,14 @@ macro_rules! ceo {
     ($element:ident) => {
         $crate::Builder::build(<$crate::$element as $crate::Builder>::new())
     };
-    ($element:ident, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$crate::$element as $crate::Builder>::new()$(.$arg($($val),+))*)
+    ($element:ident, $($arg:ident = [$($val:expr),*]),*) => {
+        $crate::Builder::build(<$crate::$element as $crate::Builder>::new()$(.$arg($($val),*))*)
     };
-    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
+    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),*]),*) => {
         $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::Builder>::new())
     };
-    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),+]),*) => {
-        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::Builder>::new()$(.$arg($($val),+))*)
+    ($element:ident:$model:ident, $($arg:ident = [$($val:expr),*]),*) => {
+        $crate::Builder::build(<$crate::$element<$crate::$model> as $crate::Builder>::new()$(.$arg($($val),*))*)
     };
 }
 /*

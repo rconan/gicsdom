@@ -84,128 +84,6 @@ impl Default for SOURCE {
         }
     }
 }
-// ---------------------------------------------------------------------------------------------
-/// A `Source` field builder
-///
-/// Builds a star field made of 21 sources located at the vertices of a Delaunay mesh sampling a 10 arcminute field of view
-///
-/// Default properties:
-///  * size             : 21
-///  * pupil size       : 25.5m
-///  * pupil sampling   : 512px
-///  * photometric band : Vs (500nm)
-///  * zenith           : ...
-///  * azimuth          : ...
-///  * magnitude        : 0
-///
-/// # Examples
-///
-/// ```
-/// use ceo::{Builder, CEOType, FIELDDELAUNAY21};
-/// let mut src = FIELDDELAUNAY21::new().build();
-/// ```
-#[derive(Debug, Clone)]
-pub struct FIELDDELAUNAY21 {
-    pub size: usize,
-    pub pupil_size: f64,
-    pub pupil_sampling: usize,
-    pub band: String,
-    pub zenith: Vec<f32>,
-    pub azimuth: Vec<f32>,
-    pub magnitude: Vec<f32>,
-}
-use serde::{Deserialize, Serialize};
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct GlaoField {
-    pub zenith_arcmin: Vec<f32>,
-    pub azimuth_degree: Vec<f32>,
-}
-impl Default for FIELDDELAUNAY21 {
-    fn default() -> Self {
-        use super::Conversion;
-        use serde_pickle as pickle;
-        use std::fs::File;
-        let field_reader =
-            File::open("ceo/fielddelaunay21.pkl").expect("fielddelaunay21.pkl not found!");
-        let field: GlaoField =
-            pickle::from_reader(field_reader).expect("fielddelaunay21.pkl loading failed!");
-        let n_src = field.zenith_arcmin.len();
-        FIELDDELAUNAY21 {
-            size: n_src,
-            pupil_size: 25.5,
-            pupil_sampling: 512,
-            band: "Vs".into(),
-            zenith: field
-                .zenith_arcmin
-                .iter()
-                .map(|x| x.from_arcmin())
-                .collect::<Vec<f32>>(),
-            azimuth: field
-                .azimuth_degree
-                .iter()
-                .map(|x| x.to_radians())
-                .collect::<Vec<f32>>(),
-            magnitude: vec![0f32; n_src],
-        }
-    }
-}
-impl FIELDDELAUNAY21 {
-    /// Set the sampling of the pupil in pixels
-    pub fn set_pupil_sampling(self, pupil_sampling: usize) -> Self {
-        Self {
-            pupil_sampling,
-            ..self
-        }
-    }
-    /// Set the pupil size in meters
-    pub fn set_pupil_size(self, pupil_size: f64) -> Self {
-        Self { pupil_size, ..self }
-    }
-    /// Set the photometric band
-    pub fn set_band(self, band: &str) -> Self {
-        Self {
-            band: band.to_owned(),
-            ..self
-        }
-    }
-}
-impl Builder for FIELDDELAUNAY21 {
-    type Component = Source;
-    /// Build the source object
-    fn build(self) -> Source {
-        let mut src = Source {
-            _c_: unsafe { mem::zeroed() },
-            size: self.size as i32,
-            pupil_size: self.pupil_size,
-            pupil_sampling: self.pupil_sampling as i32,
-            _wfe_rms: vec![0.0; self.size],
-            _phase: vec![0.0; self.pupil_sampling * self.pupil_sampling * self.size],
-            zenith: self.zenith,
-            azimuth: self.azimuth,
-            magnitude: self.magnitude,
-        };
-        unsafe {
-            let origin = vector {
-                x: 0.0,
-                y: 0.0,
-                z: 25.0,
-            };
-            let src_band = CString::new(self.band.into_bytes()).unwrap();
-            src._c_.setup7(
-                src_band.into_raw(),
-                src.magnitude.as_mut_ptr(),
-                src.zenith.as_mut_ptr(),
-                src.azimuth.as_mut_ptr(),
-                f32::INFINITY,
-                self.size as i32,
-                self.pupil_size,
-                self.pupil_sampling as i32,
-                origin,
-            );
-        }
-        src
-    }
-}
 impl SOURCE {
     /// Set the number of sources
     pub fn set_size(self, size: usize) -> Self {
@@ -269,6 +147,36 @@ impl SOURCE {
         );
         Self { magnitude, ..self }
     }
+    ///  Builds a star field made of 21 sources located at the vertices of a Delaunay mesh sampling a 10 arcminute field of view
+    pub fn set_field_delaunay21(self) -> Self {
+        use super::Conversion;
+        use serde::Deserialize;
+        use serde_pickle as pickle;
+        #[derive(Deserialize)]
+        struct Field {
+            pub zenith_arcmin: Vec<f32>,
+            pub azimuth_degree: Vec<f32>,
+        }
+        let Field {
+            zenith_arcmin,
+            azimuth_degree,
+        } = pickle::from_slice(include_bytes!("fielddelaunay21.pkl"))
+            .expect("fielddelaunay21.pkl loading failed!");
+        let n_src = zenith_arcmin.len();
+        Self {
+            size: n_src,
+            zenith: zenith_arcmin
+                .iter()
+                .map(|x| x.from_arcmin())
+                .collect::<Vec<f32>>(),
+            azimuth: azimuth_degree
+                .iter()
+                .map(|x| x.to_radians())
+                .collect::<Vec<f32>>(),
+            magnitude: vec![0f32; n_src],
+            ..self
+        }
+    }
 }
 impl Builder for SOURCE {
     type Component = Source;
@@ -321,19 +229,7 @@ impl From<&Source> for SOURCE {
         }
     }
 }
-impl From<&Source> for FIELDDELAUNAY21 {
-    fn from(src: &Source) -> Self {
-        Self {
-            size: src.size as usize,
-            pupil_size: src.pupil_size,
-            pupil_sampling: src.pupil_sampling as usize,
-            band: src.get_photometric_band(),
-            zenith: src.zenith.clone(),
-            azimuth: src.azimuth.clone(),
-            magnitude: src.magnitude.clone(),
-        }
-    }
-}
+
 /// source wrapper
 pub struct Source {
     _c_: source,
@@ -770,5 +666,19 @@ mod tests {
         let nv = m.iter().fold(0u32, |a, x| a + *x as u32);
         println!("# of valid let: {}", nv);
         assert_eq!(nv, 1144);
+    }
+
+    #[test]
+    fn source_field_delaunay21() {
+        use crate::{ceo, Conversion};
+        let src = ceo!(SOURCE, set_field_delaunay21 = []);
+        src.zenith.iter().zip(src.azimuth.iter()).enumerate().for_each(|x| {
+            println!(
+                "#{:2}: {:.3}arcmin - {:7.3}degree",
+                x.0,
+                x.1.0.to_arcmin(),
+                x.1.1.to_degrees()
+            );
+        });
     }
 }
