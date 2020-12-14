@@ -41,12 +41,12 @@ pub struct Mirror {
 /// # Examples
 ///
 /// ```
-/// use ceo::{Builder, CEOType, GMT};
+/// use ceo::{Builder, GMT};
 /// let mut src = GMT::new().build();
 /// ```
 ///
 /// ```
-/// use ceo::{Builder, CEOType, GMT};
+/// use ceo::{Builder, GMT};
 /// let mut gmt = GMT::new().set_m1_n_mode(27).build();
 /// ```
 #[derive(Debug, Clone)]

@@ -114,7 +114,7 @@ impl Default for Detector {
 /// # Examples
 ///
 /// ```
-/// use ceo::{Builder, CEOType, SHACKHARTMANN, Geometric};
+/// use ceo::{Builder,  SHACKHARTMANN, Geometric};
 /// let mut wfs = SHACKHARTMANN::<Geometric>::new().build();
 /// ```
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ impl<T: Model> Builder for SHACKHARTMANN<T> {
 /// # Examples
 ///
 /// ```
-/// use ceo::{Builder, CEOType, SH48, Geometric};
+/// use ceo::{Builder, SH48, Geometric};
 /// let mut wfs = SH48::<Geometric>::new().build();
 /// ```
 #[derive(Debug, Clone)]

@@ -51,14 +51,14 @@ pub trait Propagation {
 /// - on-axis source with default parameters
 ///
 /// ```
-/// use ceo::{Builder, CEOType, SOURCE};
+/// use ceo::{Builder, SOURCE};
 /// let mut src = SOURCE::new().build();
 /// ```
 ///
 /// - 3 sources evenly spread on a ring with a 8 arcminute radius
 ///
 /// ```
-/// use ceo::{Builder, CEOType, SOURCE, Conversion};
+/// use ceo::{Builder, SOURCE, Conversion};
 /// let mut src = SOURCE::new().set_size(3).set_on_ring(8f32.from_arcmin()).build();
 /// ```
 #[derive(Debug, Clone)]
