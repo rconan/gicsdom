@@ -28,6 +28,7 @@ pub mod lmmse;
 pub mod pssn;
 pub mod shackhartmann;
 pub mod source;
+pub mod analytic;
 
 #[doc(inline)]
 pub use self::atmosphere::{Atmosphere, ATMOSPHERE};
@@ -141,6 +142,32 @@ pub trait Builder: Default {
     fn build(self) -> Self::Component;
 }
 
+pub enum SkyAngle<T> {
+    Degree(T),
+    Arcminute(T),
+    Arcsecond(T),
+    MilliArcsec(T),
+}
+impl SkyAngle<f64> {
+    pub fn to_radians(self) -> f64 {
+        match self {
+            Self::Degree(val) => val.to_radians(),
+            Self::Arcminute(val) => Self::Degree(val/60.0).to_radians(),
+            Self::Arcsecond(val) => Self::Arcminute(val/60.0).to_radians(),
+            Self::MilliArcsec(val) => Self::Arcsecond(val*1e-3).to_radians(),
+        }
+    }
+}
+impl SkyAngle<f32> {
+    pub fn to_radians(self) -> f32 {
+        match self {
+            Self::Degree(val) => val.to_radians(),
+            Self::Arcminute(val) => Self::Degree(val/60.0).to_radians(),
+            Self::Arcsecond(val) => Self::Arcminute(val/60.0).to_radians(),
+            Self::MilliArcsec(val) => Self::Arcsecond(val*1e-3).to_radians(),
+        }
+    }
+}
 pub trait Conversion<T> {
     fn from_arcmin(self) -> T;
     fn from_arcsec(self) -> T;
