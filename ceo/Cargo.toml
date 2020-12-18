@@ -14,6 +14,7 @@ libm = "0.2.1"
 roots = "0.0.6"
 rayon = "1.4"
 log = "0.4.11"
+nalgebra = "0.23.1"
 
 [build-dependencies]
 bindgen = "0.52.0"

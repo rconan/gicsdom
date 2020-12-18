@@ -2,15 +2,18 @@
 //! # Analytic Ray Tracing
 //!
 
+use nalgebra as na;
 use std::fmt;
 
 pub type Vector = [f64; 3];
 
-trait Arithmetic {
+pub trait Arithmetic {
     fn dot(&self, other: &[f64]) -> f64;
     fn norm_square(&self) -> f64;
     fn norm(&self) -> f64;
     fn normalize(&mut self) -> Self;
+    fn add(&self, other: Self) -> Self;
+    fn sub(&self, other: Self) -> Self;
 }
 impl Arithmetic for Vector {
     fn dot(&self, other: &[f64]) -> f64 {
@@ -28,6 +31,12 @@ impl Arithmetic for Vector {
         self[1] /= n;
         self[2] /= n;
         *self
+    }
+    fn add(&self, other: Self) -> Self {
+        [self[0] + other[0], self[1] + other[1], self[2] + other[2]]
+    }
+    fn sub(&self, other: Self) -> Self {
+        [self[0] - other[0], self[1] - other[1], self[2] - other[2]]
     }
 }
 
@@ -94,7 +103,7 @@ pub fn new_ray() -> NewRay {
 impl Ray {
     /// Compute the distance $s$ from the ray current location to [`Conic`](crate::analytic::Conic)
     /// We find the distance $s$ from:
-    /// $$s=\frac{mR-\vec\alpha\cdot\vec\beta + \sqrt{(\vec\alpha\cdot\vec\beta-zR)^2-\|\vec\beta\|^2(\|\vec\alpha\|^2-2zR)}}{\|\vec\alpha\|^2}$$
+    /// $$s=\frac{mR-\vec\alpha\cdot\vec\beta + \sqrt{(\vec\alpha\cdot\vec\beta-mR)^2-\|\vec\beta\|^2(\|\vec\alpha\|^2-2zR)}}{\|\vec\beta\|^2}$$
     /// $$\vec\alpha = [x,y,z\sqrt{\kappa+1}]$$
     /// $$\vec\beta = [k,l,m\sqrt{\kappa+1}]$$
     pub fn distance_to(&self, conic: &Conic) -> f64 {
@@ -118,6 +127,11 @@ impl Ray {
         self.p[1] += self.u[1] * s;
         self.p[2] += self.u[2] * s;
     }
+    pub fn trace(&mut self, s: f64) {
+        self.p[0] += self.u[0] * s;
+        self.p[1] += self.u[1] * s;
+        self.p[2] += self.u[2] * s;
+    }
     /// Solve ray tracing equation for $z$ given $x$ and $y$
     pub fn solve_for_z(&self, x: f64, y: f64) -> f64 {
         let x = x - self.p[0];
@@ -135,7 +149,7 @@ impl fmt::Display for Ray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "P: [{:+15.9},{:+15.9},{:+15.9}] ; U: [{:+.6},{:+.6},{:+.6}]",
+            "P: [{:+15.9},{:+15.9},{:+15.9}] ; U: [{:+.9},{:+.9},{:+.9}]",
             self.p[0], self.p[1], self.p[2], self.u[0], self.u[1], self.u[2],
         )
     }
@@ -217,7 +231,7 @@ impl Conic {
     pub fn z_partial_at(&self, _v: Vector) -> f64 {
         1f64
     }
-    /// normal vector to conic surface
+    /// Normal vector, $\vec n = [\partial_x F,\partial_y F,\partial_z F]$, to conic surface
     pub fn normal_at(&self, v: Vector) -> Vector {
         [
             self.x_partial_at(v),
@@ -227,12 +241,13 @@ impl Conic {
         .normalize()
     }
     /// Reflect ray from conic surface
+    /// The ray direction vector after reflection is given by: $\vec{u^\prime} = \vec u - 2 (\vec u \cdot \vec n)\vec n$
     pub fn reflect(&self, ray: &mut Ray) {
         let n = self.normal_at(ray.p);
         let q = 2f64 * ray.u.dot(&n);
         ray.u[0] -= q * n[0];
         ray.u[1] -= q * n[1];
-        ray.u[2] -= q * n[02];
+        ray.u[2] -= q * n[2];
         ray.u = ray.u.normalize();
     }
     fn kp1(&self) -> f64 {
@@ -243,5 +258,80 @@ impl Conic {
     }
     fn sqrt_(&self, r2: f64) -> f64 {
         (1f64 - self.kp1() * self.c() * self.c() * r2).sqrt()
+    }
+}
+pub struct Gmt {
+    pub m1: Conic,
+    pub m2: Conic,
+}
+impl Gmt {
+    pub fn new() -> Self {
+        Self {
+            m1: Conic::gmt_m1(),
+            m2: Conic::gmt_m2(),
+        }
+    }
+    pub fn trace(&self, rays: &mut [Ray]) {
+        rays.iter_mut().for_each(|mut r| {
+            self.m1.reflect(&mut r);
+            r.trace_to(&self.m2);
+            self.m2.reflect(&mut r);
+        })
+    }
+    pub fn focal_point(&self, marginals: Vec<Vector>, z: f64, a: f64) -> Vec<Ray> {
+        // Chief ray at M1 vertex from field angle (z,a)
+        let chief_ray = new_ray().polar_direction_vector(z, a).build();
+        // Marginal ray on M1 surface from field angle (z,a)
+        let marginal_rays: Vec<Ray> = marginals
+            .into_iter()
+            .map(|m| {
+                new_ray()
+                    .point_of_origin(self.m1.height_at(m))
+                    .polar_direction_vector(z, a)
+                    .build()
+            })
+            .collect();
+        // Collecting the rays
+        let mut rays = vec![chief_ray];
+        marginal_rays.into_iter().for_each(|m| rays.push(m));
+        // Ray tracing to and reflecting from M2
+        self.trace(&mut rays);
+        // De-structuring chief ray
+        let chief_ray = rays.remove(0);
+        let p0 = chief_ray.p;
+        let u0 = chief_ray.u;
+        // De-structuring marginal rays
+        let p: Vec<Vector> = rays.iter().map(|m| m.p).collect();
+        let u: Vec<Vector> = rays.iter().map(|m| m.u).collect();
+        // Build A matrix
+        let n_u = u.len();
+        let z: Vector = [0f64; 3];
+        let mut cols: Vec<Vec<f64>> = vec![u0.to_vec();n_u];
+        for i_row in 0..n_u {
+            let mut el = vec![];
+            for i_col in 0..n_u {
+                if i_row == i_col {
+                    el.push(z.sub(u[i_col]).to_vec());
+                } else {
+                    el.push(z.clone().to_vec());
+                }
+            }
+            cols.push(el.into_iter().flatten().collect());
+        }
+        let el: Vec<f64> = cols.into_iter().flatten().collect();
+        let a = na::DMatrix::from_column_slice(n_u * 3, n_u + 1, &el);
+        // Building b vector
+        let b = na::DVector::from_vec(
+            p.iter()
+                .map(|x| x.sub(p0).to_vec())
+                .flatten()
+                .collect::<Vec<f64>>(),
+        );
+        // Solving As=b
+        let s = a.svd(true, true).solve(&b, std::f64::EPSILON).unwrap();
+        // Ray tracing to focal plane
+        rays.insert(0, chief_ray);
+        rays.iter_mut().zip(s.into_iter()).for_each(|x| x.0.trace(*x.1));
+        rays
     }
 }
