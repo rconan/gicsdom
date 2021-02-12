@@ -279,12 +279,12 @@ impl<'a, 'b> GlaoSys<'a, 'b> {
         log::info!("Calibration & Inversion in {}s", now.elapsed().as_secs());
         log::info!(
             "Calibration matrix size [{}x{}]",
-            self.calib.n_row(),
-            self.calib.n_col()
+            self.calib.n_rows(),
+            self.calib.n_cols()
         );
-        self.d_mean_c = Cu::<Single>::vector(self.calib.n_row());
+        self.d_mean_c = Cu::<Single>::vector(self.calib.n_rows());
         self.d_mean_c.malloc();
-        self.x = Cu::<Single>::vector(self.calib.n_col());
+        self.x = Cu::<Single>::vector(self.calib.n_cols());
         self.x.malloc();
         self
     }
