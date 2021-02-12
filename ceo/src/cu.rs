@@ -54,43 +54,46 @@ impl CuType for Single {
 }
 pub struct Cu<T: CuType> {
     _c_: T,
-    m: usize,
-    n: usize,
+    /// number of rows
+    pub n_rows: usize,
+    /// number of columns
+    pub n_cols: usize,
     dev_alloc: bool,
 }
 impl<T: CuType> Cu<T> {
+    /// Creates an empty CUDA array
     pub fn new() -> Cu<T> {
         Cu {
             _c_: unsafe { mem::zeroed() },
-            m: 0,
-            n: 0,
+            n_rows: 0,
+            n_cols: 0,
             dev_alloc: false,
         }
     }
-    pub fn array(m: usize, n: usize) -> Cu<T> {
+    pub fn array(n_rows: usize, n_cols: usize) -> Cu<T> {
         Cu {
             _c_: unsafe { mem::zeroed() },
-            m: m,
-            n: n,
+            n_rows: n_rows,
+            n_cols: n_cols,
             dev_alloc: false,
         }
     }
-    pub fn vector(m: usize) -> Cu<T> {
+    pub fn vector(n_rows: usize) -> Cu<T> {
         Cu {
             _c_: unsafe { mem::zeroed() },
-            m: m,
-            n: 1,
+            n_rows: n_rows,
+            n_cols: 1,
             dev_alloc: false,
         }
     }
     pub fn size(&self) -> usize {
-        self.m * self.n
+        self.n_rows * self.n_cols
     }
-    pub fn n_row(&self) -> usize {
-        self.m
+    pub fn n_rows(&self) -> usize {
+        self.n_rows
     }
-    pub fn n_col(&self) -> usize {
-        self.n
+    pub fn n_cols(&self) -> usize {
+        self.n_cols
     }
     pub fn malloc(&mut self) -> &mut Self {
         let s = self.size();
@@ -131,15 +134,15 @@ impl Cu<Single> {
         v
     }
     pub fn mv(&self, x: &Cu<Single>) -> Cu<Single> {
-        assert_eq!(x.n_col(), 1, "x must be a vector (n_col=n=1)!");
+        assert_eq!(x.n_cols(), 1, "x must be a vector (n_col=n=1)!");
         assert_eq!(
             x.size(),
-            self.n,
+            self.n_cols,
             "the number of columns ({}) do not match the length ({})of x",
-            self.n,
+            self.n_cols,
             x.size()
         );
-        let mut y = Cu::<Single>::vector(self.m);
+        let mut y = Cu::<Single>::vector(self.n_rows);
         y.malloc();
         unsafe {
             let mut s = self._c_;
@@ -147,14 +150,20 @@ impl Cu<Single> {
         }
         y
     }
+    pub fn mv_unchecked(&self, y: &mut Cu<Single>, x: &Cu<Single>) {
+        unsafe {
+            let mut s = self._c_;
+            s.mv(&mut y._c_, &x._c_);
+        }
+    }
     pub fn qr(&mut self) -> &mut Self {
         unsafe {
-            self._c_.qr(self.m as i32);
+            self._c_.qr(self.n_rows as i32);
         }
         self
     }
     pub fn qr_solve(&mut self, b: &mut Cu<Single>) -> Cu<Single> {
-        let mut x = Cu::<Single>::vector(self.n);
+        let mut x = Cu::<Single>::vector(self.n_cols);
         x.malloc();
         unsafe {
             self._c_.qr_solve(&mut x._c_, &mut b._c_);
@@ -202,7 +211,7 @@ impl SubAssign for Cu<Single> {
 impl Clone for Cu<Single> {
     fn clone(&self) -> Self {
         let mut s = self._c_;
-        let mut other = Cu::<Single>::array(self.m, self.n);
+        let mut other = Cu::<Single>::array(self.n_rows, self.n_cols);
         other.malloc();
         unsafe {
             s.dev2dev(&mut other._c_);
@@ -225,6 +234,16 @@ impl From<Vec<f32>> for Cu<Single> {
         this
     }
 }
+impl From<Vec<Vec<f32>>> for Cu<Single> {
+    fn from(item: Vec<Vec<f32>>) -> Self {
+        let n_cols = item.len();
+        let n_rows = item[0].len();
+        let mut flat_item: Vec<f32> = item.iter().cloned().flatten().collect();
+        let mut this = Cu::<Single>::array(n_rows, n_cols);
+        this.to_dev(&mut flat_item);
+        this
+    }
+}
 
 impl From<Cu<Single>> for Vec<f32> {
     fn from(item: Cu<Single>) -> Self {
@@ -236,6 +255,44 @@ impl From<Cu<Single>> for Vec<f32> {
 impl From<&mut Cu<Single>> for Vec<f32> {
     fn from(item: &mut Cu<Single>) -> Self {
         item.from_dev()
+    }
+}
+
+impl Cu<Double> {
+    pub fn from_dev(&mut self) -> Vec<f64> {
+        let mut v = vec![0f64; self.size()];
+        unsafe {
+            self._c_.host_data = v.as_mut_ptr();
+            self._c_.dev2host();
+        }
+        v
+    }
+    pub fn to_dev(&mut self, host_data: &mut [f64]) -> &mut Self {
+        if !self.dev_alloc {
+            self.malloc();
+        }
+        unsafe {
+            self._c_.host_data = host_data.as_mut_ptr();
+            self._c_.host2dev();
+        }
+        self
+    }
+}
+impl From<Vec<f64>> for Cu<Double> {
+    fn from(item: Vec<f64>) -> Self {
+        let mut this = Cu::<Double>::vector(item.len());
+        this.to_dev(&mut item.clone());
+        this
+    }
+}
+impl From<Vec<Vec<f64>>> for Cu<Double> {
+    fn from(item: Vec<Vec<f64>>) -> Self {
+        let n_cols = item.len();
+        let n_rows = item[0].len();
+        let mut flat_item: Vec<f64> = item.iter().cloned().flatten().collect();
+        let mut this = Cu::<Double>::array(n_rows, n_cols);
+        this.to_dev(&mut flat_item);
+        this
     }
 }
 
