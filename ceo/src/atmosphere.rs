@@ -189,7 +189,7 @@ impl Builder for ATMOSPHERE {
             .collect::<Vec<f32>>();
         let mut wind_speed = self
             .turbulence
-            .altitude
+            .wind_speed
             .iter()
             .map(|x| *x as f32 / secz as f32)
             .collect::<Vec<f32>>();
